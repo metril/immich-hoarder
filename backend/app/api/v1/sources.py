@@ -23,6 +23,8 @@ async def _check_refs(
     owner = await session.get(User, owner_id)
     if owner is None:
         raise HTTPException(422, "invalid owner")
+    if owner.disabled:
+        raise HTTPException(403, "source owner is disabled")
     op = Principal(owner.id, owner.role, frozenset(owner.groups or []), None)
     checks: list[tuple[type[ImmichTarget] | type[Credential], int | None]] = [
         (ImmichTarget, target_id),

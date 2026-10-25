@@ -1,8 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
 from app.auth.apikeys import create_api_key
+from app.auth.authz import require_scope
 from app.auth.deps import current_principal
 from app.auth.principal import SCOPES, Principal
 from app.db.engine import get_session
@@ -18,14 +20,19 @@ def _out(k: ApiKey) -> ApiKeyOut:
     )
 
 
-@router.get("", response_model=list[ApiKeyOut])
+@router.get("", response_model=Page[ApiKeyOut])
 async def list_keys(
-    p: Principal = Depends(current_principal), session: AsyncSession = Depends(get_session)
-) -> list[ApiKeyOut]:
-    stmt = select(ApiKey).where(ApiKey.revoked.is_(False)).order_by(ApiKey.id)
+    cursor: str | None = None,
+    limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    p: Principal = Depends(current_principal),
+    session: AsyncSession = Depends(get_session),
+) -> Page[ApiKeyOut]:
+    require_scope(p, "keys:read")
+    stmt = select(ApiKey).where(ApiKey.revoked.is_(False))
     if not p.is_admin:
         stmt = stmt.where(ApiKey.user_id == p.user_id)
-    return [_out(k) for k in (await session.execute(stmt)).scalars()]
+    rows, nxt = await paginate(session, stmt, cursor, limit)
+    return Page(items=[_out(k) for k in rows], next_cursor=nxt)
 
 
 @router.post("", response_model=ApiKeyCreated, status_code=201)
@@ -34,6 +41,7 @@ async def create_key(
     p: Principal = Depends(current_principal),
     session: AsyncSession = Depends(get_session),
 ) -> ApiKeyCreated:
+    require_scope(p, "keys:write")
     scopes = sorted(set(body.scopes))
     if bad := set(scopes) - SCOPES:
         raise HTTPException(422, f"unknown scopes: {sorted(bad)}")
@@ -53,6 +61,7 @@ async def revoke_key(
     p: Principal = Depends(current_principal),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
+    require_scope(p, "keys:write")
     key = await session.get(ApiKey, key_id)
     if key is None or (key.user_id != p.user_id and not p.is_admin):
         raise HTTPException(404, "not found")

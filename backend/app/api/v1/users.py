@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
 from app.auth.deps import require_admin
 from app.auth.principal import Principal
 from app.db.engine import get_session
-from app.db.models import User
+from app.db.models import Role, User
 from app.schemas.users import UserOut, UserPatch
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -33,6 +33,16 @@ async def patch_user(
     u = await session.get(User, user_id)
     if u is None:
         raise HTTPException(404, "not found")
+    data = body.model_dump(exclude_unset=True, exclude_none=True)
+    loses_admin = data.get("role", u.role) != Role.admin or data.get("disabled", u.disabled)
+    if u.role == Role.admin and not u.disabled and loses_admin:
+        others = await session.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.role == Role.admin, User.disabled.is_(False), User.id != u.id)
+        )
+        if not others:
+            raise HTTPException(409, "last admin")
     for k, v in body.model_dump(exclude_unset=True, exclude_none=True).items():
         setattr(u, k, v)
     await session.flush()

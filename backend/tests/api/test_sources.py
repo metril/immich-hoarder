@@ -54,11 +54,32 @@ async def test_bad_album_template_field_422(client: httpx.AsyncClient) -> None:
 async def test_scope_enforced(client: httpx.AsyncClient) -> None:
     from helpers import headers_for, make_user
 
-    uid = await make_user("a")
+    uid, full = await actor("a")
+    tid = await _target(client, full)
     h = await headers_for(uid, ["sources:read"])
-    r = await client.post("/api/v1/sources", json={**SRC, "target_id": 1}, headers=h)
+    r = await client.post("/api/v1/sources", json={**SRC, "target_id": tid}, headers=h)
     assert r.status_code == 403
     assert (await client.get("/api/v1/sources", headers=h)).status_code == 200
+    ok = await client.post("/api/v1/sources", json={**SRC, "target_id": tid}, headers=full)
+    assert ok.status_code == 201
+    _ = make_user
+
+
+async def test_disabled_owner_blocks_source_update(client: httpx.AsyncClient) -> None:
+    from helpers import make_user
+
+    from app.db.models import Role
+
+    ua, ha = await actor("a")
+    _, hadm = await actor("adm", Role.admin)
+    await make_user("adm2", Role.admin)
+    tid = await _target(client, ha)
+    sid = (await client.post("/api/v1/sources", json={**SRC, "target_id": tid}, headers=ha)).json()[
+        "id"
+    ]
+    await client.patch(f"/api/v1/users/{ua}", json={"disabled": True}, headers=hadm)
+    r = await client.patch(f"/api/v1/sources/{sid}", json={"name": "n"}, headers=hadm)
+    assert r.status_code == 403
 
 
 async def test_ephemeral_hidden(client: httpx.AsyncClient) -> None:

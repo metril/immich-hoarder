@@ -19,6 +19,8 @@ SCOPES = frozenset(
         "credentials:write",
         "jobs:read",
         "jobs:write",
+        "keys:read",
+        "keys:write",
         "admin",
     }
 )
