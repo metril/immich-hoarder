@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-from fastapi.responses import ORJSONResponse
 
 from app import __version__
 from app.core.config import Settings, get_settings
@@ -12,7 +11,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(
         title="immich-hoarder",
         version=__version__,
-        default_response_class=ORJSONResponse,
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
         redoc_url=None,
