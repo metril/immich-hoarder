@@ -4,6 +4,7 @@ from typing import Any
 from croniter import croniter
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.extractors import validate_gdl_options
 from app.db.models import BackfillMode, Source, Visibility
 
 ALBUM_FIELDS = frozenset({"subreddit", "author", "user", "site", "category", "source", "date"})
@@ -37,6 +38,15 @@ class _Validated(BaseModel):
     @classmethod
     def _tmpl(cls, v: str | None) -> str | None:
         return check_template(v)
+
+    @field_validator("gdl_options", check_fields=False)
+    @classmethod
+    def _gdl(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        return check_gdl_options(v)
+
+
+def check_gdl_options(v: dict[str, Any] | None) -> dict[str, Any] | None:
+    return v if v is None else validate_gdl_options(v)
 
 
 class SourceIn(_Validated):

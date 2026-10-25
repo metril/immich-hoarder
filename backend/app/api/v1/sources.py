@@ -8,9 +8,9 @@ from app.api.v1.shares import delete_shares, shares_router
 from app.auth.authz import require_owner_or_admin, require_scope, visible_to
 from app.auth.deps import current_principal
 from app.auth.principal import Principal
-from app.core.extractors import validate_url
+from app.core.extractors import UnsupportedURL, validate_url
 from app.db.engine import get_session
-from app.db.models import Credential, ImmichTarget, Perm, Source, User
+from app.db.models import Credential, ImmichTarget, Perm, Setting, Source, User
 from app.schemas.sources import SourceIn, SourceOut, SourcePatch
 
 router = APIRouter(prefix="/sources", tags=["sources"])
@@ -38,6 +38,15 @@ async def _check_refs(
             raise HTTPException(403, f"no access to {model.share_type}")
 
 
+async def _extractor_for(session: AsyncSession, url: str) -> str:
+    row = await session.get(Setting, "rip")
+    rip = row.value if row is not None and isinstance(row.value, dict) else {}
+    try:
+        return validate_url(url, allow_private=bool(rip.get("allow_private_hosts", False)))
+    except UnsupportedURL as e:
+        raise HTTPException(422, str(e)) from None
+
+
 @router.get("", response_model=Page[SourceOut])
 async def list_sources(
     cursor: str | None = None,
@@ -62,9 +71,10 @@ async def create_source(
 ) -> SourceOut:
     require_scope(p, "sources:write")
     await _check_refs(session, p.user_id, body.target_id, body.credential_id)
+    extractor = await _extractor_for(session, body.url)
     s = Source(
         **body.model_dump(),
-        extractor=validate_url(body.url),
+        extractor=extractor,
         owner_id=p.user_id,
     )
     session.add(s)
@@ -110,7 +120,7 @@ async def patch_source(
     for k, v in data.items():
         setattr(s, k, v)
     if "url" in data:
-        s.extractor = validate_url(s.url)
+        s.extractor = await _extractor_for(session, s.url)
     await _check_refs(session, s.owner_id, s.target_id, s.credential_id)
     await session.flush()
     return SourceOut.of(s)

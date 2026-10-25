@@ -40,7 +40,9 @@ async def test_in_use_delete_409(client: httpx.AsyncClient) -> None:
     _, h = await actor("a")
     tid = (await client.post("/api/v1/targets", json=TARGET, headers=h)).json()["id"]
     r = await client.post(
-        "/api/v1/sources", json={"name": "s", "url": "http://x", "target_id": tid}, headers=h
+        "/api/v1/sources",
+        json={"name": "s", "url": "https://www.reddit.com/r/pics/", "target_id": tid},
+        headers=h,
     )
     assert r.status_code == 201
     d = await client.delete(f"/api/v1/targets/{tid}", headers=h)

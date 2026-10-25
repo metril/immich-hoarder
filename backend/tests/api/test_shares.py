@@ -17,7 +17,9 @@ async def test_source_revoked_share_blocks_update(client: httpx.AsyncClient) -> 
     tid = (await client.post("/api/v1/targets", json=TARGET, headers=ha)).json()["id"]
     await client.put(f"/api/v1/targets/{tid}/shares", json=_body(ub, "use"), headers=ha)
     r = await client.post(
-        "/api/v1/sources", json={"name": "s", "url": "http://x", "target_id": tid}, headers=hb
+        "/api/v1/sources",
+        json={"name": "s", "url": "https://www.reddit.com/r/pics/", "target_id": tid},
+        headers=hb,
     )
     assert r.status_code == 201
     sid = r.json()["id"]
@@ -50,7 +52,9 @@ async def test_admin_patching_uses_owner_perms(client: httpx.AsyncClient) -> Non
     tid = (await client.post("/api/v1/targets", json=TARGET, headers=ha)).json()["id"]
     sid = (
         await client.post(
-            "/api/v1/sources", json={"name": "s", "url": "http://x", "target_id": tid}, headers=ha
+            "/api/v1/sources",
+            json={"name": "s", "url": "https://www.reddit.com/r/pics/", "target_id": tid},
+            headers=ha,
         )
     ).json()["id"]
     r = await client.patch(f"/api/v1/sources/{sid}", json={"target_id": other_t}, headers=hadm)

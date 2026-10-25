@@ -1,7 +1,7 @@
 import httpx
 from helpers import TARGET, actor
 
-SRC = {"name": "s", "url": "http://x"}
+SRC = {"name": "s", "url": "https://www.reddit.com/r/pics/"}
 
 
 async def _target(c: httpx.AsyncClient, h: dict[str, str]) -> int:
