@@ -28,7 +28,6 @@ class Settings(BaseSettings):
     oidc_groups_claim: str = "groups"
     public_url: str
     session_secret: SecretStr
-    trusted_proxies: list[str] = []
 
     @model_validator(mode="before")
     @classmethod

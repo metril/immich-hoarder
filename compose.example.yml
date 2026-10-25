@@ -12,16 +12,18 @@ services:
       - "8080:8080"
     environment:
       IH_PUBLIC_URL: https://hoarder.example.com
-      IH_SESSION_SECRET: change-me-to-at-least-32-random-characters
+      IH_SESSION_SECRET_FILE: /run/secrets/ih_session_secret
       IH_MASTER_KEY_FILE: /run/secrets/ih_master_key
       IH_OIDC_ISSUER: https://auth.example.com/application/o/hoarder/
       IH_OIDC_CLIENT_ID: immich-hoarder
       IH_OIDC_CLIENT_SECRET_FILE: /run/secrets/ih_oidc_client_secret
       IH_OIDC_ADMIN_GROUPS: '["hoarder-admins"]'
       IH_OIDC_USER_GROUPS: '["hoarder-users"]'
+      # Proxy trust is controlled only by uvicorn's FORWARDED_ALLOW_IPS (comma-separated IPs/CIDRs).
       FORWARDED_ALLOW_IPS: 127.0.0.1  # set to your reverse proxy address
     secrets:
       - ih_master_key
+      - ih_session_secret
       - ih_oidc_client_secret
     # Traefik labels: added in a later plan
     # labels:
@@ -30,6 +32,8 @@ services:
 secrets:
   ih_master_key:
     file: ./secrets/ih_master_key
+  ih_session_secret:
+    file: ./secrets/ih_session_secret
   ih_oidc_client_secret:
     file: ./secrets/ih_oidc_client_secret
 

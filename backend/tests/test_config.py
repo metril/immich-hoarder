@@ -60,3 +60,13 @@ def test_direct_env_wins_over_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     monkeypatch.setenv("IH_SESSION_SECRET", "s" * 32)
     monkeypatch.setenv("IH_PUBLIC_URL", "http://x")
     assert Settings(_env_file=None).master_key.get_secret_value() == "d" * 40
+
+
+def test_session_secret_file_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    ss = tmp_path / "ss"
+    ss.write_text("z" * 40 + "\n")
+    monkeypatch.delenv("IH_SESSION_SECRET", raising=False)
+    monkeypatch.setenv("IH_SESSION_SECRET_FILE", str(ss))
+    monkeypatch.setenv("IH_MASTER_KEY", "k" * 32)
+    monkeypatch.setenv("IH_PUBLIC_URL", "http://x")
+    assert Settings(_env_file=None).session_secret.get_secret_value() == "z" * 40
