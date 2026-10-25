@@ -36,6 +36,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.state.settings = settings
+    app.state.immich_transport = None
     app.state.oauth = build_oauth(settings)
     app.state.verifier = BearerVerifier(settings)
     app.add_middleware(

@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+import anyio.to_thread
+import httpx
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -11,6 +13,9 @@ from app.auth.principal import Principal
 from app.core.crypto import SecretBox
 from app.db.engine import get_session
 from app.db.models import ImmichTarget, Perm, Source
+from app.immich.client import Album, ImmichClient, missing_permissions
+from app.immich.errors import ImmichAuthError, ImmichError, ImmichUnavailable
+from app.schemas.immich import AlbumList, AlbumOut, TargetTestOut
 from app.schemas.targets import TargetIn, TargetOut, TargetPatch
 
 router = APIRouter(prefix="/targets", tags=["targets"])
@@ -95,6 +100,65 @@ async def delete_target(
     await session.delete(t)
     await session.flush()
     return Response(status_code=204)
+
+
+def _check_target(
+    url: str, key_enc: bytes, box: SecretBox, transport: httpx.BaseTransport | None
+) -> TargetTestOut:
+    version: str | None = None
+    try:
+        with ImmichClient(url, box.decrypt(key_enc).decode(), transport=transport) as c:
+            version = c.version()
+            missing = missing_permissions(c.key_permissions())
+    except ImmichAuthError:
+        return TargetTestOut(ok=False, version=version, error="unauthorized")
+    except ImmichUnavailable:
+        return TargetTestOut(ok=False, version=version, error="unreachable")
+    except ImmichError as e:
+        return TargetTestOut(ok=False, version=version, error=f"immich error {e.status}")
+    return TargetTestOut(ok=not missing, version=version, missing_permissions=missing)
+
+
+def _list_albums(
+    url: str, key_enc: bytes, box: SecretBox, transport: httpx.BaseTransport | None
+) -> list[Album]:
+    with ImmichClient(url, box.decrypt(key_enc).decode(), transport=transport) as c:
+        return c.list_albums()
+
+
+@router.post("/{obj_id}/test", response_model=TargetTestOut)
+async def test_target(
+    obj_id: int,
+    request: Request,
+    p: Principal = Depends(current_principal),
+    box: SecretBox = Depends(secret_box),
+    session: AsyncSession = Depends(get_session),
+) -> TargetTestOut:
+    require_scope(p, "targets:read")
+    t: ImmichTarget = await get_obj(session, ImmichTarget, obj_id, p, Perm.use)
+    transport = request.app.state.immich_transport
+    return await anyio.to_thread.run_sync(_check_target, t.url, t.api_key_enc, box, transport)
+
+
+@router.get("/{obj_id}/albums", response_model=AlbumList)
+async def target_albums(
+    obj_id: int,
+    request: Request,
+    p: Principal = Depends(current_principal),
+    box: SecretBox = Depends(secret_box),
+    session: AsyncSession = Depends(get_session),
+) -> AlbumList:
+    require_scope(p, "targets:read")
+    t: ImmichTarget = await get_obj(session, ImmichTarget, obj_id, p, Perm.use)
+    transport = request.app.state.immich_transport
+    try:
+        albums = await anyio.to_thread.run_sync(_list_albums, t.url, t.api_key_enc, box, transport)
+    except (ImmichUnavailable, ImmichError) as e:
+        raise HTTPException(502, "immich unavailable") from e
+    albums.sort(key=lambda a: a.name)
+    return AlbumList(
+        items=[AlbumOut(id=a.id, name=a.name, asset_count=a.asset_count) for a in albums]
+    )
 
 
 router.include_router(shares_router(ImmichTarget, "targets"))
