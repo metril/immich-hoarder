@@ -13,4 +13,4 @@ async def get_extractors(
     p: Principal = Depends(current_principal),
 ) -> dict[str, list[ExtractorInfo]]:
     require_scope(p, "sources:read")
-    return {"items": list_extractors()}
+    return {"items": list(list_extractors())}

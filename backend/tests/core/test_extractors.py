@@ -86,3 +86,49 @@ def test_allowlist_rejects_nested_dict_value() -> None:
         validate_gdl_options({"sleep": {"a": 1}})
     with pytest.raises(ValueError, match="include"):
         validate_gdl_options({"include": [["a"]]})
+
+
+_PRIVATE_BYPASS = [
+    "http://2130706433/a.jpg",
+    "http://0x7f.1/a.jpg",
+    "http://0177.0.0.1/a.jpg",
+    "http://127.1/a.jpg",
+    "http://0/a.jpg",
+    "http://100.64.0.1/a.jpg",
+    "http://[::ffff:127.0.0.1]/a.jpg",
+    "http://[2002:7f00:1::]/a.jpg",
+    "http://localhost./a.jpg",
+    "http://LOCALHOST/a.jpg",
+]
+
+
+@pytest.mark.parametrize("url", _PRIVATE_BYPASS)
+def test_private_bypass_forms_rejected(url: str) -> None:
+    with pytest.raises(UnsupportedURL, match="private host not allowed"):
+        validate_url(url)
+    assert validate_url(url, allow_private=True) == "directlink"
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://127.0.0.1\\@evil.com/a.jpg",
+        "http://10.0.0.1\\@evil.com/a.jpg",
+        "http://169.254.169.254\\@evil.com/a.jpg",
+        "http://exa mple.com/a.jpg",
+        "http://example.com/a\n.jpg",
+        "http://exämple.com/a.jpg",
+    ],
+)
+@pytest.mark.parametrize("allow_private", [False, True])
+def test_malformed_chars_always_rejected(url: str, allow_private: bool) -> None:
+    with pytest.raises(UnsupportedURL):
+        validate_url(url, allow_private=allow_private)
+
+
+def test_userinfo_host_is_real_host() -> None:
+    assert validate_url("http://127.0.0.1@evil.com/a.jpg") == "directlink"
+
+
+def test_list_extractors_is_tuple() -> None:
+    assert isinstance(list_extractors(), tuple)

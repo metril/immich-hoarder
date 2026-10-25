@@ -1,10 +1,13 @@
 import ipaddress
+import socket
 from functools import cache
 from typing import Any
 from urllib.parse import urlsplit
 
+import requests
 from gallery_dl import extractor as gdl_extractor
 from pydantic import BaseModel
+from urllib3.util import parse_url
 
 GDL_OPTION_ALLOWLIST = frozenset(
     {"sleep", "sleep-request", "retries", "timeout", "include", "recursion", "previews"}
@@ -22,36 +25,56 @@ class ExtractorInfo(BaseModel):
     example: str | None = None
 
 
+_HEXISH = frozenset("0123456789abcdefx.")
+
+
+def _ip_private(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    if isinstance(ip, ipaddress.IPv6Address):
+        if ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
+        elif ip.sixtofour:
+            ip = ip.sixtofour
+    return not ip.is_global
+
+
 def _is_private_host(host: str) -> bool:
     host = host.strip("[]").rstrip(".").lower()
     if host == "localhost" or host.endswith(".localhost"):
         return True
     try:
-        ip = ipaddress.ip_address(host.split("%")[0])
+        return _ip_private(ipaddress.ip_address(host.split("%")[0]))
     except ValueError:
-        return False
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-        ip = ip.ipv4_mapped
-    return (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    )
+        pass
+    try:
+        return _ip_private(ipaddress.IPv4Address(socket.inet_aton(host)))
+    except OSError:
+        pass
+    # Numeric-looking hostnames that inet_aton rejects: treat as unsafe.
+    return bool(host) and all(c in _HEXISH for c in host) and host[0].isdigit()
+
+
+def _real_host(url: str) -> str | None:
+    """Host as the downloader (requests/urllib3) will connect to it."""
+    try:
+        prepared = requests.Request("GET", url).prepare().url
+        return parse_url(prepared).host if prepared else None
+    except Exception:
+        return None
 
 
 def validate_url(url: str, *, allow_private: bool = False) -> str:
     """Return the gallery-dl category for a URL, or raise UnsupportedURL."""
+    url = url.strip()
+    if any(c == "\\" or c.isspace() or not 32 < ord(c) < 127 for c in url):
+        raise UnsupportedURL("unsupported url")
     if url.lower().startswith("generic:"):
         raise UnsupportedURL("unsupported url")
     try:
-        parts = urlsplit(url)
-        host = parts.hostname
+        scheme = urlsplit(url).scheme
     except ValueError:
         raise UnsupportedURL("unsupported url") from None
-    if parts.scheme not in ("http", "https") or not host:
+    host = _real_host(url)
+    if scheme not in ("http", "https") or not host:
         raise UnsupportedURL("unsupported url")
     if not allow_private and _is_private_host(host):
         raise UnsupportedURL("private host not allowed")
@@ -62,7 +85,7 @@ def validate_url(url: str, *, allow_private: bool = False) -> str:
 
 
 @cache
-def list_extractors() -> list[ExtractorInfo]:
+def list_extractors() -> tuple[ExtractorInfo, ...]:
     subs: dict[str, set[str]] = {}
     examples: dict[str, str] = {}
     for cls in gdl_extractor._list_classes():
@@ -71,10 +94,10 @@ def list_extractors() -> list[ExtractorInfo]:
         ex = getattr(cls, "example", None)
         if ex and cat not in examples:
             examples[cat] = ex
-    return [
+    return tuple(
         ExtractorInfo(category=c, subcategories=sorted(s), example=examples.get(c))
         for c, s in sorted(subs.items())
-    ]
+    )
 
 
 def validate_gdl_options(opts: dict[str, Any]) -> dict[str, Any]:
