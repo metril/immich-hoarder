@@ -3,8 +3,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+MIN_SECRET_LENGTH = 32
 
 
 class Settings(BaseSettings):
@@ -24,6 +26,13 @@ class Settings(BaseSettings):
     public_url: str
     session_secret: SecretStr
     trusted_proxies: list[str] = []
+
+    @field_validator("master_key", "session_secret")
+    @classmethod
+    def _min_secret_length(cls, v: SecretStr) -> SecretStr:
+        if len(v.get_secret_value()) < MIN_SECRET_LENGTH:
+            raise ValueError(f"must be at least {MIN_SECRET_LENGTH} characters")
+        return v
 
 
 @lru_cache
