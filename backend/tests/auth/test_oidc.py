@@ -63,3 +63,36 @@ async def test_login_callback_sets_session(
     me = await client.get("/api/v1/auth/me")
     assert me.status_code == 200
     assert me.json()["name"] == "carol"
+
+
+async def test_callback_denied_clears_session_and_persists_groups(
+    client: httpx.AsyncClient, idp: fake_idp.FakeIdp
+) -> None:
+    await do_login(client, idp, "erin", ["hoarder-users"])
+    assert (await client.get("/api/v1/auth/me")).status_code == 200
+    r = await do_login(client, idp, "erin", ["other"])
+    assert r.status_code == 403
+    assert (await client.get("/api/v1/auth/me")).status_code == 401
+    async with session_scope() as s:
+        u = (await s.execute(select(User).where(User.sub == "erin"))).scalar_one()
+        assert u.groups == ["other"]
+
+
+async def test_callback_first_login_outside_groups_403(
+    client: httpx.AsyncClient, idp: fake_idp.FakeIdp
+) -> None:
+    r = await do_login(client, idp, "frank", ["other"])
+    assert r.status_code == 403
+    assert (await client.get("/api/v1/auth/me")).status_code == 401
+
+
+async def test_jwks_with_enc_key_still_validates(
+    client: httpx.AsyncClient, idp: fake_idp.FakeIdp
+) -> None:
+    idp.extra_keys = [
+        {"kid": "enc1", "kty": "RSA", "use": "enc", "alg": "RSA-OAEP", "n": "AQAB", "e": "AQAB"},
+        {"kid": "bad", "kty": "RSA", "alg": "RS256"},
+    ]
+    tok = idp.make_token("gina", ["hoarder-users"])
+    r = await client.get("/api/v1/auth/me", headers=bearer(tok))
+    assert r.status_code == 200

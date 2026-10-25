@@ -44,7 +44,9 @@ async def callback(request: Request, session: AsyncSession = Depends(get_session
     if not claims or "sub" not in claims:
         raise HTTPException(401, "login failed")
     user = await upsert_user(session, claims, settings)
+    await session.commit()  # persist group changes even if login is denied
     if user.disabled or resolve_role(user.groups, settings) is None:
+        request.session.clear()
         raise HTTPException(403, "access denied")
     request.session.clear()
     request.session["user_id"] = user.id

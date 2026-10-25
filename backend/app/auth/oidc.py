@@ -45,8 +45,12 @@ class BearerVerifier:
             resp.raise_for_status()
         keys: dict[str, Any] = {}
         for jwk in resp.json().get("keys", []):
-            if "kid" in jwk:
+            if "kid" not in jwk or jwk.get("use", "sig") != "sig":
+                continue
+            try:
                 keys[jwk["kid"]] = jwt.PyJWK(jwk).key
+            except jwt.PyJWTError:
+                continue
         self._keys, self._fetched = keys, time.monotonic()
 
     async def _key(self, kid: str) -> Any:

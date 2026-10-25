@@ -17,10 +17,11 @@ class FakeIdp:
         self.key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         self.nonce: str | None = None
         self.next_claims: dict[str, Any] = {}
+        self.extra_keys: list[dict[str, Any]] = []
 
     def jwks(self) -> dict[str, Any]:
         jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(self.key.public_key()))
-        return {"keys": [{**jwk, "kid": KID, "alg": "RS256", "use": "sig"}]}
+        return {"keys": [*self.extra_keys, {**jwk, "kid": KID, "alg": "RS256", "use": "sig"}]}
 
     def make_token(
         self,
@@ -55,7 +56,9 @@ class FakeIdp:
                 "code_challenge_methods_supported": ["S256"],
             }
         )
-        router.get(f"{ISSUER}/jwks").respond(json=self.jwks())
+        router.get(f"{ISSUER}/jwks").mock(
+            side_effect=lambda _r: httpx.Response(200, json=self.jwks())
+        )
 
         def token(_request: httpx.Request) -> httpx.Response:
             id_token = self.make_token(nonce=self.nonce, **self.next_claims)
