@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     oidc_client_secret: SecretStr | None = None
     oidc_admin_groups: list[str] = ["hoarder-admins"]
     oidc_user_groups: list[str] = ["hoarder-users"]
+    oidc_groups_claim: str = "groups"
     public_url: str
     session_secret: SecretStr
     trusted_proxies: list[str] = []
