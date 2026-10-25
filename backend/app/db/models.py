@@ -90,7 +90,7 @@ class Ownable:
 
     @declared_attr
     def owner_id(cls) -> Mapped[int]:
-        return mapped_column(ForeignKey("users.id"), index=True)
+        return mapped_column(ForeignKey("users.id", ondelete="RESTRICT"), index=True)
 
 
 class User(Timestamps, Base):
@@ -122,7 +122,7 @@ class Share(Timestamps, Base):
 class ApiKey(Timestamps, Base):
     __tablename__ = "api_keys"
     id: Mapped[int] = mapped_column(primary_key=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(255))
     prefix: Mapped[str] = mapped_column(String(8), unique=True)
     hash: Mapped[str] = mapped_column(String(255))
@@ -155,8 +155,12 @@ class Source(Ownable, Timestamps, Base):
     name: Mapped[str] = mapped_column(String(255))
     url: Mapped[str] = mapped_column(String(2048))
     extractor: Mapped[str] = mapped_column(String(64))
-    target_id: Mapped[int] = mapped_column(ForeignKey("immich_targets.id"), index=True)
-    credential_id: Mapped[int | None] = mapped_column(ForeignKey("credentials.id"))
+    target_id: Mapped[int] = mapped_column(
+        ForeignKey("immich_targets.id", ondelete="RESTRICT"), index=True
+    )
+    credential_id: Mapped[int | None] = mapped_column(
+        ForeignKey("credentials.id", ondelete="RESTRICT"), index=True
+    )
     album_template: Mapped[str] = mapped_column(String(512), default="")
     schedule_cron: Mapped[str | None] = mapped_column(String(64))
     backfill_mode: Mapped[BackfillMode] = mapped_column(
@@ -176,8 +180,10 @@ class Source(Ownable, Timestamps, Base):
 class Job(Timestamps, Base):
     __tablename__ = "jobs"
     id: Mapped[int] = mapped_column(primary_key=True)
-    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"), index=True)
-    triggered_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"), index=True)
+    triggered_by: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), index=True
+    )
     status: Mapped[JobStatus] = mapped_column(_enum(JobStatus), default=JobStatus.queued)
     log_level: Mapped[str | None] = mapped_column(String(16))
     counters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
@@ -189,7 +195,7 @@ class Job(Timestamps, Base):
 class JobEvent(Base):
     __tablename__ = "job_events"
     id: Mapped[int] = mapped_column(primary_key=True)
-    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
     ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     level: Mapped[str] = mapped_column(String(16))
     type: Mapped[str] = mapped_column(String(64))
@@ -199,7 +205,7 @@ class JobEvent(Base):
 class JobItem(Base):
     __tablename__ = "job_items"
     id: Mapped[int] = mapped_column(primary_key=True)
-    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id"), index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
     url: Mapped[str] = mapped_column(String(2048))
     outcome: Mapped[str] = mapped_column(String(32))
     reason: Mapped[str | None] = mapped_column(Text)
@@ -217,8 +223,8 @@ class AssetSeen(Base):
         Index("ix_assets_seen_target_ph3", "target_id", "ph3"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
-    target_id: Mapped[int] = mapped_column(ForeignKey("immich_targets.id"))
-    source_id: Mapped[int] = mapped_column(ForeignKey("sources.id"))
+    target_id: Mapped[int] = mapped_column(ForeignKey("immich_targets.id", ondelete="CASCADE"))
+    source_id: Mapped[int | None] = mapped_column(ForeignKey("sources.id", ondelete="SET NULL"))
     url_hash: Mapped[bytes] = mapped_column(LargeBinary(16))
     sha1: Mapped[bytes | None] = mapped_column(LargeBinary(20))
     # signed int64 (two's complement of the unsigned 64-bit hash)

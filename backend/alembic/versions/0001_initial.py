@@ -107,10 +107,7 @@ def upgrade() -> None:
             server_default=sa.text("(CURRENT_TIMESTAMP)"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(
-            ["user_id"],
-            ["users.id"],
-        ),
+        sa.ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("prefix"),
     )
@@ -157,10 +154,7 @@ def upgrade() -> None:
             server_default=sa.text("(CURRENT_TIMESTAMP)"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(
-            ["owner_id"],
-            ["users.id"],
-        ),
+        sa.ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
     )
     with op.batch_alter_table("credentials", schema=None) as batch_op:
@@ -193,10 +187,7 @@ def upgrade() -> None:
             server_default=sa.text("(CURRENT_TIMESTAMP)"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(
-            ["owner_id"],
-            ["users.id"],
-        ),
+        sa.ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
     )
     with op.batch_alter_table("immich_targets", schema=None) as batch_op:
@@ -247,21 +238,15 @@ def upgrade() -> None:
             server_default=sa.text("(CURRENT_TIMESTAMP)"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(
-            ["credential_id"],
-            ["credentials.id"],
-        ),
-        sa.ForeignKeyConstraint(
-            ["owner_id"],
-            ["users.id"],
-        ),
-        sa.ForeignKeyConstraint(
-            ["target_id"],
-            ["immich_targets.id"],
-        ),
+        sa.ForeignKeyConstraint(["credential_id"], ["credentials.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT"),
+        sa.ForeignKeyConstraint(["target_id"], ["immich_targets.id"], ondelete="RESTRICT"),
         sa.PrimaryKeyConstraint("id"),
     )
     with op.batch_alter_table("sources", schema=None) as batch_op:
+        batch_op.create_index(
+            batch_op.f("ix_sources_credential_id"), ["credential_id"], unique=False
+        )
         batch_op.create_index(batch_op.f("ix_sources_owner_id"), ["owner_id"], unique=False)
         batch_op.create_index(batch_op.f("ix_sources_target_id"), ["target_id"], unique=False)
 
@@ -269,7 +254,7 @@ def upgrade() -> None:
         "assets_seen",
         sa.Column("id", sa.Integer(), nullable=False),
         sa.Column("target_id", sa.Integer(), nullable=False),
-        sa.Column("source_id", sa.Integer(), nullable=False),
+        sa.Column("source_id", sa.Integer(), nullable=True),
         sa.Column("url_hash", sa.LargeBinary(length=16), nullable=False),
         sa.Column("sha1", sa.LargeBinary(length=20), nullable=True),
         sa.Column("phash", sa.BigInteger(), nullable=True),
@@ -279,14 +264,8 @@ def upgrade() -> None:
         sa.Column("ph3", sa.Integer(), nullable=True),
         sa.Column("immich_asset_id", sa.LargeBinary(length=16), nullable=True),
         sa.Column("seen_at", sa.BigInteger(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["source_id"],
-            ["sources.id"],
-        ),
-        sa.ForeignKeyConstraint(
-            ["target_id"],
-            ["immich_targets.id"],
-        ),
+        sa.ForeignKeyConstraint(["source_id"], ["sources.id"], ondelete="SET NULL"),
+        sa.ForeignKeyConstraint(["target_id"], ["immich_targets.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("source_id", "url_hash", name="uq_assets_seen_source_url"),
     )
@@ -333,18 +312,13 @@ def upgrade() -> None:
             server_default=sa.text("(CURRENT_TIMESTAMP)"),
             nullable=False,
         ),
-        sa.ForeignKeyConstraint(
-            ["source_id"],
-            ["sources.id"],
-        ),
-        sa.ForeignKeyConstraint(
-            ["triggered_by"],
-            ["users.id"],
-        ),
+        sa.ForeignKeyConstraint(["source_id"], ["sources.id"], ondelete="CASCADE"),
+        sa.ForeignKeyConstraint(["triggered_by"], ["users.id"], ondelete="SET NULL"),
         sa.PrimaryKeyConstraint("id"),
     )
     with op.batch_alter_table("jobs", schema=None) as batch_op:
         batch_op.create_index(batch_op.f("ix_jobs_source_id"), ["source_id"], unique=False)
+        batch_op.create_index(batch_op.f("ix_jobs_triggered_by"), ["triggered_by"], unique=False)
 
     op.create_table(
         "job_events",
@@ -356,10 +330,7 @@ def upgrade() -> None:
         sa.Column("level", sa.String(length=16), nullable=False),
         sa.Column("type", sa.String(length=64), nullable=False),
         sa.Column("data", sa.JSON(), nullable=False),
-        sa.ForeignKeyConstraint(
-            ["job_id"],
-            ["jobs.id"],
-        ),
+        sa.ForeignKeyConstraint(["job_id"], ["jobs.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     with op.batch_alter_table("job_events", schema=None) as batch_op:
@@ -373,10 +344,7 @@ def upgrade() -> None:
         sa.Column("outcome", sa.String(length=32), nullable=False),
         sa.Column("reason", sa.Text(), nullable=True),
         sa.Column("immich_asset_id", sa.String(length=64), nullable=True),
-        sa.ForeignKeyConstraint(
-            ["job_id"],
-            ["jobs.id"],
-        ),
+        sa.ForeignKeyConstraint(["job_id"], ["jobs.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
     with op.batch_alter_table("job_items", schema=None) as batch_op:
@@ -396,6 +364,7 @@ def downgrade() -> None:
 
     op.drop_table("job_events")
     with op.batch_alter_table("jobs", schema=None) as batch_op:
+        batch_op.drop_index(batch_op.f("ix_jobs_triggered_by"))
         batch_op.drop_index(batch_op.f("ix_jobs_source_id"))
 
     op.drop_table("jobs")
@@ -410,6 +379,7 @@ def downgrade() -> None:
     with op.batch_alter_table("sources", schema=None) as batch_op:
         batch_op.drop_index(batch_op.f("ix_sources_target_id"))
         batch_op.drop_index(batch_op.f("ix_sources_owner_id"))
+        batch_op.drop_index(batch_op.f("ix_sources_credential_id"))
 
     op.drop_table("sources")
     with op.batch_alter_table("immich_targets", schema=None) as batch_op:

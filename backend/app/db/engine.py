@@ -15,7 +15,15 @@ _engine: AsyncEngine | None = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
 
+def normalize_url(url: str) -> str:
+    for prefix in ("postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+asyncpg://" + url[len(prefix) :]
+    return url
+
+
 def make_engine(url: str) -> AsyncEngine:
+    url = normalize_url(url)
     engine = create_async_engine(url)
     if make_url(url).get_backend_name() == "sqlite":
 
@@ -28,7 +36,8 @@ def make_engine(url: str) -> AsyncEngine:
             cur.execute("PRAGMA synchronous=NORMAL")
             cur.execute("PRAGMA foreign_keys=ON")
             cur.execute("PRAGMA mmap_size=268435456")
-            cur.execute("PRAGMA cache_size=-262144")
+            cur.execute("PRAGMA cache_size=-65536")
+            cur.execute("PRAGMA busy_timeout=5000")
             cur.close()
 
     return engine

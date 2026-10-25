@@ -1,8 +1,6 @@
 import httpx
 from sqlalchemy import text
 
-from app.core.config import Settings
-
 
 async def test_healthz_ok(client: httpx.AsyncClient) -> None:
     r = await client.get("/healthz")
@@ -16,7 +14,7 @@ async def test_openapi_served(client: httpx.AsyncClient) -> None:
     assert r.json()["info"]["version"] == "0.1.0"
 
 
-async def test_startup_applies_migrations(client: httpx.AsyncClient, settings: Settings) -> None:
+async def test_startup_applies_migrations(client: httpx.AsyncClient) -> None:
     from app.db.engine import session_scope
 
     async with session_scope() as s:
