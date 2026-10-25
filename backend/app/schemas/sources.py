@@ -6,9 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.core.extractors import validate_gdl_options
 from app.db.models import BackfillMode, Source, Visibility
+from app.rip.albums import ALBUM_FIELDS
 from app.rip.filters import FilterSpec, validate_backfill
-
-ALBUM_FIELDS = frozenset({"subreddit", "author", "user", "site", "category", "source", "date"})
 
 
 def check_cron(v: str | None) -> str | None:
