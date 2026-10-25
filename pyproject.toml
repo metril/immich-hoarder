@@ -25,6 +25,8 @@ dependencies = [
     "gallery-dl==1.32.18",
     "pillow>=13.0.0",
     "numpy>=2.5.4",
+    "xxhash>=4.0.2",
+    "psycopg[binary]>=3.3.6",
 ]
 
 [dependency-groups]

@@ -2,7 +2,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from sqlalchemy import event
+from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -22,25 +22,38 @@ def normalize_url(url: str) -> str:
     return url
 
 
+def _apply_sqlite_pragmas(dbapi_conn: Any, _record: Any) -> None:
+    cur = dbapi_conn.cursor()
+    # page_size must be set before WAL is enabled / first table is created
+    cur.execute("PRAGMA page_size=65536")
+    cur.execute("PRAGMA journal_mode=WAL")
+    cur.execute("PRAGMA synchronous=NORMAL")
+    cur.execute("PRAGMA foreign_keys=ON")
+    cur.execute("PRAGMA mmap_size=268435456")
+    cur.execute("PRAGMA cache_size=-65536")
+    cur.execute("PRAGMA busy_timeout=5000")
+    cur.close()
+
+
 def make_engine(url: str) -> AsyncEngine:
     url = normalize_url(url)
     engine = create_async_engine(url)
     if make_url(url).get_backend_name() == "sqlite":
-
-        @event.listens_for(engine.sync_engine, "connect")
-        def _sqlite_pragmas(dbapi_conn: Any, _record: Any) -> None:
-            cur = dbapi_conn.cursor()
-            # page_size must be set before WAL is enabled / first table is created
-            cur.execute("PRAGMA page_size=65536")
-            cur.execute("PRAGMA journal_mode=WAL")
-            cur.execute("PRAGMA synchronous=NORMAL")
-            cur.execute("PRAGMA foreign_keys=ON")
-            cur.execute("PRAGMA mmap_size=268435456")
-            cur.execute("PRAGMA cache_size=-65536")
-            cur.execute("PRAGMA busy_timeout=5000")
-            cur.close()
-
+        event.listen(engine.sync_engine, "connect", _apply_sqlite_pragmas)
     return engine
+
+
+def make_sync_engine(url: str) -> Engine:
+    u = make_url(normalize_url(url))
+    backend = u.get_backend_name()
+    if backend == "sqlite":
+        u = u.set(drivername="sqlite+pysqlite")
+        engine = create_engine(u, connect_args={"check_same_thread": False})
+        event.listen(engine, "connect", _apply_sqlite_pragmas)
+        return engine
+    if backend == "postgresql":
+        u = u.set(drivername="postgresql+psycopg")
+    return create_engine(u)
 
 
 def init_engine(url: str) -> AsyncEngine:
