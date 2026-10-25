@@ -20,9 +20,12 @@ def check_template(v: str | None) -> str | None:
     if v is None:
         return v
     try:
-        names = {f.split(".")[0].split("[")[0] for _, f, _, _ in Formatter().parse(v) if f}
+        parsed = [(f, spec, conv) for _, f, spec, conv in Formatter().parse(v) if f is not None]
     except ValueError as e:
         raise ValueError(f"invalid album template: {e}") from None
+    if any(spec or conv for _, spec, conv in parsed):
+        raise ValueError("album template does not support format specs or conversions")
+    names = {f for f, _, _ in parsed}
     if bad := names - ALBUM_FIELDS:
         raise ValueError(f"unknown album template fields: {sorted(bad)}")
     return v

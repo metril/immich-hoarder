@@ -100,3 +100,48 @@ def test_resolver_relists_after_unavailable(client: ImmichClient) -> None:
     assert r.resolve("N") == "7"
     assert lst.call_count == 2
     assert post.call_count == 1
+
+
+def test_resolver_relists_after_list_failure(client: ImmichClient) -> None:
+    state = {"fail": True}
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        if state["fail"]:
+            return httpx.Response(504)
+        return httpx.Response(200, json=[{"id": "7", "albumName": "N"}])
+
+    respx.get(f"{BASE}/albums").mock(side_effect=handler)
+    post = respx.post(f"{BASE}/albums").respond(201, json={"id": "9", "albumName": "N"})
+    r = AlbumResolver(client)
+    with pytest.raises(ImmichUnavailable):
+        r.resolve("N")
+    state["fail"] = False
+    assert r.resolve("N") == "7"
+    assert post.call_count == 0
+
+
+def test_resolver_invalidates_on_immich_error(client: ImmichClient) -> None:
+    from app.immich.errors import ImmichError
+
+    lst = respx.get(f"{BASE}/albums").respond(200, json=[])
+    respx.post(f"{BASE}/albums").respond(500)
+    r = AlbumResolver(client)
+    with pytest.raises(ImmichError):
+        r.resolve("N")
+    with pytest.raises(ImmichError):
+        r.resolve("N")
+    assert lst.call_count == 2
+
+
+def test_non_scalar_values_are_missing() -> None:
+    assert render_album("{user}", {"user": {"name": "x"}}, "S") == "S"
+    assert render_album("{subreddit}", {"subreddit": ["a"]}, "S") == "S"
+    assert render_album("{subreddit}", {"subreddit": True}, "S") == "S"
+    assert render_album("{subreddit}", {"subreddit": 42}, "S") == "42"
+    assert render_album("{user}", {"user": {"n": 1}, "author": "bob"}, "S") == "S"
+
+
+def test_fallback_sanitised_and_restripped() -> None:
+    assert render_album("", {}, "  a\x00b / ") == "ab"
+    assert render_album("{subreddit}", {"subreddit": "x" * 254 + " /y"}, "S") == "x" * 254
+    assert render_album("{subreddit}", {"subreddit": "a​b\ud800c"}, "S") == "abc"

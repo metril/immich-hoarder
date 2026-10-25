@@ -1,4 +1,5 @@
 import httpx
+import pytest
 from helpers import TARGET, actor
 
 SRC = {"name": "s", "url": "https://www.reddit.com/r/pics/"}
@@ -91,3 +92,13 @@ async def test_ephemeral_hidden(client: httpx.AsyncClient) -> None:
     assert (await client.get("/api/v1/sources", headers=h)).json()["items"] == []
     r = await client.get("/api/v1/sources?include_ephemeral=true", headers=h)
     assert len(r.json()["items"]) == 1
+
+
+@pytest.mark.parametrize("tpl", ["{user.name}", "{user[0]}", "{user!r}", "{user:>10}", "{user"])
+async def test_unsupported_album_template_syntax_422(client: httpx.AsyncClient, tpl: str) -> None:
+    _, h = await actor("a")
+    tid = await _target(client, h)
+    r = await client.post(
+        "/api/v1/sources", json={**SRC, "target_id": tid, "album_template": tpl}, headers=h
+    )
+    assert r.status_code == 422

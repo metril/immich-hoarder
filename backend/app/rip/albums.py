@@ -1,17 +1,22 @@
 import re
 import threading
+import unicodedata
 from datetime import date, datetime
 from string import Formatter
 from typing import Any
 
 from app.immich.client import ImmichClient
-from app.immich.errors import ImmichUnavailable
+from app.immich.errors import ImmichError, ImmichUnavailable
 
 ALBUM_FIELDS = frozenset({"subreddit", "author", "user", "site", "category", "source", "date"})
 MAX_ALBUM_LEN = 255
 
-_CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 _WS = re.compile(r"\s+")
+
+
+def _clean(s: str) -> str:
+    kept = "".join(c for c in s if c.isspace() or unicodedata.category(c) not in ("Cc", "Cf", "Cs"))
+    return _WS.sub(" ", kept).strip().strip("/").strip()
 
 
 def _date(v: Any) -> str | None:
@@ -36,10 +41,10 @@ def _value(field: str, meta: dict[str, Any], source_name: str) -> str | None:
         v = _date(meta.get("date"))
     else:
         v = meta.get(field)
-    if v is None:
+    if isinstance(v, bool) or not isinstance(v, str | int | float):
         return None
-    s = _CONTROL.sub("", str(v))
-    return s if s.strip() else None
+    s = _clean(str(v)) if field != "date" else str(v)
+    return s or None
 
 
 def render_album(template: str, meta: dict[str, Any], source_name: str) -> str:
@@ -50,15 +55,15 @@ def render_album(template: str, meta: dict[str, Any], source_name: str) -> str:
             if field is None:
                 continue
             if spec or conv or field not in ALBUM_FIELDS:
-                return source_name
+                return _clean(source_name)[:MAX_ALBUM_LEN]
             val = _value(field, meta, source_name)
             if val is None:
-                return source_name
+                return _clean(source_name)[:MAX_ALBUM_LEN]
             parts.append(val)
     except ValueError:
-        return source_name
-    out = _WS.sub(" ", _CONTROL.sub("", "".join(parts))).strip().strip("/").strip()
-    return out[:MAX_ALBUM_LEN] or source_name
+        return _clean(source_name)[:MAX_ALBUM_LEN]
+    out = _clean("".join(parts))[:MAX_ALBUM_LEN]
+    return _clean(out) or _clean(source_name)[:MAX_ALBUM_LEN]
 
 
 class AlbumResolver:
@@ -70,14 +75,15 @@ class AlbumResolver:
     def resolve(self, name: str) -> str:
         with self._lock:
             if self._ids is None:
-                self._ids = {}
+                ids: dict[str, str] = {}
                 for a in self._client.list_albums():
-                    self._ids.setdefault(a.name, a.id)
+                    ids.setdefault(a.name, a.id)
+                self._ids = ids
             if name in self._ids:
                 return self._ids[name]
             try:
                 album = self._client.create_album(name)
-            except ImmichUnavailable:
+            except (ImmichUnavailable, ImmichError):
                 self._ids = None  # may have been created; re-list next time
                 raise
             self._ids[name] = album.id
