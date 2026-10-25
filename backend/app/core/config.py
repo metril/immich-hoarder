@@ -1,12 +1,14 @@
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import SecretStr, field_validator
+from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 MIN_SECRET_LENGTH = 32
+_ENV_PREFIX = "IH_"
+_FILE_SECRETS = ("master_key", "session_secret", "oidc_client_secret")
 
 
 class Settings(BaseSettings):
@@ -27,6 +29,21 @@ class Settings(BaseSettings):
     public_url: str
     session_secret: SecretStr
     trusted_proxies: list[str] = []
+
+    @model_validator(mode="before")
+    @classmethod
+    def _load_secret_files(cls, data: Any) -> Any:
+        """Docker-secrets style: IH_<NAME>_FILE is read when IH_<NAME> is unset."""
+        if not isinstance(data, dict):
+            return data
+        data = dict(data)
+        for name in _FILE_SECRETS:
+            var = f"{_ENV_PREFIX}{name.upper()}"
+            path = os.environ.get(f"{var}_FILE")
+            if path and name not in data and var not in os.environ:
+                text = Path(path).read_text()
+                data[name] = text.removesuffix("\n")
+        return data
 
     @field_validator("master_key", "session_secret")
     @classmethod

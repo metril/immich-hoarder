@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -32,3 +34,29 @@ def test_short_secret_rejected(monkeypatch: pytest.MonkeyPatch, field: str, valu
     monkeypatch.setenv(field, value)
     with pytest.raises(ValidationError):
         Settings(_env_file=None)
+
+
+def test_secret_file_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    mk = tmp_path / "mk"
+    mk.write_text("m" * 40 + "\n")
+    oc = tmp_path / "oc"
+    oc.write_text("oidc-secret")
+    monkeypatch.delenv("IH_MASTER_KEY", raising=False)
+    monkeypatch.setenv("IH_MASTER_KEY_FILE", str(mk))
+    monkeypatch.setenv("IH_OIDC_CLIENT_SECRET_FILE", str(oc))
+    monkeypatch.setenv("IH_SESSION_SECRET", "s" * 32)
+    monkeypatch.setenv("IH_PUBLIC_URL", "http://x")
+    s = Settings(_env_file=None)
+    assert s.master_key.get_secret_value() == "m" * 40
+    assert s.oidc_client_secret is not None
+    assert s.oidc_client_secret.get_secret_value() == "oidc-secret"
+
+
+def test_direct_env_wins_over_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    mk = tmp_path / "mk"
+    mk.write_text("f" * 40)
+    monkeypatch.setenv("IH_MASTER_KEY", "d" * 40)
+    monkeypatch.setenv("IH_MASTER_KEY_FILE", str(mk))
+    monkeypatch.setenv("IH_SESSION_SECRET", "s" * 32)
+    monkeypatch.setenv("IH_PUBLIC_URL", "http://x")
+    assert Settings(_env_file=None).master_key.get_secret_value() == "d" * 40
