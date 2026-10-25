@@ -24,7 +24,7 @@ dependencies = [
     "croniter>=6.2.4",
     "gallery-dl==1.32.18",
     "pillow>=13.0.0",
-    "imagehash>=4.3.2",
+    "numpy>=2.5.4",
 ]
 
 [dependency-groups]

@@ -5,7 +5,7 @@ import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
-import imagehash
+import numpy as np
 from PIL import Image
 
 Image.MAX_IMAGE_PIXELS = 178_956_970
@@ -48,6 +48,27 @@ def hamming(a: int, b: int) -> int:
     return ((a ^ b) & _MASK64).bit_count()
 
 
+def _dct_matrix(n: int) -> np.ndarray:
+    k = np.arange(n)[:, None]
+    x = np.arange(n)[None, :]
+    c = np.cos(np.pi * (2 * x + 1) * k / (2 * n)) * np.sqrt(2.0 / n)
+    c[0] /= np.sqrt(2.0)
+    return np.asarray(c)
+
+
+_DCT = _dct_matrix(32)
+
+
+def _phash(frame: Image.Image) -> int:
+    small = np.asarray(frame.convert("L").resize((32, 32), Image.Resampling.LANCZOS), dtype=float)
+    block = (_DCT @ small @ _DCT.T)[:8, :8]
+    bits = (block > np.median(block)).ravel()
+    u = 0
+    for b in bits:
+        u = (u << 1) | int(b)
+    return to_signed64(u)
+
+
 def _sha1(path: Path) -> bytes:
     h = hashlib.sha1(usedforsecurity=False)
     with path.open("rb") as f:
@@ -72,8 +93,7 @@ def analyze(path: Path) -> MediaInfo:
                 img.seek(0)
                 img.load()
                 width, height = img.size
-                frame = img if img.mode in ("L", "RGB") else img.convert("RGB")
-                phash = to_signed64(int(str(imagehash.phash(frame)), 16))
+                phash = _phash(img)
     except NotAnImage:
         raise
     except (Image.DecompressionBombError, Image.DecompressionBombWarning) as e:

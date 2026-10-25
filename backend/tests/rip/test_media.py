@@ -85,3 +85,19 @@ def test_hamming() -> None:
     assert hamming(0, 2**64 - 1) == 64
     assert hamming(-1, 2**64 - 1) == 0
     assert hamming(to_signed64(2**63), 0) == 1
+
+
+def test_phash_deterministic(tmp_path: Path) -> None:
+    p = tmp_path / "a.png"
+    _synthetic(300).save(p, "PNG")
+    assert analyze(p).phash == analyze(p).phash
+
+
+def test_phash_differs_for_different_images(tmp_path: Path) -> None:
+    a, b = tmp_path / "a.png", tmp_path / "b.png"
+    _synthetic(300).save(a, "PNG")
+    rng = random.Random(99)
+    noise = Image.new("L", (300, 300))
+    noise.putdata([rng.randrange(256) for _ in range(300 * 300)])
+    noise.resize((300, 300)).save(b, "PNG")
+    assert hamming(analyze(a).phash, analyze(b).phash) > 10
