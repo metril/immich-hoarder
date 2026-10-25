@@ -76,3 +76,14 @@ async def test_settings_put_rip_validated(client: httpx.AsyncClient) -> None:
     r = await client.put("/api/v1/settings", json=ok, headers=ah)
     assert r.status_code == 200
     assert r.json()["rip"]["upload_concurrency"] == 8
+
+
+async def test_inconsistent_filters_422(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    tid = await _target(client, h)
+    r = await client.post(
+        "/api/v1/sources",
+        json={**SRC, "target_id": tid, "filters": {"min_bytes": 10, "max_bytes": 5}},
+        headers=h,
+    )
+    assert r.status_code == 422

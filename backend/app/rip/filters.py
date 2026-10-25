@@ -4,21 +4,22 @@ import re
 from datetime import UTC, date, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app.db.models import BackfillMode
 from app.rip.media import MediaInfo
 
 INCREMENTAL_SKIP = "abort:20"
+_TITLE_MAX = 1000
 
 
 class FilterSpec(BaseModel, extra="forbid"):
-    min_width: int | None = None
-    min_height: int | None = None
-    min_bytes: int | None = None
-    max_bytes: int | None = None
-    aspect_min: float | None = None
-    aspect_max: float | None = None
+    min_width: int | None = Field(default=None, ge=0)
+    min_height: int | None = Field(default=None, ge=0)
+    min_bytes: int | None = Field(default=None, ge=0)
+    max_bytes: int | None = Field(default=None, ge=0)
+    aspect_min: float | None = Field(default=None, ge=0)
+    aspect_max: float | None = Field(default=None, ge=0)
     title_include: str | None = Field(default=None, max_length=200)
     title_exclude: str | None = Field(default=None, max_length=200)
     date_from: date | None = None
@@ -35,6 +36,18 @@ class FilterSpec(BaseModel, extra="forbid"):
             except re.error as e:
                 raise ValueError(f"invalid regex: {e}") from None
         return v
+
+    @model_validator(mode="after")
+    def _consistent(self) -> "FilterSpec":
+        for lo, hi in (
+            ("min_bytes", "max_bytes"),
+            ("aspect_min", "aspect_max"),
+            ("date_from", "date_to"),
+        ):
+            a, b = getattr(self, lo), getattr(self, hi)
+            if a is not None and b is not None and a > b:
+                raise ValueError(f"{lo} must be <= {hi}")
+        return self
 
 
 def validate_backfill(mode: BackfillMode, value: str | None) -> None:
@@ -56,12 +69,14 @@ def validate_backfill(mode: BackfillMode, value: str | None) -> None:
 
 def gdl_filter_options(
     spec: FilterSpec, backfill_mode: BackfillMode, backfill_value: str | None, incremental: bool
-) -> dict[str, Any]:
+) -> dict[str, dict[str, Any]]:
+    """Return gallery-dl options split by config section."""
     o: dict[str, Any] = {}
+    d: dict[str, Any] = {}
     if spec.min_bytes is not None:
-        o["filesize-min"] = spec.min_bytes
+        d["filesize-min"] = spec.min_bytes
     if spec.max_bytes is not None:
-        o["filesize-max"] = spec.max_bytes
+        d["filesize-max"] = spec.max_bytes
     date_min = spec.date_from
     limits: list[int] = []
     if not incremental:
@@ -80,7 +95,7 @@ def gdl_filter_options(
         o["post-range"] = f"1-{min(limits)}"
     if incremental:
         o["skip"] = INCREMENTAL_SKIP
-    return o
+    return {"extractor": o, "downloader": d}
 
 
 def _day(d: Any) -> date | None:
@@ -90,8 +105,14 @@ def _day(d: Any) -> date | None:
 
 
 def check(
-    info: MediaInfo, meta: dict[str, Any], spec: FilterSpec, allow_animated: bool
+    info: MediaInfo,
+    meta: dict[str, Any],
+    spec: FilterSpec,
+    allow_animated: bool,
+    *,
+    since: date | None = None,
 ) -> str | None:
+    """`since` is the effective first-run lower bound (few extractors honour date-min)."""
     if info.animated and not allow_animated:
         return "animated"
     if (spec.min_width and info.width < spec.min_width) or (
@@ -107,14 +128,16 @@ def check(
         spec.aspect_max is not None and ratio > spec.aspect_max
     ):
         return "aspect"
-    title = str(meta.get("title") or meta.get("filename") or "")
+    title = str(meta.get("title") or meta.get("filename") or "")[:_TITLE_MAX]
     if spec.title_exclude and re.search(spec.title_exclude, title, re.IGNORECASE):
         return "title_excluded"
     if spec.title_include and not re.search(spec.title_include, title, re.IGNORECASE):
         return "title_not_included"
     day = _day(meta.get("date"))
     if day is not None and (
-        (spec.date_from and day < spec.date_from) or (spec.date_to and day > spec.date_to)
+        (spec.date_from and day < spec.date_from)
+        or (spec.date_to and day > spec.date_to)
+        or (since and day < since)
     ):
         return "date_out_of_range"
     return None

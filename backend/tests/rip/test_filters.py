@@ -1,4 +1,5 @@
-from datetime import UTC, datetime
+import logging
+from datetime import UTC, date, datetime
 from typing import Any
 
 import pytest
@@ -7,7 +8,7 @@ from pydantic import ValidationError
 from app.db.models import BackfillMode
 from app.rip.filters import FilterSpec, check, gdl_filter_options
 from app.rip.media import MediaInfo
-from app.rip.settings import RipSettings
+from app.rip.settings import RipSettings, load_rip_settings
 
 
 def _info(**kw: Any) -> MediaInfo:
@@ -36,12 +37,16 @@ def test_phash_distance_range() -> None:
 
 def test_gdl_options_last_n_first_run_only() -> None:
     s = FilterSpec()
-    assert gdl_filter_options(s, BackfillMode.last_n, "10", False)["post-range"] == "1-10"
-    assert "post-range" not in gdl_filter_options(s, BackfillMode.last_n, "10", True)
-    both = gdl_filter_options(FilterSpec(max_items=5), BackfillMode.last_n, "10", False)
-    assert both["post-range"] == "1-5"
     assert (
-        gdl_filter_options(FilterSpec(max_items=5), BackfillMode.full, None, True)["post-range"]
+        gdl_filter_options(s, BackfillMode.last_n, "10", False)["extractor"]["post-range"] == "1-10"
+    )
+    assert "post-range" not in gdl_filter_options(s, BackfillMode.last_n, "10", True)["extractor"]
+    both = gdl_filter_options(FilterSpec(max_items=5), BackfillMode.last_n, "10", False)
+    assert both["extractor"]["post-range"] == "1-5"
+    assert (
+        gdl_filter_options(FilterSpec(max_items=5), BackfillMode.full, None, True)["extractor"][
+            "post-range"
+        ]
         == "1-5"
     )
 
@@ -49,24 +54,29 @@ def test_gdl_options_last_n_first_run_only() -> None:
 def test_gdl_options_since_and_date_from_takes_later() -> None:
     s = FilterSpec(date_from="2024-06-01")  # type: ignore[arg-type]
     o = gdl_filter_options(s, BackfillMode.since, "2024-01-01", False)
-    assert o["date-min"] == "2024-06-01"
+    assert o["extractor"]["date-min"] == "2024-06-01"
     o = gdl_filter_options(s, BackfillMode.since, "2024-09-01", False)
-    assert o["date-min"] == "2024-09-01"
+    assert o["extractor"]["date-min"] == "2024-09-01"
     o = gdl_filter_options(s, BackfillMode.since, "2024-09-01", True)
-    assert o["date-min"] == "2024-06-01"
+    assert o["extractor"]["date-min"] == "2024-06-01"
 
 
 def test_gdl_options_sizes_and_date_to_inclusive() -> None:
     s = FilterSpec(min_bytes=10, max_bytes=99, date_to="2024-02-03")  # type: ignore[arg-type]
     o = gdl_filter_options(s, BackfillMode.full, None, False)
-    assert o["filesize-min"] == 10
-    assert o["filesize-max"] == 99
-    assert o["date-max"] == "2024-02-03T23:59:59"
+    assert o["downloader"]["filesize-min"] == 10
+    assert o["downloader"]["filesize-max"] == 99
+    assert o["extractor"]["date-max"] == "2024-02-03T23:59:59"
 
 
 def test_incremental_sets_abort_skip() -> None:
-    assert gdl_filter_options(FilterSpec(), BackfillMode.full, None, True)["skip"] == "abort:20"
-    assert "skip" not in gdl_filter_options(FilterSpec(), BackfillMode.full, None, False)
+    assert (
+        gdl_filter_options(FilterSpec(), BackfillMode.full, None, True)["extractor"]["skip"]
+        == "abort:20"
+    )
+    assert (
+        "skip" not in gdl_filter_options(FilterSpec(), BackfillMode.full, None, False)["extractor"]
+    )
 
 
 @pytest.mark.parametrize(
@@ -123,3 +133,49 @@ def test_rip_settings_defaults_and_bounds() -> None:
     assert r.allow_private_hosts is False
     with pytest.raises(ValidationError):
         RipSettings(upload_concurrency=17)
+
+
+def test_since_filters_older_post() -> None:
+    meta = {"date": datetime(2024, 1, 1, tzinfo=UTC)}
+    spec = FilterSpec()
+    assert check(_info(), meta, spec, True, since=date(2024, 6, 1)) == "date_out_of_range"
+    assert check(_info(), meta, spec, True, since=date(2024, 1, 1)) is None
+    assert check(_info(), meta, spec, True) is None
+    assert check(_info(), {}, spec, True, since=date(2024, 6, 1)) is None
+
+
+def test_title_truncated_before_regex() -> None:
+    spec = FilterSpec(title_exclude="needle")
+    assert check(_info(), {"title": "a" * 1000 + "needle"}, spec, True) is None
+    assert check(_info(), {"title": "a" * 990 + "needle"}, spec, True) == "title_excluded"
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        {"min_bytes": 10, "max_bytes": 5},
+        {"aspect_min": 2.0, "aspect_max": 1.0},
+        {"date_from": "2024-02-01", "date_to": "2024-01-01"},
+        {"min_width": -1},
+        {"min_bytes": -1},
+        {"aspect_min": -0.5},
+    ],
+)
+def test_filterspec_rejects_inconsistent_or_negative(bad: dict[str, Any]) -> None:
+    with pytest.raises(ValidationError):
+        FilterSpec.model_validate(bad)
+
+
+def test_load_rip_settings_invalid_row_defaults_and_warns(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    from unittest.mock import AsyncMock, MagicMock
+
+    session = MagicMock()
+    session.get = AsyncMock(return_value=MagicMock(value={"upload_concurrency": 99}))
+    import asyncio
+
+    with caplog.at_level(logging.WARNING):
+        r = asyncio.run(load_rip_settings(session))
+    assert r == RipSettings()
+    assert any(rec.levelno == logging.WARNING for rec in caplog.records)
