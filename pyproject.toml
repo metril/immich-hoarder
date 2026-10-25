@@ -23,6 +23,8 @@ dependencies = [
     "argon2-cffi>=25.1.0",
     "croniter>=6.2.4",
     "gallery-dl==1.32.18",
+    "pillow>=13.0.0",
+    "imagehash>=4.3.2",
 ]
 
 [dependency-groups]
