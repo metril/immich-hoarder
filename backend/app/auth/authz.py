@@ -59,12 +59,14 @@ async def require_perm(session: AsyncSession, obj: Ownable, p: Principal, perm: 
         raise HTTPException(403, "forbidden")
 
 
-def require_owner_or_admin(obj: Ownable, p: Principal) -> None:
+async def require_owner_or_admin(session: AsyncSession, obj: Ownable, p: Principal) -> None:
+    if not await _allowed(session, obj, p, Perm.use):
+        raise HTTPException(404, "not found")
     if not (p.is_admin or obj.owner_id == p.user_id):
         raise HTTPException(403, "forbidden")
 
 
 def require_scope(p: Principal, scope: str) -> None:
-    if p.scopes is None or scope in p.scopes or "admin" in p.scopes:
+    if p.scopes is None or scope in p.scopes or p.is_admin:
         return
     raise HTTPException(403, "forbidden")
