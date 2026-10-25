@@ -101,3 +101,72 @@ def test_phash_differs_for_different_images(tmp_path: Path) -> None:
     noise.putdata([rng.randrange(256) for _ in range(300 * 300)])
     noise.resize((300, 300)).save(b, "PNG")
     assert hamming(analyze(a).phash, analyze(b).phash) > 10
+
+
+def test_mpo_accepted_as_jpeg_not_animated(tmp_path: Path) -> None:
+    p = tmp_path / "m.jpg"
+    a, b = _synthetic(200), _synthetic(200).rotate(5)
+    a.save(p, "MPO", save_all=True, append_images=[b])
+    with Image.open(p) as probe:
+        assert probe.format == "MPO"
+    info = analyze(p)
+    assert info.format == "JPEG"
+    assert info.animated is False
+
+
+def test_animated_webp_detected(tmp_path: Path) -> None:
+    p = tmp_path / "a.webp"
+    frames = [Image.new("RGB", (16, 16), c) for c in ("red", "blue")]
+    frames[0].save(p, "WEBP", save_all=True, append_images=frames[1:])
+    info = analyze(p)
+    assert (info.format, info.animated) == ("WEBP", True)
+
+
+def test_animated_apng_detected(tmp_path: Path) -> None:
+    p = tmp_path / "a.png"
+    frames = [Image.new("RGB", (16, 16), c) for c in ("red", "blue")]
+    frames[0].save(p, "PNG", save_all=True, append_images=frames[1:])
+    info = analyze(p)
+    assert (info.format, info.animated) == ("PNG", True)
+
+
+def test_multipage_tiff_not_animated(tmp_path: Path) -> None:
+    p = tmp_path / "a.tif"
+    frames = [Image.new("RGB", (16, 16), c) for c in ("red", "blue")]
+    frames[0].save(p, "TIFF", save_all=True, append_images=frames[1:])
+    assert analyze(p).animated is False
+
+
+def test_decompression_bomb_not_an_image(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    p = tmp_path / "b.png"
+    Image.new("RGB", (100, 100)).save(p, "PNG")
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 50)
+    with pytest.raises(NotAnImage, match="too large"):
+        analyze(p)
+
+
+def test_unsupported_format_not_an_image(tmp_path: Path) -> None:
+    p = tmp_path / "i.ico"
+    Image.new("RGB", (16, 16), "red").save(p, "ICO")
+    with pytest.raises(NotAnImage):
+        analyze(p)
+
+
+def test_truncated_png_not_an_image(tmp_path: Path) -> None:
+    p = tmp_path / "t.png"
+    _synthetic(400).save(p, "PNG")
+    p.write_bytes(p.read_bytes()[:-3000])
+    with pytest.raises(NotAnImage):
+        analyze(p)
+
+
+def test_exif_orientation_applied(tmp_path: Path) -> None:
+    stored = _synthetic(800).crop((0, 0, 500, 800))
+    exif = Image.Exif()
+    exif[0x0112] = 6  # display = rotate 90 clockwise
+    a, b = tmp_path / "a.jpg", tmp_path / "b.jpg"
+    stored.save(a, "JPEG", quality=95, exif=exif)
+    stored.transpose(Image.Transpose.ROTATE_270).save(b, "JPEG", quality=95)
+    ia, ib = analyze(a), analyze(b)
+    assert (ia.width, ia.height) == (800, 500)
+    assert hamming(ia.phash, ib.phash) <= 3

@@ -1,16 +1,16 @@
 """Media analysis and perceptual-hash helpers."""
 
 import hashlib
-import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 Image.MAX_IMAGE_PIXELS = 178_956_970
 
-ALLOWED_FORMATS = frozenset({"JPEG", "PNG", "GIF", "WEBP", "BMP", "TIFF", "AVIF", "HEIF"})
+ALLOWED_FORMATS = frozenset({"JPEG", "PNG", "GIF", "WEBP", "BMP", "TIFF", "AVIF"})
+_ANIMATABLE = frozenset({"GIF", "WEBP", "PNG", "AVIF"})
 _CHUNK = 1024 * 1024
 _MASK64 = (1 << 64) - 1
 
@@ -77,26 +77,36 @@ def _sha1(path: Path) -> bytes:
     return h.digest()
 
 
+def _check_pixels(img: Image.Image) -> None:
+    limit = Image.MAX_IMAGE_PIXELS
+    if limit is not None and img.width * img.height > limit:
+        raise NotAnImage("too large")
+
+
 def analyze(path: Path) -> MediaInfo:
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", Image.DecompressionBombWarning)
-            with Image.open(path) as probe:
-                fmt = probe.format
-                probe.verify()
+        with Image.open(path) as probe:
+            fmt = "JPEG" if probe.format == "MPO" else probe.format
             if fmt not in ALLOWED_FORMATS:
                 raise NotAnImage(f"unsupported format: {fmt}")
-            with Image.open(path) as img:
-                animated = bool(
-                    getattr(img, "is_animated", False) or getattr(img, "n_frames", 1) > 1
-                )
-                img.seek(0)
-                img.load()
-                width, height = img.size
-                phash = _phash(img)
+            _check_pixels(probe)
+            probe.verify()
+        with Image.open(path) as img:
+            _check_pixels(img)
+            animated = fmt in _ANIMATABLE and bool(
+                getattr(img, "is_animated", False) or getattr(img, "n_frames", 1) > 1
+            )
+            width, height = img.size
+            if img.getexif().get(0x0112) in (5, 6, 7, 8):
+                width, height = height, width
+            img.seek(0)
+            if fmt == "JPEG":
+                img.draft("RGB", (256, 256))
+            img.load()
+            phash = _phash(ImageOps.exif_transpose(img))
     except NotAnImage:
         raise
-    except (Image.DecompressionBombError, Image.DecompressionBombWarning) as e:
+    except Image.DecompressionBombError as e:
         raise NotAnImage("too large") from e
     except Exception as e:
         raise NotAnImage(f"unreadable image: {type(e).__name__}") from e
