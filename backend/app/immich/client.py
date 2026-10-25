@@ -21,6 +21,7 @@ REQUIRED_PERMISSIONS = [
 ]
 DEVICE_ID = "immich-hoarder"
 _RETRY_STATUSES = {429, 502, 503, 504}
+_CONNECT_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
 _BACKOFF = (0.5, 1.0, 2.0)
 _RETRY_AFTER_CAP = 10.0
 
@@ -105,17 +106,23 @@ class ImmichClient:
         self._http.close()
 
     # -- transport -------------------------------------------------------
-    def _send(self, do: Callable[[], httpx.Response]) -> httpx.Response:
+    def _send(
+        self,
+        do: Callable[[], httpx.Response],
+        retry_statuses: frozenset[int] = frozenset(_RETRY_STATUSES),
+    ) -> httpx.Response:
         last = len(_BACKOFF) - 1
         for attempt, backoff in enumerate(_BACKOFF):
             try:
                 resp = do()
             except httpx.TransportError as e:
+                if not isinstance(e, _CONNECT_ERRORS):
+                    raise ImmichUnavailable(f"Immich request failed: {type(e).__name__}") from e
                 if attempt == last:
                     raise ImmichUnavailable(f"Immich unreachable: {type(e).__name__}") from e
                 self._sleep(backoff)
                 continue
-            if resp.status_code in _RETRY_STATUSES:
+            if resp.status_code in retry_statuses:
                 if attempt == last:
                     raise ImmichUnavailable(f"Immich unavailable (HTTP {resp.status_code})")
                 delay = backoff
@@ -130,8 +137,15 @@ class ImmichClient:
             return resp
         raise ImmichUnavailable("retries exhausted")  # pragma: no cover
 
-    def _request(self, method: str, path: str, **kw: Any) -> httpx.Response:
-        return self._send(lambda: self._http.request(method, path, **kw))
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        retry_statuses: frozenset[int] = frozenset(_RETRY_STATUSES),
+        **kw: Any,
+    ) -> httpx.Response:
+        return self._send(lambda: self._http.request(method, path, **kw), retry_statuses)
 
     @staticmethod
     def _check(resp: httpx.Response) -> httpx.Response:
@@ -147,8 +161,11 @@ class ImmichClient:
 
     # -- API -------------------------------------------------------------
     def ping(self) -> bool:
-        resp = self._request("GET", "/server/ping")
-        return resp.is_success and resp.json().get("res") == "pong"
+        try:
+            resp = self._request("GET", "/server/ping")
+            return resp.is_success and resp.json().get("res") == "pong"
+        except (ImmichUnavailable, ValueError, AttributeError):
+            return False
 
     def version(self) -> str:
         d = self._json("GET", "/server/version")
@@ -158,6 +175,8 @@ class ImmichClient:
         return [str(p) for p in self._json("GET", "/api-keys/me").get("permissions", [])]
 
     def bulk_check(self, items: list[tuple[str, str]]) -> dict[str, BulkResult]:
+        if not items:
+            return {}
         body = {"assets": [{"id": i, "checksum": c} for i, c in items]}
         d = self._json("POST", "/assets/bulk-upload-check", json=body)
         return {
@@ -223,7 +242,13 @@ class ImmichClient:
         return [self._album(a) for a in self._json("GET", "/albums")]
 
     def create_album(self, name: str) -> Album:
-        return self._album(self._json("POST", "/albums", json={"albumName": name}))
+        # 502/504 may mean the album was created; only retry when it was surely not processed.
+        resp = self._request(
+            "POST", "/albums", json={"albumName": name}, retry_statuses=frozenset({429, 503})
+        )
+        if resp.status_code in (502, 504):
+            raise ImmichUnavailable(f"Immich unavailable (HTTP {resp.status_code})")
+        return self._album(self._check(resp).json())
 
     @staticmethod
     def _album(a: dict[str, Any]) -> Album:
@@ -249,4 +274,6 @@ class ImmichClient:
             body["description"] = description
         if date_time_original is not None:
             body["dateTimeOriginal"] = _iso(date_time_original)
+        if not body:
+            return
         self._check(self._request("PUT", f"/assets/{asset_id}", json=body))

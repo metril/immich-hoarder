@@ -86,6 +86,7 @@ def test_upload_retries_without_device_fields_on_400(client: ImmichClient, img: 
     assert route.call_count == 3
     assert b"deviceAssetId" in route.calls[0].request.read()
     assert b"deviceAssetId" not in route.calls[1].request.read()
+    assert b"deviceId" not in route.calls[1].request.read()
     assert b"deviceId" not in route.calls[2].request.read()
 
 
@@ -110,9 +111,9 @@ def test_retry_on_503_then_success(client: ImmichClient, sleeps: list[float]) ->
 
 
 def test_retries_exhausted(client: ImmichClient, sleeps: list[float]) -> None:
-    route = respx.get(f"{BASE}/server/ping").mock(return_value=httpx.Response(502))
+    route = respx.get(f"{BASE}/server/version").mock(return_value=httpx.Response(502))
     with pytest.raises(ImmichUnavailable):
-        client.ping()
+        client.version()
     assert route.call_count == 3
 
 
@@ -229,7 +230,7 @@ def test_update_asset(client: ImmichClient) -> None:
     body = route.calls[0].request.read()
     assert b'"description"' in body and b'"dateTimeOriginal"' in body
     client.update_asset("x", description=None, date_time_original=None)
-    assert route.calls[1].request.read() == b"{}"
+    assert route.call_count == 1
 
 
 def test_missing_permissions() -> None:
@@ -238,3 +239,60 @@ def test_missing_permissions() -> None:
     assert missing_permissions(["asset.upload", "asset.read"]) == [
         p for p in REQUIRED_PERMISSIONS if p not in ("asset.upload", "asset.read")
     ]
+
+
+def test_upload_read_timeout_not_retried(client: ImmichClient, img: Path) -> None:
+    route = respx.post(f"{BASE}/assets").mock(side_effect=httpx.ReadTimeout("t"))
+    with pytest.raises(ImmichUnavailable):
+        _upload(client, img)
+    assert route.call_count == 1
+
+
+def test_upload_retry_503_resends_file(client: ImmichClient, img: Path) -> None:
+    route = respx.post(f"{BASE}/assets").mock(
+        side_effect=[
+            httpx.Response(503),
+            httpx.Response(201, json={"id": "a", "status": "created"}),
+        ]
+    )
+    assert _upload(client, img).asset_id == "a"
+    assert b"jpegdata" in route.calls[1].request.read()
+
+
+def test_create_album_not_retried_on_504(client: ImmichClient) -> None:
+    route = respx.post(f"{BASE}/albums").mock(return_value=httpx.Response(504))
+    with pytest.raises(ImmichUnavailable):
+        client.create_album("B")
+    assert route.call_count == 1
+
+
+def test_create_album_retried_on_503(client: ImmichClient) -> None:
+    route = respx.post(f"{BASE}/albums").mock(
+        side_effect=[
+            httpx.Response(503),
+            httpx.Response(201, json={"id": "2", "albumName": "B", "assetCount": 0}),
+        ]
+    )
+    assert client.create_album("B").id == "2"
+    assert route.call_count == 2
+
+
+def test_connect_error_is_retried(client: ImmichClient) -> None:
+    route = respx.get(f"{BASE}/server/ping").mock(
+        side_effect=[httpx.ConnectError("x"), httpx.Response(200, json={"res": "pong"})]
+    )
+    assert client.ping()
+    assert route.call_count == 2
+
+
+def test_bulk_check_empty_no_request(client: ImmichClient) -> None:
+    route = respx.post(f"{BASE}/assets/bulk-upload-check")
+    assert client.bulk_check([]) == {}
+    assert route.call_count == 0
+
+
+def test_ping_false_on_connection_failure_and_bad_body(client: ImmichClient) -> None:
+    respx.get(f"{BASE}/server/ping").mock(side_effect=httpx.ConnectError("x"))
+    assert client.ping() is False
+    respx.get(f"{BASE}/server/ping").mock(return_value=httpx.Response(200, text="<html>"))
+    assert client.ping() is False
