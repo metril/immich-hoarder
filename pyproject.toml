@@ -21,6 +21,7 @@ dependencies = [
     "itsdangerous>=2.2.0",
     "pyjwt[crypto]>=2.15.1",
     "argon2-cffi>=25.1.0",
+    "croniter>=6.2.4",
 ]
 
 [dependency-groups]
@@ -31,6 +32,7 @@ dev = [
     "ruff>=0.6",
     "mypy>=1.11",
     "respx>=0.23.1",
+    "types-croniter>=6.2.4.20261006",
 ]
 
 [build-system]

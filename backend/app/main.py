@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
+from app.api.v1 import api_router
 from app.api.v1 import auth as auth_api
 from app.auth.oidc import BearerVerifier, build_oauth
 from app.core.config import Settings, get_settings
@@ -45,6 +46,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         https_only=settings.public_url.startswith("https"),
     )
     app.include_router(auth_api.router)
+    app.include_router(api_router)
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> dict[str, str]:
