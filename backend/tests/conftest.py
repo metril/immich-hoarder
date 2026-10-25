@@ -23,5 +23,8 @@ def settings(tmp_path: Path) -> Settings:
 async def client(settings: Settings) -> AsyncIterator[httpx.AsyncClient]:
     app = create_app(settings)
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(transport=transport, base_url="http://testserver") as c,
+    ):
         yield c
