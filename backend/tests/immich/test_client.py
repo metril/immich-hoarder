@@ -296,3 +296,13 @@ def test_ping_false_on_connection_failure_and_bad_body(client: ImmichClient) -> 
     assert client.ping() is False
     respx.get(f"{BASE}/server/ping").mock(return_value=httpx.Response(200, text="<html>"))
     assert client.ping() is False
+
+
+def test_invalid_response_raises_immich_error(client: ImmichClient) -> None:
+    respx.get(f"{BASE}/server/version").respond(200, text="<html>nope</html>")
+    with pytest.raises(ImmichError) as ei:
+        client.version()
+    assert ei.value.status == 200
+    respx.get(f"{BASE}/albums").respond(200, json=[{"id": "1"}])
+    with pytest.raises(ImmichError):
+        client.list_albums()

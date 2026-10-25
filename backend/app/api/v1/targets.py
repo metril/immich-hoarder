@@ -153,9 +153,11 @@ async def target_albums(
     transport = request.app.state.immich_transport
     try:
         albums = await anyio.to_thread.run_sync(_list_albums, t.url, t.api_key_enc, box, transport)
+    except ImmichAuthError as e:
+        raise HTTPException(502, "immich unauthorized") from e
     except (ImmichUnavailable, ImmichError) as e:
         raise HTTPException(502, "immich unavailable") from e
-    albums.sort(key=lambda a: a.name)
+    albums.sort(key=lambda a: a.name.casefold())
     return AlbumList(
         items=[AlbumOut(id=a.id, name=a.name, asset_count=a.asset_count) for a in albums]
     )

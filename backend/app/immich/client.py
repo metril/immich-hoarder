@@ -1,3 +1,4 @@
+import functools
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -53,6 +54,20 @@ class Album:
     asset_count: int
 
 
+def _shaped[**P, R](fn: Callable[P, R]) -> Callable[P, R]:
+    """Turn unparseable/unexpected 2xx bodies into ImmichError."""
+
+    @functools.wraps(fn)
+    def wrapper(*a: P.args, **kw: P.kwargs) -> R:
+        try:
+            return fn(*a, **kw)
+        except (ValueError, KeyError, TypeError, AttributeError) as e:
+            status = getattr(a[0], "_last_status", 200)
+            raise ImmichError(status, "invalid response") from e
+
+    return wrapper
+
+
 def missing_permissions(perms: list[str]) -> list[str]:
     if "all" in perms:
         return []
@@ -88,6 +103,7 @@ class ImmichClient:
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
         self._sleep = sleep
+        self._last_status = 200
         self._send_device_fields = True
         self._http = httpx.Client(
             base_url=base_url.rstrip("/") + "/api",
@@ -134,6 +150,7 @@ class ImmichClient:
                         pass
                 self._sleep(delay)
                 continue
+            self._last_status = resp.status_code
             return resp
         raise ImmichUnavailable("retries exhausted")  # pragma: no cover
 
@@ -167,13 +184,16 @@ class ImmichClient:
         except (ImmichUnavailable, ValueError, AttributeError):
             return False
 
+    @_shaped
     def version(self) -> str:
         d = self._json("GET", "/server/version")
         return f"{d['major']}.{d['minor']}.{d['patch']}"
 
+    @_shaped
     def key_permissions(self) -> list[str]:
         return [str(p) for p in self._json("GET", "/api-keys/me").get("permissions", [])]
 
+    @_shaped
     def bulk_check(self, items: list[tuple[str, str]]) -> dict[str, BulkResult]:
         if not items:
             return {}
@@ -189,6 +209,7 @@ class ImmichClient:
             for r in d.get("results", [])
         }
 
+    @_shaped
     def upload(
         self,
         path: Path,
@@ -231,6 +252,7 @@ class ImmichClient:
             asset_id=d["id"], duplicate=resp.status_code == 200 or d.get("status") == "duplicate"
         )
 
+    @_shaped
     def get_asset(self, asset_id: str) -> AssetInfo:
         resp = self._request("GET", f"/assets/{asset_id}")
         if resp.status_code in (400, 404):
@@ -238,9 +260,11 @@ class ImmichClient:
         d = self._check(resp).json()
         return AssetInfo(id=d["id"], is_trashed=bool(d.get("isTrashed", False)))
 
+    @_shaped
     def list_albums(self) -> list[Album]:
         return [self._album(a) for a in self._json("GET", "/albums")]
 
+    @_shaped
     def create_album(self, name: str) -> Album:
         # 502/504 may mean the album was created; only retry when it was surely not processed.
         resp = self._request(
@@ -254,6 +278,7 @@ class ImmichClient:
     def _album(a: dict[str, Any]) -> Album:
         return Album(id=a["id"], name=a["albumName"], asset_count=int(a.get("assetCount", 0)))
 
+    @_shaped
     def add_to_album(self, album_id: str, asset_ids: list[str]) -> dict[str, str | None]:
         d = self._json("PUT", f"/albums/{album_id}/assets", json={"ids": asset_ids})
         out: dict[str, str | None] = {}
