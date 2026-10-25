@@ -1,0 +1,27 @@
+from collections.abc import AsyncIterator
+from pathlib import Path
+
+import httpx
+import pytest
+from pydantic import SecretStr
+
+from app.core.config import Settings
+from app.main import create_app
+
+
+@pytest.fixture
+def settings(tmp_path: Path) -> Settings:
+    return Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 'test.db'}",
+        master_key=SecretStr("test-master-key"),
+        session_secret=SecretStr("test-session-secret"),
+        public_url="http://testserver",
+    )
+
+
+@pytest.fixture
+async def client(settings: Settings) -> AsyncIterator[httpx.AsyncClient]:
+    app = create_app(settings)
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as c:
+        yield c
