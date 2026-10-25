@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from sqlalchemy import (
     JSON,
@@ -84,6 +84,7 @@ class Timestamps:
 
 
 class Ownable:
+    share_type: ClassVar[str]
     visibility: Mapped[Visibility] = mapped_column(
         _enum(Visibility), default=Visibility.private, server_default=Visibility.private.value
     )
@@ -133,6 +134,7 @@ class ApiKey(Timestamps, Base):
 
 
 class ImmichTarget(Ownable, Timestamps, Base):
+    share_type = "target"
     __tablename__ = "immich_targets"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
@@ -141,6 +143,7 @@ class ImmichTarget(Ownable, Timestamps, Base):
 
 
 class Credential(Ownable, Timestamps, Base):
+    share_type = "credential"
     __tablename__ = "credentials"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
@@ -150,6 +153,7 @@ class Credential(Ownable, Timestamps, Base):
 
 
 class Source(Ownable, Timestamps, Base):
+    share_type = "source"
     __tablename__ = "sources"
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(255))
