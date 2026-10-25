@@ -10,7 +10,9 @@ from app.auth.deps import current_principal
 from app.auth.principal import Principal
 from app.core.extractors import UnsupportedURL, validate_url
 from app.db.engine import get_session
-from app.db.models import Credential, ImmichTarget, Perm, Setting, Source, User
+from app.db.models import BackfillMode, Credential, ImmichTarget, Perm, Source, User
+from app.rip.filters import validate_backfill
+from app.rip.settings import load_rip_settings
 from app.schemas.sources import SourceIn, SourceOut, SourcePatch
 
 router = APIRouter(prefix="/sources", tags=["sources"])
@@ -39,10 +41,9 @@ async def _check_refs(
 
 
 async def _extractor_for(session: AsyncSession, url: str) -> str:
-    row = await session.get(Setting, "rip")
-    rip = row.value if row is not None and isinstance(row.value, dict) else {}
+    rip = await load_rip_settings(session)
     try:
-        return validate_url(url, allow_private=bool(rip.get("allow_private_hosts", False)))
+        return validate_url(url, allow_private=rip.allow_private_hosts)
     except UnsupportedURL as e:
         raise HTTPException(422, str(e)) from None
 
@@ -117,8 +118,17 @@ async def patch_source(
     ):
         if col in data and data[col] is None:
             raise HTTPException(422, f"{col} cannot be null")
+    mode = data.get("backfill_mode", s.backfill_mode)
+    value = data["backfill_value"] if "backfill_value" in data else s.backfill_value
+    if "backfill_mode" in data and "backfill_value" not in data and mode != s.backfill_mode:
+        value = None if mode == BackfillMode.full else value
+    try:
+        validate_backfill(mode, value)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
     for k, v in data.items():
         setattr(s, k, v)
+    s.backfill_value = value
     if "url" in data:
         s.extractor = await _extractor_for(session, s.url)
     await _check_refs(session, s.owner_id, s.target_id, s.credential_id)

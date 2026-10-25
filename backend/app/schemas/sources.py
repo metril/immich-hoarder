@@ -2,10 +2,11 @@ from string import Formatter
 from typing import Any
 
 from croniter import croniter
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.core.extractors import validate_gdl_options
 from app.db.models import BackfillMode, Source, Visibility
+from app.rip.filters import FilterSpec, validate_backfill
 
 ALBUM_FIELDS = frozenset({"subreddit", "author", "user", "site", "category", "source", "date"})
 
@@ -44,6 +45,13 @@ class _Validated(BaseModel):
     def _gdl(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
         return check_gdl_options(v)
 
+    @field_validator("filters", check_fields=False)
+    @classmethod
+    def _filters(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        if v is None:
+            return v
+        return FilterSpec.model_validate(v).model_dump(mode="json", exclude_none=False)
+
 
 def check_gdl_options(v: dict[str, Any] | None) -> dict[str, Any] | None:
     return v if v is None else validate_gdl_options(v)
@@ -67,6 +75,11 @@ class SourceIn(_Validated):
     enabled: bool = True
     ephemeral: bool = False
     visibility: Visibility = Visibility.private
+
+    @model_validator(mode="after")
+    def _backfill(self) -> "SourceIn":
+        validate_backfill(self.backfill_mode, self.backfill_value)
+        return self
 
 
 class SourcePatch(_Validated):
