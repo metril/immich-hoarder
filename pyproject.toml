@@ -1,6 +1,6 @@
 [project]
 name = "immich-hoarder"
-version = "0.1.0"
+dynamic = ["version"]
 description = "Rip images via gallery-dl and upload them to Immich."
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
@@ -34,6 +34,9 @@ dev = [
     "respx>=0.23.1",
     "types-croniter>=6.2.4.20261006",
 ]
+
+[tool.hatch.version]
+path = "backend/app/__init__.py"
 
 [build-system]
 requires = ["hatchling"]

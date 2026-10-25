@@ -36,7 +36,6 @@ jobs:
               - '**'
               - '!CHANGELOG.md'
               - '!.release-please-manifest.json'
-              - '!pyproject.toml'
               - '!backend/app/__init__.py'
               - '!version.txt'
       - id: skip
@@ -82,7 +81,7 @@ jobs:
       - run: uv sync --frozen
       - run: uv run ruff check .
       - run: uv run ruff format --check .
-      - run: uv run mypy backend
+      - run: uv run mypy
       - run: uv run pytest -q
 
   docker:
