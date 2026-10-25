@@ -12,7 +12,7 @@ _FILE_SECRETS = ("master_key", "session_secret", "oidc_client_secret")
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="IH_", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="IH_", extra="ignore", hide_input_in_errors=True)
 
     database_url: str = "sqlite+aiosqlite:////data/hoarder.db"
     master_key: SecretStr

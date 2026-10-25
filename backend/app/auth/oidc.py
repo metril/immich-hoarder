@@ -1,3 +1,4 @@
+import asyncio
 import time
 from typing import Any
 
@@ -8,6 +9,7 @@ from authlib.integrations.starlette_client import OAuth
 from app.core.config import Settings
 
 JWKS_TTL = 600.0
+FORCED_REFETCH_INTERVAL = 30.0
 
 
 class TokenError(Exception):
@@ -33,6 +35,8 @@ class BearerVerifier:
         self._s = settings
         self._keys: dict[str, Any] = {}
         self._fetched = 0.0
+        self._forced_at: float | None = None
+        self._lock = asyncio.Lock()
 
     async def _refresh(self) -> None:
         assert self._s.oidc_issuer
@@ -54,13 +58,18 @@ class BearerVerifier:
         self._keys, self._fetched = keys, time.monotonic()
 
     async def _key(self, kid: str) -> Any:
-        if not self._keys or time.monotonic() - self._fetched > JWKS_TTL:
-            await self._refresh()
-        if kid not in self._keys:
-            await self._refresh()  # refetch once on unknown kid
-        if kid not in self._keys:
-            raise TokenError("unknown kid")
-        return self._keys[kid]
+        async with self._lock:
+            now = time.monotonic()
+            if not self._keys or now - self._fetched > JWKS_TTL:
+                await self._refresh()
+            elif kid not in self._keys and (
+                self._forced_at is None or now - self._forced_at >= FORCED_REFETCH_INTERVAL
+            ):
+                self._forced_at = now  # rate-limit unknown-kid refetches
+                await self._refresh()
+            if kid not in self._keys:
+                raise TokenError("unknown kid")
+            return self._keys[kid]
 
     async def verify(self, token: str) -> dict[str, Any]:
         s = self._s

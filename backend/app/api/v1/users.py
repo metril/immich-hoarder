@@ -33,9 +33,7 @@ async def patch_user(
     u = await session.get(User, user_id)
     if u is None:
         raise HTTPException(404, "not found")
-    data = body.model_dump(exclude_unset=True, exclude_none=True)
-    loses_admin = data.get("role", u.role) != Role.admin or data.get("disabled", u.disabled)
-    if u.role == Role.admin and not u.disabled and loses_admin:
+    if body.disabled and u.role == Role.admin and not u.disabled:
         others = await session.scalar(
             select(func.count())
             .select_from(User)
@@ -43,7 +41,7 @@ async def patch_user(
         )
         if not others:
             raise HTTPException(409, "last admin")
-    for k, v in body.model_dump(exclude_unset=True, exclude_none=True).items():
-        setattr(u, k, v)
+    if body.disabled is not None:
+        u.disabled = body.disabled
     await session.flush()
     return UserOut.model_validate(u)

@@ -78,13 +78,19 @@ async def test_key_scopes_enforced(client: httpx.AsyncClient) -> None:
 
 async def test_last_admin_protected(client: httpx.AsyncClient) -> None:
     aid, h = await actor("adm", Role.admin)
-    for body in ({"role": "user"}, {"disabled": True}):
-        r = await client.patch(f"/api/v1/users/{aid}", json=body, headers=h)
-        assert r.status_code == 409 and r.json() == {"detail": "last admin"}
+    r = await client.patch(f"/api/v1/users/{aid}", json={"disabled": True}, headers=h)
+    assert r.status_code == 409 and r.json() == {"detail": "last admin"}
     other = await make_user("adm2", Role.admin)
     assert (
         await client.patch(f"/api/v1/users/{other}", json={"disabled": True}, headers=h)
     ).status_code == 200
     assert (
-        await client.patch(f"/api/v1/users/{aid}", json={"role": "user"}, headers=h)
+        await client.patch(f"/api/v1/users/{aid}", json={"disabled": True}, headers=h)
     ).status_code == 409
+
+
+async def test_role_not_patchable(client: httpx.AsyncClient) -> None:
+    uid = await make_user("a")
+    _, h = await actor("adm", Role.admin)
+    r = await client.patch(f"/api/v1/users/{uid}", json={"role": "admin"}, headers=h)
+    assert r.status_code == 422

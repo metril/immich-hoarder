@@ -2,9 +2,11 @@ import time
 
 import fake_idp
 import httpx
+import pytest
 from conftest import do_login
 from sqlalchemy import select
 
+from app.auth import oidc
 from app.db.engine import session_scope
 from app.db.models import Role, User
 
@@ -96,3 +98,42 @@ async def test_jwks_with_enc_key_still_validates(
     tok = idp.make_token("gina", ["hoarder-users"])
     r = await client.get("/api/v1/auth/me", headers=bearer(tok))
     assert r.status_code == 200
+
+
+async def test_es256_token_validates(client: httpx.AsyncClient, idp: fake_idp.FakeIdp) -> None:
+    tok = idp.make_token("ella", ["hoarder-users"], es256=True)
+    assert (await client.get("/api/v1/auth/me", headers=bearer(tok))).status_code == 200
+
+
+async def test_disabled_user_bearer_401(client: httpx.AsyncClient, idp: fake_idp.FakeIdp) -> None:
+    tok = idp.make_token("dan", ["hoarder-users"])
+    assert (await client.get("/api/v1/auth/me", headers=bearer(tok))).status_code == 200
+    async with session_scope() as s:
+        u = (await s.execute(select(User).where(User.sub == "dan"))).scalar_one()
+        u.disabled = True
+    assert (await client.get("/api/v1/auth/me", headers=bearer(tok))).status_code == 401
+
+
+async def test_unknown_kid_refetch_rate_limited(
+    client: httpx.AsyncClient, idp: fake_idp.FakeIdp
+) -> None:
+    ok = idp.make_token("hank", ["hoarder-users"])
+    assert (await client.get("/api/v1/auth/me", headers=bearer(ok))).status_code == 200
+    assert idp.jwks_calls == 1
+    for kid in ("evil1", "evil2"):
+        tok = idp.make_token("hank", ["hoarder-users"], kid=kid)
+        assert (await client.get("/api/v1/auth/me", headers=bearer(tok))).status_code == 401
+    assert idp.jwks_calls == 2  # one forced refetch beyond the initial fetch
+    assert idp.discovery_calls == 2
+
+
+async def test_unknown_kid_refetches_after_window(
+    client: httpx.AsyncClient, idp: fake_idp.FakeIdp, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(oidc, "FORCED_REFETCH_INTERVAL", 0.0)
+    ok = idp.make_token("ivy", ["hoarder-users"])
+    assert (await client.get("/api/v1/auth/me", headers=bearer(ok))).status_code == 200
+    for kid in ("evil1", "evil2"):
+        tok = idp.make_token("ivy", ["hoarder-users"], kid=kid)
+        assert (await client.get("/api/v1/auth/me", headers=bearer(tok))).status_code == 401
+    assert idp.jwks_calls == 3

@@ -70,3 +70,13 @@ def test_session_secret_file_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     monkeypatch.setenv("IH_MASTER_KEY", "k" * 32)
     monkeypatch.setenv("IH_PUBLIC_URL", "http://x")
     assert Settings(_env_file=None).session_secret.get_secret_value() == "z" * 40
+
+
+def test_validation_error_hides_secret(monkeypatch: pytest.MonkeyPatch) -> None:
+    secret = "abcdefghij0123456789X"
+    assert len(secret) == 21
+    monkeypatch.setenv("IH_SESSION_SECRET", "s" * 32)
+    monkeypatch.setenv("IH_PUBLIC_URL", "http://x")
+    with pytest.raises(ValidationError) as ei:
+        Settings(_env_file=None, master_key=secret)  # type: ignore[arg-type]
+    assert secret not in str(ei.value)

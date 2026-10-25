@@ -16,5 +16,4 @@ class UserOut(BaseModel):
 
 class UserPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    role: Role | None = None
     disabled: bool | None = None

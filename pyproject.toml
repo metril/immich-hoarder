@@ -49,6 +49,9 @@ packages = ["backend/app"]
 asyncio_mode = "auto"
 pythonpath = ["backend"]
 testpaths = ["backend/tests"]
+filterwarnings = [
+    "ignore:The httpx module is deprecated; please use httpx2 instead\\.:authlib.deprecate.AuthlibDeprecationWarning",
+]
 
 [tool.ruff]
 line-length = 100
