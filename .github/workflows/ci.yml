@@ -4,7 +4,7 @@ on:
   pull_request:
 
 concurrency:
-  group: ci-${{ github.head_ref }}
+  group: ci-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 permissions:
@@ -22,11 +22,29 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       docker: ${{ steps.filter.outputs.docker }}
     steps:
+      # Release-PR skip rule: skip all jobs only when the PR comes from this
+      # repo (not a fork) AND every changed file is in the release-please
+      # allowlist. Branch names are never trusted.
+      - uses: dorny/paths-filter@v3
+        id: rel
+        with:
+          predicate-quantifier: every
+          filters: |
+            # With 'every' a file must match ALL patterns: true only for files
+            # OUTSIDE the allowlist.
+            non_release:
+              - '**'
+              - '!CHANGELOG.md'
+              - '!.release-please-manifest.json'
+              - '!pyproject.toml'
+              - '!backend/app/__init__.py'
+              - '!version.txt'
       - id: skip
         env:
-          HEAD_REF: ${{ github.head_ref }}
+          SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
+          NON_RELEASE: ${{ steps.rel.outputs.non_release }}
         run: |
-          if [[ "$HEAD_REF" == release-please--* ]]; then
+          if [[ "$SAME_REPO" == "true" && "$NON_RELEASE" == "false" ]]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"

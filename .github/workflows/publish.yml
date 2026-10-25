@@ -23,8 +23,6 @@ jobs:
     permissions:
       contents: read
       packages: write
-      id-token: write
-      attestations: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,13 +39,12 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
+          context: git
           images: ${{ env.IMAGE }}
           tags: |
             type=semver,pattern={{version}},value=${{ inputs.tag }}
             type=semver,pattern={{major}}.{{minor}},value=${{ inputs.tag }}
             type=raw,value=latest
-          labels: |
-            org.opencontainers.image.version=${{ inputs.tag }}
       - id: build
         uses: docker/build-push-action@v6
         with:
