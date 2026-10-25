@@ -22,6 +22,15 @@ def normalize_url(url: str) -> str:
     return url
 
 
+_MASK64 = (1 << 64) - 1
+
+
+def _hamming_udf(a: int | None, b: int | None) -> int | None:
+    if a is None or b is None:
+        return None
+    return ((a ^ b) & _MASK64).bit_count()
+
+
 def _apply_sqlite_pragmas(dbapi_conn: Any, _record: Any) -> None:
     cur = dbapi_conn.cursor()
     # page_size must be set before WAL is enabled / first table is created
@@ -33,6 +42,7 @@ def _apply_sqlite_pragmas(dbapi_conn: Any, _record: Any) -> None:
     cur.execute("PRAGMA cache_size=-65536")
     cur.execute("PRAGMA busy_timeout=5000")
     cur.close()
+    dbapi_conn.create_function("hamming", 2, _hamming_udf, deterministic=True)
 
 
 def make_engine(url: str) -> AsyncEngine:
@@ -53,6 +63,10 @@ def make_sync_engine(url: str) -> Engine:
         return engine
     if backend == "postgresql":
         u = u.set(drivername="postgresql+psycopg")
+        if "ssl" in u.query:  # asyncpg-style -> libpq/psycopg
+            ssl = str(u.query["ssl"])
+            mode = {"true": "require", "false": "disable"}.get(ssl.lower(), ssl)
+            u = u.difference_update_query(["ssl"]).update_query_dict({"sslmode": mode})
     return create_engine(u)
 
 

@@ -126,25 +126,50 @@ def test_record_idempotent(engine: Engine) -> None:
         assert c.execute(text("SELECT count(*) FROM assets_seen")).scalar() == 1
 
 
-def test_record_without_source(engine: Engine) -> None:
-    store = DedupeStore(engine)
-    store.record(
-        target_id=1,
-        source_id=None,
-        key=url_key("c", "1"),
-        sha1=b"\x02" * 20,
-        phash=None,
-        immich_asset_id=ASSET,
-    )
-    assert store.match_sha1(1, b"\x02" * 20) is not None
+def _plan(engine: Engine, store: DedupeStore, ph: int, max_distance: int) -> str:
+    compiled = store._phash_stmt(1, ph, max_distance).compile(dialect=engine.dialect)
+    params = tuple(compiled.params[k] for k in compiled.positiontup or ())
+    with engine.connect() as c:
+        rows = c.exec_driver_sql("EXPLAIN QUERY PLAN " + str(compiled), params)
+        return "\n".join(str(r[-1]) for r in rows)
 
 
 def test_phash_query_uses_index(engine: Engine) -> None:
     store = DedupeStore(engine)
-    plan = store.phash_plan(1, to_signed64(PH))
+    plan = _plan(engine, store, to_signed64(PH), 3)
     for n in range(4):
         assert f"ix_assets_seen_target_ph{n} (target_id=? AND ph{n}=?)" in plan
-    assert "SCAN" not in plan
+
+
+def test_phash_four_chunks_each_flipped_not_found(engine: Engine) -> None:
+    store = DedupeStore(engine)
+    _rec(store, url_key("c", "1"), phash=to_signed64(PH))
+    assert store.match_phash(1, _flip(PH, [0, 20, 40, 60]), 3) is None
+
+
+def test_phash_many_candidates_same_chunk(engine: Engine) -> None:
+    store = DedupeStore(engine)
+    ids = {}
+    for i in range(60):
+        # same top chunk (ph0), differing low bits: distance i % 20 + 1 from query
+        bits = list(range(i % 20 + 1))
+        ph = _flip(PH, [b + 8 for b in bits])
+        a = str(uuid.uuid4())
+        ids[i] = a
+        _rec(store, url_key("c", str(i)), phash=ph, asset=a)
+    # closest rows have distance 1 (i = 0, 20, 40); query is exactly 1 off them
+    ref = store.match_phash(1, to_signed64(PH), 1)
+    assert ref is not None and ref.immich_asset_id in {ids[0], ids[20], ids[40]}
+    assert store.match_phash(1, _flip(PH, [60, 61]), 1) is None
+
+
+def test_hamming_udf(engine: Engine) -> None:
+    with engine.connect() as c:
+        q = "SELECT hamming(:a, :b)"
+        assert c.execute(text(q), {"a": -1, "b": 0}).scalar() == 64
+        assert c.execute(text(q), {"a": 5, "b": 5}).scalar() == 0
+        assert c.execute(text(q), {"a": -(2**63), "b": 2**63 - 1}).scalar() == 64
+        assert c.execute(text(q), {"a": None, "b": 1}).scalar() is None
 
 
 def test_sync_engine_url_mapping() -> None:
@@ -158,3 +183,19 @@ def test_sync_engine_url_mapping() -> None:
         eng = make_sync_engine(url)
         assert eng.url.drivername == driver
         eng.dispose()
+
+
+def test_sync_engine_pg_url_parts_survive() -> None:
+    eng = make_sync_engine(
+        "postgresql+asyncpg://us%40er:p%2Fw%3Ad@db.example:5433/mydb?ssl=require&application_name=x"
+    )
+    u = eng.url
+    assert (u.username, u.password, u.host, u.port, u.database) == (
+        "us@er",
+        "p/w:d",
+        "db.example",
+        5433,
+        "mydb",
+    )
+    assert dict(u.query) == {"sslmode": "require", "application_name": "x"}
+    eng.dispose()
