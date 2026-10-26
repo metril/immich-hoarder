@@ -17,7 +17,7 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
         calls.append({"body": body, "title": title})
         return True
 
-    monkeypatch.setattr(apprise.Apprise, "notify", fake)
+    monkeypatch.setattr(apprise.plugins.NotifyBase, "notify", fake)
     return calls
 
 
@@ -47,7 +47,7 @@ async def test_notify_failure_is_logged_not_raised(
     def boom(self: Any, *a: Any, **k: Any) -> bool:
         raise RuntimeError("nope")
 
-    monkeypatch.setattr(apprise.Apprise, "notify", boom)
+    monkeypatch.setattr(apprise.plugins.NotifyBase, "notify", boom)
     with caplog.at_level(logging.WARNING):
         await notify_job(1, "s", {}, "failed", "x", [URL], ["failure"])
     assert "notification failed" in caplog.text
@@ -60,8 +60,6 @@ async def test_notify_failure_is_logged_not_raised(
         "json://169.254.169.254",
         "json://localhost",
         "json://[::1]/",
-        "json://2130706433/",
-        "json://127.1/",
     ],
 )
 def test_check_notify_url_rejects_private(url: str) -> None:
@@ -74,3 +72,53 @@ def test_check_notify_url_allows_public_rejects_garbage() -> None:
     check_notify_url("json://example.com/", allow_private=False)
     with pytest.raises(ValueError):
         check_notify_url("not a url", allow_private=True)
+
+
+def test_check_notify_url_accepts_numeric_ids() -> None:
+    check_notify_url("discord://123456789012345678/token", allow_private=False)
+    check_notify_url("tgram://123456:abcdef/12345", allow_private=False)
+
+
+@pytest.fixture
+def conn(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    import socket
+
+    from app.runtime import notify as nm
+
+    nm.install_connect_guard()
+    seen: list[Any] = []
+
+    def rec(address: Any, *a: Any, **k: Any) -> Any:
+        seen.append(address)
+        raise OSError("stop")
+
+    monkeypatch.setattr(nm, "_orig_create", rec)
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("10.0.0.1", 80))])
+    return seen
+
+
+def test_connect_guard_blocks_dns_private(conn: list[Any]) -> None:
+    from app.runtime.notify import _send
+
+    assert _send(["json://rebind.example.com/"], "t", "b", block_private=True) is False
+    assert conn == []
+
+
+def test_connect_guard_off_outside_send_and_for_global(conn: list[Any]) -> None:
+    import urllib3.util.connection as uc
+
+    from app.runtime.notify import _send
+
+    with pytest.raises(OSError, match="stop"):
+        uc.create_connection(("10.0.0.1", 80))
+    assert conn == [("10.0.0.1", 80)]
+    conn.clear()
+    _send(["json://rebind.example.com/"], "t", "b", block_private=False)
+    assert conn  # exempt group reaches the connection
+
+
+def test_connect_guard_lifted_by_allow_private(conn: list[Any]) -> None:
+    from app.runtime.notify import _send
+
+    _send(["json://rebind.example.com/"], "t", "b", block_private=False)
+    assert conn

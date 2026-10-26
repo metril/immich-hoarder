@@ -485,7 +485,9 @@ async def test_global_notify_sent_after_final_status(
 
     calls: list[str] = []
     monkeypatch.setattr(
-        apprise.Apprise, "notify", lambda self, body="", title="", **k: calls.append(title) or True
+        apprise.plugins.NotifyBase,
+        "notify",
+        lambda self, body="", title="", **k: calls.append(title) or True,
     )
     async with env.sf() as s:
         s.add(Setting(key="notify", value={"urls": ["json://localhost/"], "on": ["success"]}))
@@ -511,7 +513,9 @@ async def _src_cred_env(
 
     calls: list[str] = []
     monkeypatch.setattr(
-        apprise.Apprise, "notify", lambda self, body="", title="", **k: calls.append(title) or True
+        apprise.plugins.NotifyBase,
+        "notify",
+        lambda self, body="", title="", **k: calls.append(title) or True,
     )
     _, src = await env.seed()
     async with env.sf() as s:

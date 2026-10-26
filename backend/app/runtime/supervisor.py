@@ -351,6 +351,7 @@ class JobSupervisor:
                 gl = await load_notify_settings(s)
                 box = SecretBox(self._settings.master_key.get_secret_value())
                 src_urls: list[str] = []
+                allow_private = (await load_rip_settings(s)).allow_private_hosts
                 for cid in cfg.get("credential_ids") or []:
                     try:
                         # re-checks use, kind and SSRF (host may have turned private)
@@ -362,7 +363,14 @@ class JobSupervisor:
                         log.warning("job %s: notification credential %s skipped", job_id, cid)
             if src_urls:
                 await notify_job(
-                    job_id, name, counters, status, error, src_urls, cfg.get("on") or ["failure"]
+                    job_id,
+                    name,
+                    counters,
+                    status,
+                    error,
+                    src_urls,
+                    cfg.get("on") or ["failure"],
+                    block_private=not allow_private,
                 )
             if gl.urls:
                 await notify_job(job_id, name, counters, status, error, gl.urls, gl.on)
