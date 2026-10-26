@@ -344,7 +344,7 @@ async def test_ipc_bridge_survives_get_error(caplog: pytest.LogCaptureFixture) -
                 raise OSError("corrupt")
             return None
 
-        def put(self, _m: Any) -> None: ...
+        def put(self, _m: Any, timeout: float | None = None) -> None: ...
 
     b = IpcBridge(Q(), None, asyncio.get_running_loop())  # type: ignore[arg-type]
     with caplog.at_level(logging.ERROR):
@@ -373,3 +373,75 @@ async def test_ipc_bridge_forwards_and_stops() -> None:
     await asyncio.sleep(0.2)
     await asyncio.to_thread(b.stop)
     assert got == [("status", 1, "running", {})]
+
+
+async def test_ipc_bridge_stop_drains_everything() -> None:
+    import queue
+
+    q: queue.Queue[Any] = queue.Queue()
+    got: list[Any] = []
+
+    class W:
+        def submit(self, m: Any) -> None:
+            got.append(m)
+
+    loop = asyncio.get_running_loop()
+    b = IpcBridge(q, W(), loop)  # type: ignore[arg-type]
+    for i in range(50):
+        q.put(("status", i, "running", {}))
+    b.start()
+    await asyncio.to_thread(b.stop)
+    await asyncio.sleep(0.1)  # let call_soon_threadsafe callbacks run
+    assert len(got) == 50
+
+
+async def test_ipc_bridge_stop_logs_full_queue(caplog: pytest.LogCaptureFixture) -> None:
+    import queue
+
+    class Q:
+        def get(self) -> Any:
+            return None
+
+        def put(self, _m: Any, timeout: float | None = None) -> None:
+            raise queue.Full
+
+    b = IpcBridge(Q(), None, asyncio.get_running_loop())  # type: ignore[arg-type]
+    b.start()
+    with caplog.at_level(logging.ERROR):
+        await asyncio.to_thread(b.stop)
+    assert "ipc bridge: stop sentinel not queued" in caplog.text
+
+
+async def test_writer_task_restarts_after_crash(
+    env: Any, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    _, sf = env
+    monkeypatch.setattr(writer_mod, "RESTART_MIN_INTERVAL", 0.05)
+    w = JobWriter(sf, EventBus())
+    boom = [True]
+
+    def hook() -> None:
+        if boom:
+            boom.pop()
+            raise RuntimeError("crash")
+
+    w._hook = hook
+    with caplog.at_level(logging.ERROR):
+        w.start()
+        await asyncio.sleep(0.2)
+        w.submit(("event", 1, {"type": "phase", "name": "after"}))
+        await w.stop()
+    assert await _count(sf, JobEvent) == 1
+    assert "restarting" in caplog.text
+
+
+async def test_restart_after_stop_ignores_stale_sentinel(env: Any) -> None:
+    _, sf = env
+    w = JobWriter(sf, EventBus())
+    w.start()
+    await w.stop()
+    w._queue.put_nowait(None)  # stale sentinel
+    w.start()
+    w.submit(("event", 1, {"type": "phase", "name": "again"}))
+    await w.stop()
+    assert await _count(sf, JobEvent) == 1

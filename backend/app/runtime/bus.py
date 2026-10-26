@@ -22,7 +22,7 @@ class Subscription:
         buf = self._buf
         if len(buf) >= QUEUE_SIZE:
             # drop exactly one oldest event; mark the hole with one coalesced gap
-            if buf[0]["type"] == "gap":
+            if buf[0].get("type") == "gap":
                 buf.popleft()
             buf.popleft()
             buf.appendleft({"type": "gap"})

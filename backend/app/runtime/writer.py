@@ -3,8 +3,10 @@
 import asyncio
 import contextlib
 import logging
+import queue
 import threading
 import time
+from collections.abc import Callable
 from typing import Any
 
 from sqlalchemy import update
@@ -22,6 +24,7 @@ URL_MAX = 2048
 REASON_MAX = 1000
 IPC_QUEUE_MAX = 10000
 STOP_TIMEOUT = 10.0
+RESTART_MIN_INTERVAL = 1.0
 
 Msg = tuple[Any, ...]
 
@@ -34,12 +37,24 @@ class JobWriter:
         self._task: asyncio.Task[None] | None = None
         self._stopping = False
         self._stopped = False
+        self._last_restart = float("-inf")
+        self._hook: Callable[[], None] | None = None  # test fault-injection point
 
     def start(self) -> None:
         if self._task is not None and not self._task.done():
             return
         self._stopping = self._stopped = False
+        self._drop_sentinels()
         self._spawn()
+
+    def _drop_sentinels(self) -> None:
+        keep: list[Msg] = []
+        while not self._queue.empty():
+            m = self._queue.get_nowait()
+            if m is not None:
+                keep.append(m)
+        for m in keep:
+            self._queue.put_nowait(m)
 
     def _spawn(self) -> None:
         self._task = asyncio.create_task(self._run())
@@ -49,7 +64,15 @@ class JobWriter:
         if self._stopping or task.cancelled():
             return
         exc = task.exception()
-        log.error("writer task exited unexpectedly; restarting", exc_info=exc)
+        loop = asyncio.get_running_loop()
+        delay = max(0.0, self._last_restart + RESTART_MIN_INTERVAL - loop.time())
+        log.error("writer task exited unexpectedly; restarting in %.2fs", delay, exc_info=exc)
+        loop.call_later(delay, self._respawn)
+
+    def _respawn(self) -> None:
+        if self._stopping:
+            return
+        self._last_restart = asyncio.get_running_loop().time()
         self._spawn()
 
     def submit(self, msg: Msg) -> None:
@@ -73,6 +96,8 @@ class JobWriter:
         loop = asyncio.get_running_loop()
         done = False
         while not done:
+            if self._hook is not None:
+                self._hook()
             first = await self._queue.get()
             if first is None:
                 return
@@ -215,7 +240,7 @@ class IpcBridge:
         self._thread.start()
 
     def _run(self) -> None:
-        while not self._halt.is_set():
+        while True:
             try:
                 msg = self._q.get()
             except Exception:
@@ -230,10 +255,16 @@ class IpcBridge:
                 self._loop.call_soon_threadsafe(self._writer.submit, msg)
 
     def stop(self) -> None:
-        self._halt.set()
-        with contextlib.suppress(Exception):
-            self._q.put(None)
+        """Drain everything queued before the sentinel, then exit."""
+        try:
+            self._q.put(None, timeout=1)
+        except queue.Full:
+            log.error("ipc bridge: stop sentinel not queued (queue full)")
+        except Exception:
+            log.exception("ipc bridge: stop sentinel failed")
         self._thread.join(timeout=5)
+        if self._thread.is_alive():
+            self._halt.set()
 
 
 def make_ipc_queue(ctx: Any) -> Any:
