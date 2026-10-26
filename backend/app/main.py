@@ -30,6 +30,7 @@ from app.runtime.metrics import Metrics
 from app.runtime.scheduler import SourceScheduler
 from app.runtime.supervisor import JobSupervisor
 from app.runtime.writer import IpcBridge, JobWriter, make_ipc_queue
+from app.web.spa import mount_spa
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -168,4 +169,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         m.set_scratch(settings.scratch_dir)
         return Response(generate_latest(m.registry), media_type=CONTENT_TYPE_LATEST)
 
+    mount_spa(app, settings.web_dir)
     return app

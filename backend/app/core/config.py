@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     master_key: SecretStr
     scratch_dir: Path = Path("/scratch")
     backup_dir: Path = Path("/data/backups")
+    web_dir: Path = Path("/srv/web")
     scratch_max_bytes: int = 4 * 1024**3
     max_concurrent_jobs: int = os.cpu_count() or 1
     log_level: Literal["error", "warn", "info", "debug", "trace"] = "info"
