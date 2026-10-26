@@ -1,0 +1,187 @@
+from collections.abc import AsyncIterator
+from typing import Any
+
+import httpx
+import pytest
+from fastapi import FastAPI
+from helpers import TARGET, actor, headers_for
+from sqlalchemy import select
+
+from app.core.config import Settings
+from app.db import engine as dbe
+from app.db.engine import session_scope
+from app.db.models import Job, JobEvent, JobItem, JobStatus, Role, Source
+from app.main import create_app
+from app.runtime.bus import EventBus
+from app.runtime.supervisor import JobSupervisor
+from app.runtime.writer import JobWriter
+
+SRC = {"name": "s", "url": "https://www.reddit.com/r/pics/"}
+
+
+@pytest.fixture
+async def client(settings: Settings) -> AsyncIterator[httpx.AsyncClient]:
+    app: FastAPI = create_app(settings)
+    app.state.runtime_enabled = False
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as c,
+    ):
+        sf = dbe._sessionmaker
+        assert sf is not None
+        app.state.supervisor = JobSupervisor(
+            sf, JobWriter(sf, EventBus()), settings, mp_ctx=None, ipc_queue=None
+        )
+        yield c
+
+
+async def _src(c: httpx.AsyncClient, h: dict[str, str], **kw: Any) -> int:
+    tid = (await c.post("/api/v1/targets", json=TARGET, headers=h)).json()["id"]
+    r = await c.post("/api/v1/sources", json={**SRC, "target_id": tid, **kw}, headers=h)
+    assert r.status_code == 201, r.text
+    return int(r.json()["id"])
+
+
+async def _finish(job_id: int, status: JobStatus = JobStatus.succeeded) -> None:
+    async with session_scope() as s:
+        j = await s.get(Job, job_id)
+        assert j
+        j.status = status
+
+
+async def test_run_creates_job_202_and_conflict_409(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    sid = await _src(client, h)
+    r = await client.post(f"/api/v1/sources/{sid}/run", json={"log_level": "debug"}, headers=h)
+    assert r.status_code == 202
+    j = r.json()
+    assert j["source_id"] == sid and j["status"] == "queued" and j["log_level"] == "debug"
+    assert j["source_name"] == "s"
+    r = await client.post(f"/api/v1/sources/{sid}/run", headers=h)
+    assert r.status_code == 409 and r.json() == {"detail": "job already active"}
+
+
+async def test_run_requires_use(client: httpx.AsyncClient) -> None:
+    _, ha = await actor("a")
+    _, hb = await actor("b")
+    sid = await _src(client, ha)
+    assert (await client.post(f"/api/v1/sources/{sid}/run", headers=hb)).status_code == 404
+
+
+async def test_scope_enforced_on_run(client: httpx.AsyncClient) -> None:
+    uid, h = await actor("a")
+    sid = await _src(client, h)
+    ro = await headers_for(uid, ["jobs:read", "sources:read"])
+    assert (await client.post(f"/api/v1/sources/{sid}/run", headers=ro)).status_code == 403
+    assert (
+        await client.post("/api/v1/rip", json={**SRC, "target_id": 1}, headers=ro)
+    ).status_code == 403
+    assert (await client.get("/api/v1/jobs", headers=await headers_for(uid, []))).status_code == 403
+
+
+async def test_adhoc_rip_creates_ephemeral_source(client: httpx.AsyncClient) -> None:
+    uid, h = await actor("a")
+    tid = (await client.post("/api/v1/targets", json=TARGET, headers=h)).json()["id"]
+    url = "https://www.reddit.com/r/pics/"
+    r = await client.post(
+        "/api/v1/rip",
+        json={"url": url, "target_id": tid, "schedule_cron": "* * * * *", "log_level": "info"},
+        headers=h,
+    )
+    assert r.status_code == 202, r.text
+    sid = r.json()["source_id"]
+    async with session_scope() as s:
+        src = await s.get(Source, sid)
+        assert src
+        assert src.ephemeral and src.schedule_cron is None and src.owner_id == uid
+        assert src.name == f"ad-hoc: {url}" and src.visibility == "private"
+    bad = await client.post("/api/v1/rip", json={"url": "ftp://x", "target_id": tid}, headers=h)
+    assert bad.status_code == 422
+
+
+async def test_jobs_list_visibility(client: httpx.AsyncClient) -> None:
+    uo, ho = await actor("owner")
+    us, hs = await actor("sharee")
+    _, hx = await actor("other")
+    _, hadm = await actor("adm", Role.admin)
+    sid = await _src(client, ho)
+    body = {
+        "visibility": "restricted",
+        "shares": [{"principal_type": "user", "principal_id": str(us), "perm": "use"}],
+    }
+    assert (
+        await client.put(f"/api/v1/sources/{sid}/shares", json=body, headers=ho)
+    ).status_code == 200
+    jid = (await client.post(f"/api/v1/sources/{sid}/run", headers=ho)).json()["id"]
+    for h, n in ((ho, 1), (hs, 1), (hx, 0), (hadm, 1)):
+        r = await client.get("/api/v1/jobs", headers=h)
+        assert len(r.json()["items"]) == n
+    assert (await client.get(f"/api/v1/jobs/{jid}", headers=hx)).status_code == 404
+    assert (await client.get(f"/api/v1/jobs/{jid}", headers=hs)).status_code == 200
+    r = await client.get(f"/api/v1/jobs?source_id={sid}&status=queued", headers=ho)
+    assert len(r.json()["items"]) == 1
+    r = await client.get("/api/v1/jobs?status=failed", headers=ho)
+    assert r.json()["items"] == []
+
+
+async def test_items_and_events_paginated_and_filtered(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    _, hx = await actor("x")
+    sid = await _src(client, h)
+    jid = (await client.post(f"/api/v1/sources/{sid}/run", headers=h)).json()["id"]
+    async with session_scope() as s:
+        for i in range(5):
+            s.add(JobItem(job_id=jid, url=f"u{i}", outcome="uploaded" if i < 3 else "skipped"))
+        for lv in ("trace", "debug", "info", "warn", "error"):
+            s.add(JobEvent(job_id=jid, level=lv, type="t", data={}))
+    r = await client.get(f"/api/v1/jobs/{jid}/items?limit=2", headers=h)
+    d = r.json()
+    assert len(d["items"]) == 2 and d["next_cursor"]
+    r2 = await client.get(f"/api/v1/jobs/{jid}/items?limit=2&cursor={d['next_cursor']}", headers=h)
+    assert [i["url"] for i in r2.json()["items"]] == ["u2", "u3"]
+    r = await client.get(f"/api/v1/jobs/{jid}/items?outcome=skipped", headers=h)
+    assert [i["url"] for i in r.json()["items"]] == ["u3", "u4"]
+    r = await client.get(f"/api/v1/jobs/{jid}/events?min_level=warn", headers=h)
+    assert [e["level"] for e in r.json()["items"]] == ["warn", "error"]
+    r = await client.get(f"/api/v1/jobs/{jid}/events?limit=2", headers=h)
+    assert len(r.json()["items"]) == 2 and r.json()["next_cursor"]
+    assert (
+        await client.get(f"/api/v1/jobs/{jid}/events?min_level=x", headers=h)
+    ).status_code == 422
+    assert (await client.get(f"/api/v1/jobs/{jid}/items", headers=hx)).status_code == 404
+    assert (await client.get(f"/api/v1/jobs/{jid}/events", headers=hx)).status_code == 404
+
+
+async def test_cancel_and_cancel_finished_409(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    _, hx = await actor("x")
+    sid = await _src(client, h)
+    jid = (await client.post(f"/api/v1/sources/{sid}/run", headers=h)).json()["id"]
+    assert (await client.post(f"/api/v1/jobs/{jid}/cancel", headers=hx)).status_code == 404
+    r = await client.post(f"/api/v1/jobs/{jid}/cancel", headers=h)
+    assert r.status_code == 202 and r.json()["id"] == jid
+    await _finish(jid)
+    r = await client.post(f"/api/v1/jobs/{jid}/cancel", headers=h)
+    assert r.status_code == 409 and r.json() == {"detail": "job not active"}
+
+
+async def test_retry_creates_new_job(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    sid = await _src(client, h)
+    jid = (await client.post(f"/api/v1/sources/{sid}/run", headers=h)).json()["id"]
+    assert (await client.post(f"/api/v1/jobs/{jid}/retry", headers=h)).status_code == 409
+    await _finish(jid, JobStatus.failed)
+    r = await client.post(f"/api/v1/jobs/{jid}/retry", headers=h)
+    assert r.status_code == 202 and r.json()["id"] != jid and r.json()["source_id"] == sid
+    async with session_scope() as s:
+        assert len((await s.execute(select(Job))).scalars().all()) == 2
+
+
+async def test_runtime_unavailable_503(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    sid = await _src(client, h)
+    client._transport.app.state.supervisor = None  # type: ignore[attr-defined]
+    r = await client.post(f"/api/v1/sources/{sid}/run", headers=h)
+    assert r.status_code == 503 and r.json() == {"detail": "runtime unavailable"}

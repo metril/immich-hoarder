@@ -88,14 +88,8 @@ async def list_sources(
     return Page(items=[SourceOut.of(r) for r in rows], next_cursor=nxt)
 
 
-@router.post("", response_model=SourceOut, status_code=201)
-async def create_source(
-    body: SourceIn,
-    request: Request,
-    p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
-) -> SourceOut:
-    require_scope(p, "sources:write")
+async def build_source(session: AsyncSession, p: Principal, body: SourceIn) -> Source:
+    """Validate a create payload and add the resulting Source (flushed) owned by `p`."""
     await check_refs(session, p.user_id, body.target_id, body.credential_id)
     extractor = await _extractor_for(session, body.url)
     await _check_proxy(session, body.proxy)
@@ -106,6 +100,18 @@ async def create_source(
     )
     session.add(s)
     await session.flush()
+    return s
+
+
+@router.post("", response_model=SourceOut, status_code=201)
+async def create_source(
+    body: SourceIn,
+    request: Request,
+    p: Principal = Depends(current_principal),
+    session: AsyncSession = Depends(get_session),
+) -> SourceOut:
+    require_scope(p, "sources:write")
+    s = await build_source(session, p, body)
     out = SourceOut.of(s)
     await _sync(request, session, s.id)
     return out
