@@ -71,6 +71,34 @@ describe("dashboard stream", () => {
     expect(ks).toContain("uploads");
   });
 
+  it("terminal status patches the row and invalidates even when known", () => {
+    qc.setQueryData(keys.list("jobs"), listData(1));
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    renderHook(() => useDashboardStream(), { wrapper });
+    act(() => es().emit("status", { job_id: 1, status: "succeeded" }));
+    const d = qc.getQueryData<InfiniteData<{ items: { status: string }[] }>>(keys.list("jobs"));
+    expect(d?.pages[0]?.items[0]?.status).toBe("succeeded");
+    const ks = spy.mock.calls.map((c) => (c[0] as { queryKey: unknown[] }).queryKey[0]);
+    expect(ks).toContain("list");
+    expect(ks).toContain("uploads");
+  });
+
+  it("running status for an unknown job invalidates lists", () => {
+    qc.setQueryData(keys.list("jobs"), listData(1));
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    renderHook(() => useDashboardStream(), { wrapper });
+    act(() => es().emit("status", { job_id: 99, status: "running" }));
+    expect(spy).toHaveBeenCalledWith({ queryKey: ["list", "jobs"] });
+  });
+
+  it("running status for a known job does not invalidate", () => {
+    qc.setQueryData(keys.list("jobs"), listData(1));
+    const spy = vi.spyOn(qc, "invalidateQueries");
+    renderHook(() => useDashboardStream(), { wrapper });
+    act(() => es().emit("status", { job_id: 1, status: "running" }));
+    expect(spy).not.toHaveBeenCalled();
+  });
+
   it("gap invalidates", () => {
     const spy = vi.spyOn(qc, "invalidateQueries");
     renderHook(() => useDashboardStream(), { wrapper });
@@ -126,6 +154,14 @@ describe("job stream", () => {
     expect(d?.counters).toEqual({ a: 1, z: 9 });
   });
 
+  it("flushes pending batch into the cache on unmount", () => {
+    qc.setQueryData(keys.detail("jobs", 3), job(3));
+    const { unmount } = renderHook(() => useJobStream(3), { wrapper });
+    act(() => es().emit("status", { job_id: 3, status: "succeeded" }));
+    unmount();
+    expect(qc.getQueryData<{ status: string }>(keys.detail("jobs", 3))?.status).toBe("succeeded");
+  });
+
   it("closes on unmount", () => {
     const { unmount } = renderHook(() => useJobStream(3), { wrapper });
     const s = es();
@@ -160,6 +196,21 @@ describe("openStream", () => {
     await tick(20000);
     expect(FakeEventSource.instances).toHaveLength(1);
     expect(unauth).toHaveBeenCalledTimes(1);
+  });
+
+  it("caps retries after repeated rejected connects and surfaces onError", async () => {
+    server.use(http.get("*/api/v1/auth/me", () => HttpResponse.json({ id: 1 })));
+    const onError = vi.fn();
+    openStream("/x", () => {}, { onError });
+    for (let i = 0; i < 5; i++) {
+      es().fail(true); // HTTP rejection (e.g. 429) closes the source for good
+      await tick(10000);
+    }
+    const n = FakeEventSource.instances.length;
+    expect(n).toBe(5);
+    await tick(60000);
+    expect(FakeEventSource.instances).toHaveLength(n);
+    expect(onError).toHaveBeenCalledTimes(5);
   });
 
   it("end closes without reconnect", async () => {

@@ -1,6 +1,7 @@
 import { api } from "../api/client";
 import { EVENT_TYPES, type JobEvent } from "./types";
 
+export const MAX_REJECTED = 5;
 export const BACKOFF_MS = [1000, 2000, 5000, 10000] as const;
 
 export interface StreamOpts {
@@ -15,6 +16,7 @@ export function openStream(url: string, onEvent: (e: JobEvent) => void, opts: St
   let timer: ReturnType<typeof setTimeout> | undefined;
   let attempt = 0;
   let stopped = false;
+  let rejected = 0;
 
   const stop = () => {
     stopped = true;
@@ -45,6 +47,7 @@ export function openStream(url: string, onEvent: (e: JobEvent) => void, opts: St
     es = src;
     src.onopen = () => {
       attempt = 0;
+      rejected = 0;
       opts.onOpen?.();
     };
     for (const type of EVENT_TYPES) {
@@ -67,9 +70,15 @@ export function openStream(url: string, onEvent: (e: JobEvent) => void, opts: St
     }
     src.addEventListener("error", () => {
       if (stopped || es !== src) return;
+      // readyState CLOSED = the server rejected the request (e.g. 429), not a network drop.
+      const refused = src.readyState === 2;
       src.close();
       es = null;
       opts.onError?.();
+      if (refused && ++rejected >= MAX_REJECTED) {
+        stop();
+        return;
+      }
       retry();
     });
   };

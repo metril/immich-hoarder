@@ -131,8 +131,9 @@ export function useJobStream(jobId: number): JobStreamState {
       },
     });
     return () => {
-      close();
       clearTimeout(timer);
+      flush();
+      close();
     };
   }, [jobId, qc]);
 

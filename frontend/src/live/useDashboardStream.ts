@@ -29,9 +29,10 @@ function apply(qc: QueryClient, ev: JobEvent) {
   if (ev.type !== "progress" && ev.type !== "status" && ev.type !== "phase") return;
   const id = ev.job_id;
   if (typeof id !== "number") return;
-  if (ev.type === "status" && ev.status !== "running" && !knownInList(qc, id)) {
-    void qc.invalidateQueries({ queryKey: ["list", "jobs"] });
-    void qc.invalidateQueries({ queryKey: ["uploads"] });
+  if (ev.type === "status") {
+    const terminal = ev.status !== "running" && ev.status !== "queued";
+    if (terminal || !knownInList(qc, id)) void qc.invalidateQueries({ queryKey: ["list", "jobs"] });
+    if (terminal) void qc.invalidateQueries({ queryKey: ["uploads"] });
   }
   qc.setQueryData<JobOut>(keys.detail("jobs", id), (old) => (old ? patchJob(old, ev) : old));
   qc.setQueriesData<Pages>({ queryKey: ["list", "jobs"] }, (old) => {
