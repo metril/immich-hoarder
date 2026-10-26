@@ -278,6 +278,10 @@
       },
       "CredentialOut": {
         "properties": {
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
           "has_secret": {
             "title": "Has Secret",
             "type": "boolean"
@@ -312,7 +316,8 @@
           "kind",
           "owner_id",
           "visibility",
-          "has_secret"
+          "has_secret",
+          "can_edit"
         ],
         "title": "CredentialOut",
         "type": "object"
@@ -2281,6 +2286,10 @@
             ],
             "title": "Backfill Value"
           },
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
           "credential_id": {
             "anyOf": [
               {
@@ -2569,7 +2578,8 @@
           "enabled",
           "ephemeral",
           "owner_id",
-          "visibility"
+          "visibility",
+          "can_edit"
         ],
         "title": "SourceOut",
         "type": "object"
@@ -2972,6 +2982,10 @@
       },
       "TargetOut": {
         "properties": {
+          "can_edit": {
+            "title": "Can Edit",
+            "type": "boolean"
+          },
           "has_api_key": {
             "title": "Has Api Key",
             "type": "boolean"
@@ -3002,7 +3016,8 @@
           "url",
           "owner_id",
           "visibility",
-          "has_api_key"
+          "has_api_key",
+          "can_edit"
         ],
         "title": "TargetOut",
         "type": "object"

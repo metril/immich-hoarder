@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Dialog } from "radix-ui";
 import { toast } from "sonner";
 import type { components } from "../../api/schema";
@@ -32,9 +32,11 @@ export function TestResult({ r }: { r: components["schemas"]["TargetTestOut"] })
 export function TargetTestButton({ id, name }: { id: number; name: string }) {
   const [open, setOpen] = useState(false);
   const test = useTestTarget();
+  const btnRef = useRef<HTMLButtonElement>(null);
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
       <button
+        ref={btnRef}
         type="button"
         aria-label={`Test ${name}`}
         disabled={test.isPending}
@@ -50,7 +52,12 @@ export function TargetTestButton({ id, name }: { id: number; name: string }) {
       </button>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-popover p-4 text-popover-foreground shadow-xl">
+        <Dialog.Content
+          onCloseAutoFocus={(e) => {
+            e.preventDefault();
+            btnRef.current?.focus();
+          }}
+          className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-popover p-4 text-popover-foreground shadow-xl">
           <Dialog.Title className="text-base font-semibold">Test {name}</Dialog.Title>
           <Dialog.Description className="sr-only">Connection test result</Dialog.Description>
           <div className="mt-3">{test.data && <TestResult r={test.data} />}</div>

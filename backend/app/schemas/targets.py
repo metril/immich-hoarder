@@ -24,9 +24,10 @@ class TargetOut(BaseModel):
     owner_id: int
     visibility: Visibility
     has_api_key: bool
+    can_edit: bool  # output-only: caller may PATCH
 
     @classmethod
-    def of(cls, t: ImmichTarget) -> "TargetOut":
+    def of(cls, t: ImmichTarget, can_edit: bool) -> "TargetOut":
         return cls(
             id=t.id,
             name=t.name,
@@ -34,4 +35,5 @@ class TargetOut(BaseModel):
             owner_id=t.owner_id,
             visibility=t.visibility,
             has_api_key=bool(t.api_key_enc),
+            can_edit=can_edit,
         )

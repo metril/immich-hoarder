@@ -51,6 +51,21 @@ async def _allowed(session: AsyncSession, obj: Ownable, p: Principal, perm: Perm
     return (await session.execute(stmt)).first() is not None
 
 
+async def can_edit(session: AsyncSession, obj: Ownable, p: Principal) -> bool:
+    return await _allowed(session, obj, p, Perm.edit)
+
+
+async def editable_ids(
+    session: AsyncSession, model: type[Ownable], p: Principal, ids: list[int]
+) -> set[int]:
+    """Ids (of `ids`) the principal may PATCH; one query, same predicate as require_perm."""
+    if not ids:
+        return set()
+    m: Any = model
+    stmt = select(m.id).where(m.id.in_(ids), _predicate(model, p, Perm.edit))
+    return {r[0] for r in (await session.execute(stmt)).all()}
+
+
 async def require_perm(session: AsyncSession, obj: Ownable, p: Principal, perm: Perm) -> None:
     if not await _allowed(session, obj, p, Perm.use):
         raise HTTPException(404, "not found")

@@ -1,3 +1,4 @@
+import { isAdmin, useMe } from "../../api/me";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { EmptyState } from "../../components/common/EmptyState";
 import { SharingDialog } from "../../components/common/SharingDialog";
@@ -11,10 +12,15 @@ const btn = "rounded-md border px-2 py-1 text-xs hover:bg-accent focus-visible:o
 
 function Actions({ c }: { c: CredentialOut }) {
   const del = useDeleteCredential();
+  const me = useMe().data;
+  const owns = me != null && (me.id === c.owner_id || isAdmin(me));
   return (
     <div className="flex flex-wrap gap-1">
-      <SharingDialog resource="credentials" id={c.id} ownerId={c.owner_id} />
-      <CredentialForm credential={c} trigger={<button type="button" aria-label={`Edit ${c.name}`} className={btn}>Edit</button>} />
+      {owns && <SharingDialog resource="credentials" id={c.id} ownerId={c.owner_id} />}
+      {c.can_edit && (
+        <CredentialForm credential={c} trigger={<button type="button" aria-label={`Edit ${c.name}`} className={btn}>Edit</button>} />
+      )}
+      {owns && (
       <ConfirmDialog
         title={`Delete ${c.name}?`}
         body="Sources and notifications using this credential will lose access."
@@ -23,13 +29,14 @@ function Actions({ c }: { c: CredentialOut }) {
         onConfirm={() => del.mutateAsync(c.id).then(() => undefined)}
         trigger={<button type="button" aria-label={`Delete ${c.name}`} className={btn}>Delete</button>}
       />
+      )}
     </div>
   );
 }
 
 const columns: Column<CredentialOut>[] = [
-  { id: "name", header: "Name", cell: (c) => c.name },
-  { id: "site", header: "Site", cell: (c) => c.site },
+  { id: "name", header: "Name", cell: (c) => <span className="block truncate" title={c.name}>{c.name}</span> },
+  { id: "site", header: "Site", cell: (c) => <span className="block truncate" title={c.site}>{c.site}</span> },
   { id: "kind", header: "Kind", cell: (c) => c.kind, width: "7rem" },
   { id: "vis", header: "Visibility", cell: (c) => <VisibilityBadge visibility={c.visibility} />, width: "8rem" },
   { id: "secret", header: "Secret", cell: (c) => (c.has_secret ? "Secret saved" : "No secret"), width: "8rem" },

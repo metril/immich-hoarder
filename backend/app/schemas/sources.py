@@ -157,7 +157,9 @@ class SourceOut(BaseModel):
     ephemeral: bool
     owner_id: int
     visibility: Visibility
+    can_edit: bool  # output-only: caller may PATCH
 
     @classmethod
-    def of(cls, s: Source) -> "SourceOut":
-        return cls.model_validate(s)
+    def of(cls, s: Source, can_edit: bool) -> "SourceOut":
+        data = {f: getattr(s, f) for f in cls.model_fields if f != "can_edit"}
+        return cls.model_validate(data | {"can_edit": can_edit})

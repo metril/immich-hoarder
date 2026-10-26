@@ -7,7 +7,7 @@ import { renderWithProviders } from "../../test/render";
 import { server } from "../../test/server";
 
 const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user" };
-const c1 = { id: 1, name: "Pixiv", site: "pixiv.net", kind: "token", has_secret: true, owner_id: 1, visibility: "private", secret: "TOP-SECRET-VALUE" };
+const c1 = { id: 1, name: "Pixiv", site: "pixiv.net", kind: "token", has_secret: true, owner_id: 1, visibility: "private", secret: "TOP-SECRET-VALUE", can_edit: true };
 beforeAll(() => import("./CredentialsPage"), 30_000); // warm the lazy chunk
 const open = () => renderWithProviders(null, { me, route: "/credentials" });
 
@@ -32,6 +32,39 @@ describe("credentials", () => {
     expect(screen.getByLabelText("Secret").tagName).toBe("TEXTAREA");
     await userEvent.selectOptions(screen.getByLabelText("Kind"), "apprise");
     expect(screen.getByText("Apprise URL (e.g. ntfys://topic)")).toBeInTheDocument();
+  });
+
+  it("shows 422 on the secret field", async () => {
+    server.use(
+      http.get("*/api/v1/credentials", () => HttpResponse.json({ items: [], next_cursor: null })),
+      http.post("*/api/v1/credentials", () =>
+        HttpResponse.json({ detail: [{ loc: ["body", "secret"], msg: "bad token format", type: "value_error" }] }, { status: 422 }),
+      ),
+    );
+    open();
+    await userEvent.click(await screen.findByRole("button", { name: "Add credential" }));
+    await userEvent.type(screen.getByLabelText("Name"), "n");
+    await userEvent.type(screen.getByLabelText("Site"), "s");
+    await userEvent.type(screen.getByLabelText("Secret"), "abc");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("bad token format")).toBeInTheDocument();
+    expect(screen.getByLabelText("Secret")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("non-owner without edit sees no Edit, Delete or Share", async () => {
+    server.use(http.get("*/api/v1/credentials", () => HttpResponse.json({ items: [{ ...c1, can_edit: false }], next_cursor: null })));
+    renderWithProviders(null, { me: { ...me, id: 2 }, route: "/credentials" });
+    expect(await screen.findByText("Pixiv")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Pixiv" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete Pixiv" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
+  });
+
+  it("edit-share user sees Edit only", async () => {
+    server.use(http.get("*/api/v1/credentials", () => HttpResponse.json({ items: [c1], next_cursor: null })));
+    renderWithProviders(null, { me: { ...me, id: 2 }, route: "/credentials" });
+    expect(await screen.findByRole("button", { name: "Edit Pixiv" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete Pixiv" })).not.toBeInTheDocument();
   });
 
   it("shows server message for rejected apprise host", async () => {

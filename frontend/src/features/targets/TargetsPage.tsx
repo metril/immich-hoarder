@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Dialog } from "radix-ui";
+import { isAdmin, useMe } from "../../api/me";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { EmptyState } from "../../components/common/EmptyState";
 import { SharingDialog } from "../../components/common/SharingDialog";
@@ -37,12 +38,17 @@ function AlbumsSheet({ t }: { t: TargetOut }) {
 
 function Actions({ t }: { t: TargetOut }) {
   const del = useDeleteTarget();
+  const me = useMe().data;
+  const owns = me != null && (me.id === t.owner_id || isAdmin(me));
   return (
     <div className="flex flex-wrap gap-1">
       <TargetTestButton id={t.id} name={t.name} />
       <AlbumsSheet t={t} />
-      <SharingDialog resource="targets" id={t.id} ownerId={t.owner_id} />
-      <TargetForm target={t} trigger={<button type="button" aria-label={`Edit ${t.name}`} className={btn}>Edit</button>} />
+      {owns && <SharingDialog resource="targets" id={t.id} ownerId={t.owner_id} />}
+      {t.can_edit && (
+        <TargetForm target={t} trigger={<button type="button" aria-label={`Edit ${t.name}`} className={btn}>Edit</button>} />
+      )}
+      {owns && (
       <ConfirmDialog
         title={`Delete ${t.name}?`}
         body="Jobs using this target will stop working."
@@ -51,13 +57,14 @@ function Actions({ t }: { t: TargetOut }) {
         onConfirm={() => del.mutateAsync(t.id).then(() => undefined)}
         trigger={<button type="button" aria-label={`Delete ${t.name}`} className={btn}>Delete</button>}
       />
+      )}
     </div>
   );
 }
 
 const columns: Column<TargetOut>[] = [
-  { id: "name", header: "Name", cell: (t) => t.name, width: "minmax(0,1fr)" },
-  { id: "url", header: "URL", cell: (t) => t.url, width: "minmax(0,1.2fr)" },
+  { id: "name", header: "Name", cell: (t) => <span className="block truncate" title={t.name}>{t.name}</span>, width: "minmax(0,1fr)" },
+  { id: "url", header: "URL", cell: (t) => <span className="block truncate" title={t.url}>{t.url}</span>, width: "minmax(0,1.2fr)" },
   { id: "vis", header: "Visibility", cell: (t) => <VisibilityBadge visibility={t.visibility} />, width: "8rem" },
   {
     id: "key",

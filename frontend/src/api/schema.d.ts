@@ -799,6 +799,8 @@ export interface components {
         CredentialKind: "oauth" | "cookies" | "userpass" | "token" | "apprise";
         /** CredentialOut */
         CredentialOut: {
+            /** Can Edit */
+            can_edit: boolean;
             /** Has Secret */
             has_secret: boolean;
             /** Id */
@@ -1472,6 +1474,8 @@ export interface components {
             backfill_mode: components["schemas"]["BackfillMode"];
             /** Backfill Value */
             backfill_value: string | null;
+            /** Can Edit */
+            can_edit: boolean;
             /** Credential Id */
             credential_id: number | null;
             /** Enabled */
@@ -1637,6 +1641,8 @@ export interface components {
         };
         /** TargetOut */
         TargetOut: {
+            /** Can Edit */
+            can_edit: boolean;
             /** Has Api Key */
             has_api_key: boolean;
             /** Id */
