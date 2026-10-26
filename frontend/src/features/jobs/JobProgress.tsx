@@ -16,7 +16,7 @@ export function JobProgress({ job, total }: { job: JobOut; total?: number }) {
   const pct = determinate ? Math.min(100, (done / total) * 100) : terminal ? 100 : undefined;
   const text = determinate ? `${done} of ${total} processed` : `${done} processed`;
   return (
-    <div className="grid gap-1">
+    <div className="grid gap-2">
       <div
         role="progressbar"
         aria-label="Job progress"
@@ -27,7 +27,7 @@ export function JobProgress({ job, total }: { job: JobOut; total?: number }) {
         className="h-2 overflow-hidden rounded-full bg-muted"
       >
         <div
-          className={`h-full bg-primary ${pct === undefined ? "w-1/3 animate-[ih-slide_1.4s_ease-in-out_infinite] motion-reduce:w-full motion-reduce:animate-none motion-reduce:opacity-50" : ""}`}
+          className={`h-full rounded-full bg-primary transition-[width] duration-300 ${!terminal && pct !== undefined ? "progress-stripes" : ""} ${pct === undefined ? "w-1/3 animate-[ih-slide_1.4s_ease-in-out_infinite] motion-reduce:w-full motion-reduce:animate-none motion-reduce:opacity-50" : ""}`}
           style={pct === undefined ? undefined : { width: `${pct}%` }}
         />
       </div>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { cn } from "../../lib/utils";
+import { cn } from "../ui/cn";
+import { Truncate } from "../ui/truncate";
 import { useMediaQuery } from "./useMediaQuery";
 
 export interface Column<T> {
@@ -25,7 +26,7 @@ interface Props<T> {
 export function VirtualTable<T>({
   rows,
   columns,
-  rowHeight = 44,
+  rowHeight = 56,
   onEndReached,
   getRowId,
   onRowClick,
@@ -34,7 +35,7 @@ export function VirtualTable<T>({
 }: Props<T>) {
   const mobile = useMediaQuery("(max-width: 767px)");
   const scrollRef = useRef<HTMLDivElement>(null);
-  const cardH = mobile ? Math.max(rowHeight, 96) : rowHeight;
+  const cardH = mobile ? Math.max(rowHeight, 140) : rowHeight;
   // eslint-disable-next-line react-hooks/incompatible-library
   const v = useVirtualizer({
     count: rows.length,
@@ -68,56 +69,65 @@ export function VirtualTable<T>({
         }
       : {};
 
+  const cell = (c: Column<T>, r: T) => {
+    const v = c.cell(r);
+    return typeof v === "string" || typeof v === "number" ? <Truncate>{v}</Truncate> : v;
+  };
+
   return (
-    <div role="table" aria-label={label} aria-rowcount={mobile ? rows.length : rows.length + 1} className="flex h-full min-h-0 flex-col rounded-md border">
-      {!mobile && (
-        <div role="rowgroup" className="sticky top-0 z-10 border-b bg-muted">
-          <div role="row" className="grid px-3 py-2 text-xs font-medium text-muted-foreground" style={{ gridTemplateColumns: template }}>
-            {cols.map((c) => (
-              <div key={c.id} role="columnheader">
-                {c.header}
-              </div>
-            ))}
+    <div className="overflow-x-auto rounded-xl border bg-card">
+      <div role="table" aria-label={label} aria-rowcount={mobile ? rows.length : rows.length + 1} className={cn("flex min-h-0 flex-col", !mobile && "min-w-[44rem]")}>
+        {!mobile && (
+          <div role="rowgroup" className="sticky top-0 z-10 border-b bg-muted">
+            <div role="row" className="grid gap-3 px-4 py-3 text-xs font-medium text-muted-foreground" style={{ gridTemplateColumns: template }}>
+              {cols.map((c) => (
+                <div key={c.id} role="columnheader" className="min-w-0 truncate">
+                  {c.header}
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
-      <div ref={scrollRef} role="rowgroup" className="min-h-0 flex-1 overflow-auto" style={{ maxHeight: "70vh" }}>
-        <div style={{ height: v.getTotalSize(), position: "relative" }}>
-          {items.map((vi) => {
-            const r = rows[vi.index];
-            if (r === undefined) return null;
-            const pos = { position: "absolute", top: 0, left: 0, width: "100%", height: vi.size, transform: `translateY(${vi.start}px)` } as const;
-            return mobile ? (
-              <div key={getRowId(r)} role="row" aria-rowindex={vi.index + 1} style={pos} className="p-1">
+        )}
+        <div ref={scrollRef} role="rowgroup" className="min-h-0 flex-1 overflow-y-auto max-h-[calc(100dvh-14rem)]">
+          <div style={{ height: v.getTotalSize(), position: "relative" }}>
+            {items.map((vi) => {
+              const r = rows[vi.index];
+              if (r === undefined) return null;
+              const pos = { position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vi.start}px)` } as const;
+              return mobile ? (
+                <div key={getRowId(r)} role="row" aria-rowindex={vi.index + 1} data-index={vi.index} ref={v.measureElement} style={pos} className="p-1.5">
+                  <div
+                    className={cn("flex flex-col gap-2 rounded-lg border bg-background p-4 text-sm", onRowClick && "cursor-pointer focus-visible:outline-2 focus-visible:outline-ring")}
+                    {...clickable(r)}
+                  >
+                    {cols.map((c) => (
+                      <div key={c.id} role="cell" className="flex min-w-0 items-center justify-between gap-3">
+                        <span className="shrink-0 text-muted-foreground">{c.header}</span>
+                        <span className="min-w-0 text-right">{cell(c, r)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
                 <div
-                  className={cn("flex h-full flex-col gap-1 overflow-hidden rounded-md border bg-card p-3 text-sm", onRowClick && "cursor-pointer focus-visible:outline-2 focus-visible:outline-ring")}
+                  key={getRowId(r)}
+                  role="row"
+                  aria-rowindex={vi.index + 2}
+                  data-index={vi.index}
+                  ref={v.measureElement}
+                  style={{ ...pos, gridTemplateColumns: template }}
+                  className={cn("grid min-h-14 items-center gap-3 border-b px-4 py-2 text-sm hover:bg-accent/50", onRowClick && "cursor-pointer focus-visible:outline-2 focus-visible:outline-ring")}
                   {...clickable(r)}
                 >
                   {cols.map((c) => (
-                    <div key={c.id} role="cell" className="flex justify-between gap-2">
-                      <span className="text-muted-foreground">{c.header}</span>
-                      <span className="min-w-0 truncate">{c.cell(r)}</span>
+                    <div key={c.id} role="cell" className="min-w-0">
+                      {cell(c, r)}
                     </div>
                   ))}
                 </div>
-              </div>
-            ) : (
-              <div
-                key={getRowId(r)}
-                role="row"
-                aria-rowindex={vi.index + 2}
-                style={{ ...pos, gridTemplateColumns: template }}
-                className={cn("grid items-center border-b px-3 text-sm hover:bg-accent/50", onRowClick && "cursor-pointer focus-visible:outline-2 focus-visible:outline-ring")}
-                {...clickable(r)}
-              >
-                {cols.map((c) => (
-                  <div key={c.id} role="cell" className="min-w-0 truncate">
-                    {c.cell(r)}
-                  </div>
-                ))}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
       </div>
     </div>

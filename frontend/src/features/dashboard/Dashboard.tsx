@@ -5,6 +5,7 @@ import { ErrorState } from "./ErrorState";
 import { failedLabel } from "./hooks";
 import { LiveJobs } from "./LiveJobs";
 import { RecentUploads } from "./RecentUploads";
+import { PageHeader } from "../../components/ui/page";
 import { StatTiles } from "./StatTiles";
 
 export default function Dashboard() {
@@ -25,8 +26,8 @@ export default function Dashboard() {
   const queuedRows = active.filter((j) => j.status === "queued");
 
   return (
-    <div className="grid gap-6 p-4">
-      <h1 className="text-xl font-semibold">{me?.name ? `Welcome, ${me.name}` : "Dashboard"}</h1>
+    <div className="space-y-8">
+      <PageHeader title={me?.name ? `Welcome, ${me.name}` : "Dashboard"} />
       {isError ? (
         <ErrorState what="jobs" onRetry={() => qs.forEach((q) => q.isError && void q.refetch())} />
       ) : (
@@ -37,18 +38,18 @@ export default function Dashboard() {
             failed={isPending ? undefined : failedLabel(failed.rows, !!failed.hasNextPage)}
             sources={isPending ? undefined : sources.rows.length}
           />
-          <section aria-labelledby="live-h" className="grid gap-2">
-            <h2 id="live-h" className="text-base font-semibold">Live jobs</h2>
+          <section aria-labelledby="live-h" className="grid gap-4">
+            <h2 id="live-h" className="font-display text-lg font-semibold">Live jobs</h2>
             {isPending ? (
-              <div role="status" aria-label="Loading jobs" className="h-24 animate-pulse rounded-lg bg-muted" />
+              <div role="status" aria-label="Loading jobs" className="h-28 animate-pulse rounded-xl bg-muted" />
             ) : (
               <LiveJobs jobs={[...runningRows, ...queuedRows]} hasSources={sources.rows.length > 0} />
             )}
           </section>
         </>
       )}
-      <section aria-labelledby="up-h" className="grid gap-2">
-        <h2 id="up-h" className="text-base font-semibold">Recent uploads</h2>
+      <section aria-labelledby="up-h" className="grid gap-4">
+        <h2 id="up-h" className="font-display text-lg font-semibold">Recent uploads</h2>
         <RecentUploads />
       </section>
     </div>
