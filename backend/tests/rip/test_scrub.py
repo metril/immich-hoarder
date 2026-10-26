@@ -76,3 +76,10 @@ def test_subprocess_error_scrubbed() -> None:
 
 def test_child_signature_accepts_fragments() -> None:
     assert callable(_child)
+
+
+def test_fragments_nested_json() -> None:
+    sec = json.dumps({"a": {"b": ["deepSecret1", {"c": 987654}]}, "ok": True})
+    f = secret_fragments(_cred(CredentialKind.oauth, sec))
+    assert {"deepSecret1", "987654"} <= f
+    assert "True" not in f

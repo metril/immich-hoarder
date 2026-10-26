@@ -11,6 +11,17 @@ from app.rip.snapshot import CredentialSnapshot
 _MIN_LEN = 4
 
 
+def _collect(node: Any, out: set[str]) -> None:
+    if isinstance(node, dict):
+        for v in node.values():
+            _collect(v, out)
+    elif isinstance(node, list):
+        for v in node:
+            _collect(v, out)
+    elif isinstance(node, str | int) and not isinstance(node, bool):
+        out.add(str(node))
+
+
 def secret_fragments(cred: CredentialSnapshot | None) -> frozenset[str]:
     if cred is None:
         return frozenset()
@@ -27,11 +38,7 @@ def secret_fragments(cred: CredentialSnapshot | None) -> frozenset[str]:
         except ValueError:
             data = None
         if isinstance(data, dict):
-            for v in data.values():
-                if isinstance(v, bool):
-                    continue
-                if isinstance(v, str | int):
-                    out.add(str(v))
+            _collect(data, out)
     return frozenset(f for f in out if len(f) >= _MIN_LEN)
 
 

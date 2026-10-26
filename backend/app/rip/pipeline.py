@@ -21,7 +21,7 @@ from app.rip.events import Emit
 from app.rip.filters import check
 from app.rip.gdl import HoarderJob, capture_logs, configure, run_job
 from app.rip.media import MediaInfo, NotAnImage, analyze
-from app.rip.scrub import secret_fragments
+from app.rip.scrub import scrub_data, secret_fragments
 from app.rip.settings import RipSettings
 from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot
 
@@ -121,11 +121,13 @@ class _Rip:
         if not ctx.incremental and self.src.backfill_mode == BackfillMode.since:
             if self.src.backfill_value:
                 self.since = date.fromisoformat(self.src.backfill_value)
+        self.fragments = secret_fragments(ctx.credential)
         self.client: ImmichClient
         self.albums: AlbumResolver
 
     # -- helpers ---------------------------------------------------------
     def emit(self, ev: dict[str, Any]) -> None:
+        ev = scrub_data(ev, self.fragments)
         with self.emit_lock:
             self._emit_fn(ev)
 
@@ -438,7 +440,7 @@ class _Rip:
                 self.emit,
                 self.src.log_level,
                 categories=(self.src.extractor,),
-                fragments=secret_fragments(ctx.credential),
+                fragments=self.fragments,
             ):
                 gdl_status = run_job(job, self.src, ctx.settings)
         except Exception as e:

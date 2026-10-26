@@ -16,14 +16,22 @@ from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
 from app.db.engine import make_sync_engine
-from app.db.models import AssetSeen, BackfillMode, Base, ImmichTarget, Source, User
+from app.db.models import (
+    AssetSeen,
+    BackfillMode,
+    Base,
+    CredentialKind,
+    ImmichTarget,
+    Source,
+    User,
+)
 from app.immich.client import ImmichClient
 from app.rip.dedupe import DedupeStore
 from app.rip.filters import FilterSpec
 from app.rip.media import analyze
 from app.rip.pipeline import RipContext, RipResult, build_description, run_rip, sweep_scratch
 from app.rip.settings import RateLimit, RipSettings
-from app.rip.snapshot import SourceSnapshot, TargetSnapshot
+from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot
 
 BASE = "http://immich.test/api"
 ASSET = str(uuid.uuid4())
@@ -125,6 +133,7 @@ class Env:
         cap: int = 10**9,
         incremental: bool = False,
         client_factory: Callable[[TargetSnapshot], ImmichClient] | None = None,
+        credential: CredentialSnapshot | None = None,
     ) -> RipResult:
         url = f"{self.base}{path}"
         if extractor == "recursive":
@@ -153,7 +162,7 @@ class Env:
             job_id=7,
             source=src,
             target=TargetSnapshot(id=1, url="http://immich.test", api_key=SecretStr("k")),
-            credential=None,
+            credential=credential,
             settings=settings,
             scratch_dir=self.scratch,
             scratch_cap_bytes=cap,
@@ -432,3 +441,16 @@ def test_client_factory_failure_cleans_job_dir_and_fails(env: Env) -> None:
     r = env.run("/page/two", extractor="recursive", client_factory=boom)
     assert r.status == "failed"
     assert not any(env.scratch.iterdir())
+
+
+def test_pipeline_crash_log_is_scrubbed(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*a: Any, **k: Any) -> int:
+        raise RuntimeError("bad ?api_key=zzSECRETzz")
+
+    monkeypatch.setattr("app.rip.pipeline.run_job", boom)
+    cred = CredentialSnapshot(
+        site="x", kind=CredentialKind.token, secret=SecretStr('{"refresh-token": "zzSECRETzz"}')
+    )
+    env.run("/img/a.jpg", credential=cred)
+    logs = json.dumps([e for e in env.events if e["type"] == "log"])
+    assert "***" in logs and "zzSECRETzz" not in logs
