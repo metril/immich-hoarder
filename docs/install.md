@@ -23,15 +23,17 @@ openssl rand -base64 48 > secrets/ih_master_key
 openssl rand -base64 48 > secrets/ih_session_secret
 # paste the OIDC client secret from your provider
 install -m 600 /dev/stdin secrets/ih_oidc_client_secret
-chmod 600 secrets/*
+sudo chown 10001:10001 secrets/* && chmod 600 secrets/*
 ```
+
+The container runs as uid 10001, so the secret files must be readable by that uid.
 
 The master key encrypts stored credentials and must be high-entropy; see [security](security.md). Losing it makes stored credentials unreadable.
 
 ## Deploy
 
 1. Copy [`compose.example.yml`](https://github.com/metril/immich-hoarder/blob/main/compose.example.yml) next to your `secrets/` directory.
-2. Replace `hoarder.example.com` (in `IH_PUBLIC_URL` and the Traefik `Host` rule) and the OIDC issuer and client id.
+2. Replace `hoarder.example.com` (in `IH_PUBLIC_URL` and the Traefik `Host` rule) and the OIDC issuer. Set `IH_OIDC_CLIENT_ID` to the client ID that Authentik shows for your provider, not the example value `immich-hoarder`.
 3. Start it:
 
     ```bash

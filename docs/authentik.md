@@ -9,7 +9,7 @@ Create an **OAuth2/OpenID Provider**:
 - Client type: **Confidential**.
 - Redirect URI (strict): `https://hoarder.example.com/api/v1/auth/callback`
 - Signing key: an RS256 or ES256 key. The app accepts only these algorithms.
-- Scopes: `openid`, `email`, `profile`. In Authentik the `profile` scope carries the `groups` claim. The app also requests a `groups` scope, which Authentik ignores if it has no mapping for it.
+- Scopes: `openid`, `email`, `profile`. In Authentik the `profile` scope carries the `groups` claim, through the mapping "authentik default OAuth Mapping: OpenID 'profile'". Keep that mapping selected under Provider > Advanced protocol settings > Scopes. Without it no groups arrive and every user gets a 403. The app also requests a `groups` scope; Authentik has no such scope and ignores it.
 
 Note the client id and client secret.
 
@@ -38,12 +38,14 @@ IH_OIDC_GROUPS_CLAIM: groups
 
 Both group variables are JSON lists, so several groups can map to one role. `IH_OIDC_GROUPS_CLAIM` names the claim that holds the groups (default `groups`).
 
-## Users in neither group
+## Users in neither group, and disabled users
 
 Role resolution (`resolve_role` in `app/auth/principal.py`) gives the admin role if any of the user's groups is in `IH_OIDC_ADMIN_GROUPS`, otherwise the user role if any is in `IH_OIDC_USER_GROUPS`, otherwise no role. A user with no role:
 
 - is denied at login with `403 access denied` and no session is created (the user record and groups are still stored);
 - is rejected with `401` on any later session or bearer-token request, including API keys, even if they had access before. Removing someone from the groups takes effect on their next request.
+
+Disabled users are treated the same way: 403 at login, 401 afterwards.
 
 ## API bearer tokens
 

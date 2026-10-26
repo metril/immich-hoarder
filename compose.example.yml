@@ -26,6 +26,7 @@ services:
       IH_SESSION_SECRET_FILE: /run/secrets/ih_session_secret
       IH_MASTER_KEY_FILE: /run/secrets/ih_master_key
       IH_OIDC_ISSUER: https://auth.example.com/application/o/hoarder/
+      # Paste the client ID Authentik shows for the provider (not this example value).
       IH_OIDC_CLIENT_ID: immich-hoarder
       IH_OIDC_CLIENT_SECRET_FILE: /run/secrets/ih_oidc_client_secret
       IH_OIDC_ADMIN_GROUPS: '["hoarder-admins"]'
