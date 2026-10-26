@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { api } from "../../api/client";
-import { unwrap } from "../../api/errors";
+import { ApiError, unwrap } from "../../api/errors";
 import { keys } from "../../api/keys";
 import type { components } from "../../api/schema";
 import { flatItems, useCursorList, type Page } from "../../components/common/useCursorList";
@@ -99,6 +99,13 @@ export function useRip() {
     mutationFn: async (body: RipIn) => unwrap(await api.POST("/api/v1/rip", { body })),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["list", "jobs"] }),
   });
+}
+
+/** job_id from a 409 "already active" error (C9), else null. */
+export function activeJobId(e: unknown): number | null {
+  if (!(e instanceof ApiError) || e.status !== 409) return null;
+  const d = e.detail as { job_id?: unknown } | null;
+  return typeof d?.job_id === "number" ? d.job_id : null;
 }
 
 /** Navigation target for a job page. */

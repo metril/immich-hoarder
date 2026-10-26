@@ -108,8 +108,14 @@ export function useJobStream(jobId: number): JobStreamState {
           break;
         case "status":
           status = ev.status;
+          if (ev.status !== "running" && ev.status !== "queued") {
+            void qc.invalidateQueries({ queryKey: keys.detail("jobs", jobId) });
+            void qc.invalidateQueries({ queryKey: ["job-items", jobId] });
+          }
           break;
         case "gap":
+          counters = {};
+          schedule();
           for (const key of [keys.detail("jobs", jobId), keys.jobItems(jobId), keys.jobEvents(jobId)]) {
             void qc.invalidateQueries({ queryKey: key.slice(0, key[0] === "detail" ? 3 : 2) });
           }

@@ -1,17 +1,10 @@
 import { useState } from "react";
 import { Dialog } from "radix-ui";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ApiError } from "../../api/errors";
 import { inputClass } from "../../components/common/FormField";
-import { RUN_LOG_LEVELS, jobNav, useRunSource } from "./hooks";
+import { RUN_LOG_LEVELS, activeJobId, jobNav, useRunSource } from "./hooks";
 
 const btn = "rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring";
-
-function activeJobId(e: unknown): number | null {
-  if (!(e instanceof ApiError) || e.status !== 409) return null;
-  const d = e.detail as { job_id?: unknown } | null;
-  return typeof d?.job_id === "number" ? d.job_id : null;
-}
 
 export function RunDialog({ sourceId, name }: { sourceId: number; name?: string }) {
   const [open, setOpen] = useState(false);

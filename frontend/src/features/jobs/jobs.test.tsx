@@ -47,8 +47,9 @@ describe("jobs list", () => {
     await waitFor(() => expect(streamFor("/jobs/stream")).toBeTruthy());
     act(() => streamFor("/jobs/stream").emit("progress", { job_id: 1, counters: { uploaded: 9 } }));
     act(() => streamFor("/jobs/stream").emit("phase", { id: 1, ts: "t", job_id: 1, name: "downloading" }));
-    expect(await screen.findByText("9")).toBeInTheDocument();
-    expect(screen.getByText("downloading")).toBeInTheDocument();
+    const row = (await screen.findByText("#1")).closest('[role="row"]') as HTMLElement;
+    await waitFor(() => expect(within(row).getByText("9")).toBeInTheDocument());
+    expect(within(row).getByText("downloading")).toBeInTheDocument();
   });
 });
 
@@ -133,5 +134,49 @@ describe("job detail", () => {
     expect(await screen.findByRole("button", { name: "Retry failed" })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Re-run" }));
     expect(await screen.findByRole("heading", { name: "Job #2" })).toBeInTheDocument();
+  });
+
+  it("terminal status refetches detail and items", async () => {
+    let detail = 0;
+    let items = 0;
+    setup("/jobs/1");
+    server.use(
+      http.get("*/api/v1/jobs/1", () => { detail++; return HttpResponse.json(job(1, detail > 1 ? { status: "succeeded", finished_at: "2026-10-26T10:05:00Z" } : {})); }),
+      http.get("*/api/v1/jobs/1/items", () => { items++; return page([]); }),
+    );
+    await screen.findByRole("heading", { name: "Job #1" });
+    await waitFor(() => expect(streamFor("/jobs/1/stream")).toBeTruthy());
+    const d0 = detail, i0 = items;
+    act(() => streamFor("/jobs/1/stream").emit("status", { job_id: 1, status: "succeeded" }));
+    await waitFor(() => { expect(detail).toBeGreaterThan(d0); expect(items).toBeGreaterThan(i0); });
+    expect(await screen.findByText(/5m 0s/)).toBeInTheDocument();
+  });
+
+  it("re-run 409 links to the active job", async () => {
+    setup("/jobs/1", { status: "failed", counters: { failed: 0 } });
+    server.use(http.post("*/api/v1/sources/3/run", () => HttpResponse.json({ detail: { msg: "active", job_id: 9 } }, { status: 409 })));
+    await userEvent.click(await screen.findByRole("button", { name: "Re-run" }));
+    expect(await screen.findByRole("link", { name: /job #9/i })).toHaveAttribute("href", "/jobs/9");
+  });
+
+  it("retry 409 links to the active job", async () => {
+    setup("/jobs/1", { status: "failed", counters: { failed: 2 } });
+    server.use(http.post("*/api/v1/jobs/1/retry", () => HttpResponse.json({ detail: { msg: "active", job_id: 8 } }, { status: 409 })));
+    await userEvent.click(await screen.findByRole("button", { name: "Retry failed" }));
+    expect(await screen.findByRole("link", { name: /job #8/i })).toHaveAttribute("href", "/jobs/8");
+  });
+
+  it("no thumbnails when the source is not visible", async () => {
+    setup("/jobs/1", {}, [{ id: 1, url: "https://a/1", outcome: "uploaded", reason: null, immich_asset_id: "abc" }]);
+    server.use(http.get("*/api/v1/sources/3", () => HttpResponse.json({ detail: "nope" }, { status: 404 })));
+    await screen.findByText("https://a/1");
+    expect(document.querySelectorAll("img")).toHaveLength(0);
+  });
+
+  it("thumbnail error falls back to placeholder", async () => {
+    setup("/jobs/1", {}, [{ id: 1, url: "https://a/1", outcome: "uploaded", reason: null, immich_asset_id: "abc" }]);
+    await waitFor(() => expect(document.querySelectorAll("img")).toHaveLength(1));
+    act(() => { document.querySelector("img")!.dispatchEvent(new Event("error")); });
+    await waitFor(() => expect(document.querySelectorAll("img")).toHaveLength(0));
   });
 });

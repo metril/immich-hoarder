@@ -50,7 +50,7 @@ export function useCancelJob() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => unwrap(await api.POST("/api/v1/jobs/{job_id}/cancel", { params: { path: { job_id: id } } })),
-    onSuccess: (_d, id) => {
+    onSettled: (_d, _e, id) => {
       void qc.invalidateQueries({ queryKey: keys.detail("jobs", id) });
       void qc.invalidateQueries({ queryKey: ["list", "jobs"] });
     },

@@ -7,6 +7,7 @@ import { OUTCOMES, thumbUrl, useJobItems, type ItemOut } from "./hooks";
 
 export function ItemsTable({ jobId, hostTargetId, live }: { jobId: number; hostTargetId?: number; live: Item[] }) {
   const [outcome, setOutcome] = useState("");
+  const [broken, setBroken] = useState<Set<number>>(new Set());
   const q = useJobItems(jobId, outcome || undefined);
   const rows = useMemo(() => {
     const paged = q.rows;
@@ -29,8 +30,17 @@ export function ItemsTable({ jobId, hostTargetId, live }: { jobId: number; hostT
       header: "Thumb",
       width: "64px",
       cell: (r) =>
-        r.immich_asset_id && hostTargetId !== undefined ? (
-          <img loading="lazy" decoding="async" width={48} height={48} alt="" src={thumbUrl(hostTargetId, r.immich_asset_id)} className="h-9 w-9 rounded object-cover" />
+        r.immich_asset_id && hostTargetId !== undefined && !broken.has(r.id) ? (
+          <img
+            loading="lazy"
+            decoding="async"
+            width={48}
+            height={48}
+            alt=""
+            src={thumbUrl(hostTargetId, r.immich_asset_id)}
+            onError={() => setBroken((b) => new Set(b).add(r.id))}
+            className="h-9 w-9 rounded object-cover"
+          />
         ) : (
           <span aria-hidden className="inline-block h-9 w-9 rounded bg-muted" />
         ),

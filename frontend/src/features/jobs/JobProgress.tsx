@@ -27,7 +27,7 @@ export function JobProgress({ job, total }: { job: JobOut; total?: number }) {
         className="h-2 overflow-hidden rounded-full bg-muted"
       >
         <div
-          className={`h-full bg-primary ${pct === undefined ? "w-1/3 animate-pulse motion-reduce:animate-none" : ""}`}
+          className={`h-full bg-primary ${pct === undefined ? "w-1/3 animate-[ih-slide_1.4s_ease-in-out_infinite] motion-reduce:w-full motion-reduce:animate-none motion-reduce:opacity-50" : ""}`}
           style={pct === undefined ? undefined : { width: `${pct}%` }}
         />
       </div>
