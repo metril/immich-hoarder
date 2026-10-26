@@ -943,6 +943,7 @@ export interface components {
         NotifySettings: {
             /**
              * On
+             * @description Events that trigger a notification.
              * @default [
              *       "failure"
              *     ]
@@ -950,6 +951,7 @@ export interface components {
             on: ("success" | "failure" | "new_items")[];
             /**
              * Urls
+             * @description Apprise notification URLs.
              * @default []
              */
             urls: string[];
@@ -1162,16 +1164,19 @@ export interface components {
         RateLimit: {
             /**
              * Retries
+             * @description Number of retries after a failed request.
              * @default 4
              */
             retries: number;
             /**
              * Sleep
+             * @description Seconds to wait between file downloads.
              * @default 0
              */
             sleep: number;
             /**
              * Sleep Request
+             * @description Seconds to wait between requests to the site.
              * @default 1
              */
             sleep_request: number;
@@ -1287,15 +1292,23 @@ export interface components {
         RipSettings: {
             /**
              * Allow Private Hosts
+             * @description Allow downloads from private and loopback network addresses.
              * @default false
              */
             allow_private_hosts: boolean;
-            /** Job Scratch Max Bytes */
+            /**
+             * Job Scratch Max Bytes
+             * @description Scratch size limit for a single job, in bytes; unset means no per-job limit.
+             */
             job_scratch_max_bytes?: number | null;
-            /** Proxy */
+            /**
+             * Proxy
+             * @description Proxy URL used for all downloads; unset means no proxy.
+             */
             proxy?: string | null;
             /**
              * Rate Limits
+             * @description Per-site rate limits keyed by extractor name.
              * @default {}
              */
             rate_limits: {
@@ -1303,6 +1316,7 @@ export interface components {
             };
             /**
              * Upload Concurrency
+             * @description Number of simultaneous uploads to Immich.
              * @default 4
              */
             upload_concurrency: number;
@@ -1321,23 +1335,30 @@ export interface components {
         RuntimeSettings: {
             /**
              * Backup Cron
+             * @description Five-field cron expression for scheduled backups.
              * @default 0 3 * * *
              */
             backup_cron: string;
             /**
              * Backup Keep
+             * @description Number of most recent backups to keep.
              * @default 7
              */
             backup_keep: number;
             /**
              * Cancel Grace S
+             * @description Seconds a cancelled job gets to stop before it is killed.
              * @default 10
              */
             cancel_grace_s: number;
-            /** Max Concurrent Jobs */
+            /**
+             * Max Concurrent Jobs
+             * @description Override for the maximum number of simultaneous jobs; unset uses the IH_MAX_CONCURRENT_JOBS value.
+             */
             max_concurrent_jobs?: number | null;
             /**
              * Retention Days
+             * @description Days that finished job records are kept.
              * @default 30
              */
             retention_days: number;
