@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/metril/immich-hoarder/compare/v0.2.0...v0.2.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **a11y:** single h1 per page; topbar title is not a heading ([c9dc935](https://github.com/metril/immich-hoarder/commit/c9dc9355c25f67b9a7b7f1895f18f5603d92e32a))
+* **frontend:** type-check e2e specs via tsconfig.node instead of default project ([4654d68](https://github.com/metril/immich-hoarder/commit/4654d68a720d6f4327551cb6ff276c0e80ea4ebb))
+
 ## [0.2.0](https://github.com/metril/immich-hoarder/compare/v0.1.0...v0.2.0) (2026-10-26)
 
 
