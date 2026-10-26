@@ -17,6 +17,49 @@ const list = (items: object[]) => http.get("*/api/v1/api-keys", () => HttpRespon
 describe("api keys", () => {
   it("has the 13 scopes in order", () => expect(SCOPES).toHaveLength(13));
 
+  it("reveal dialog ignores Escape and outside click", async () => {
+    server.use(
+      list([]),
+      http.post("*/api/v1/api-keys", () =>
+        HttpResponse.json({ id: 2, name: "n", prefix: "abcd1234", scopes: ["jobs:read"], expires_at: null, key: PLAIN }, { status: 201 }),
+      ),
+    );
+    renderWithProviders(null, { me, route: "/api-keys" });
+    await userEvent.click(await screen.findByRole("button", { name: "New API key" }));
+    await userEvent.type(screen.getByLabelText("Name"), "n");
+    await userEvent.click(screen.getByLabelText("jobs:read"));
+    await userEvent.click(screen.getByRole("button", { name: "Create key" }));
+    await screen.findByText("This key will not be shown again");
+    await userEvent.keyboard("{Escape}");
+    fireEvent.pointerDown(document.body);
+    expect(screen.getByLabelText("API key")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByLabelText("API key")).not.toBeInTheDocument());
+  });
+
+  it("rejects a past expiry and sets min to today", async () => {
+    server.use(list([]));
+    renderWithProviders(null, { me, route: "/api-keys" });
+    await userEvent.click(await screen.findByRole("button", { name: "New API key" }));
+    const d = screen.getByLabelText("Expires (optional, UTC)");
+    expect(d).toHaveAttribute("min", new Date().toISOString().slice(0, 10));
+    await userEvent.type(screen.getByLabelText("Name"), "n");
+    await userEvent.click(screen.getByLabelText("jobs:read"));
+    fireEvent.change(d, { target: { value: "2020-01-01" } });
+    await userEvent.click(screen.getByRole("button", { name: "Create key" }));
+    expect(await screen.findByText("Expiry must be today or later")).toBeInTheDocument();
+  });
+
+  it("shows a backend 403 via the root error", async () => {
+    server.use(list([]), http.post("*/api/v1/api-keys", () => HttpResponse.json({ detail: "cannot grant scopes beyond the calling key" }, { status: 403 })));
+    renderWithProviders(null, { me, route: "/api-keys" });
+    await userEvent.click(await screen.findByRole("button", { name: "New API key" }));
+    await userEvent.type(screen.getByLabelText("Name"), "n");
+    await userEvent.click(screen.getByLabelText("jobs:read"));
+    await userEvent.click(screen.getByRole("button", { name: "Create key" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("cannot grant scopes beyond the calling key");
+  });
+
   it("created key shown once and not cached", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
@@ -32,7 +75,7 @@ describe("api keys", () => {
     await userEvent.click(await screen.findByRole("button", { name: "New API key" }));
     await userEvent.type(screen.getByLabelText("Name"), "n");
     await userEvent.click(screen.getByLabelText("jobs:read"));
-    fireEvent.change(screen.getByLabelText("Expires (optional)"), { target: { value: "2030-05-06" } });
+    fireEvent.change(screen.getByLabelText("Expires (optional, UTC)"), { target: { value: "2030-05-06" } });
     await userEvent.click(screen.getByRole("button", { name: "Create key" }));
     expect(await screen.findByText("This key will not be shown again")).toBeInTheDocument();
     expect(body).toEqual({ name: "n", scopes: ["jobs:read"], expires_at: "2030-05-06T23:59:59Z" });

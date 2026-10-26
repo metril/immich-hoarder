@@ -139,3 +139,10 @@ async def test_login_head_503_unconfigured_204_configured(env: Any) -> None:
 
     app.state.oauth = SimpleNamespace(oidc=SimpleNamespace(authorize_redirect=boom))
     assert (await c.head(f"{API}/auth/login")).status_code == 204
+
+
+def test_api_key_scope_enum_matches_scopes(settings: Settings) -> None:
+    from app.auth.principal import SCOPES
+
+    s = _schema(settings)["components"]["schemas"]["ApiKeyIn"]["properties"]["scopes"]
+    assert set(s["items"]["enum"]) == SCOPES

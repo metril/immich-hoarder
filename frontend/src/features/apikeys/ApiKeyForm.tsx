@@ -5,12 +5,17 @@ import { isAdmin, useMe } from "../../api/me";
 import { FormField, FormRootError, inputClass } from "../../components/common/FormField";
 import { useApiForm } from "../../components/common/useApiForm";
 import { useCreateApiKey } from "./hooks";
-import { allScopes, groupScopes, readOnlyScopes } from "./scopes";
+import { allScopes, groupScopes, readOnlyScopes, type Scope } from "./scopes";
+
+const today = () => new Date().toISOString().slice(0, 10); // UTC date, matches the 23:59:59Z we send
 
 const schema = z.object({
   name: z.string().trim().min(1, "Name is required"),
-  scopes: z.array(z.string()).min(1, "Select at least one scope"),
-  expires_at: z.string().optional(),
+  scopes: z.array(z.custom<Scope>((v) => typeof v === "string")).min(1, "Select at least one scope"),
+  expires_at: z
+    .string()
+    .optional()
+    .refine((d) => !d || d >= today(), "Expiry must be today or later"),
 });
 
 const btn = "rounded-md border px-2 py-1 text-xs hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring";
@@ -30,7 +35,7 @@ function Fields({ onKey, onDone }: { onKey: (k: string) => void; onDone: () => v
     },
   });
   const e = form.formState.errors;
-  const setScopes = (s: string[]) => form.setValue("scopes", s, { shouldValidate: form.formState.isSubmitted });
+  const setScopes = (s: Scope[]) => form.setValue("scopes", s, { shouldValidate: form.formState.isSubmitted });
   return (
     <form onSubmit={form.submit} className="mt-3 grid gap-3" noValidate>
       <FormField label="Name" error={e.name?.message}>
@@ -55,8 +60,8 @@ function Fields({ onKey, onDone }: { onKey: (k: string) => void; onDone: () => v
         ))}
         {e.scopes && <p id="scopes-err" role="alert" className="text-sm text-destructive">{e.scopes.message}</p>}
       </fieldset>
-      <FormField label="Expires (optional)" error={e.expires_at?.message}>
-        <input type="date" className={inputClass} {...form.register("expires_at")} />
+      <FormField label="Expires (optional, UTC)" error={e.expires_at?.message}>
+        <input type="date" min={today()} className={inputClass} {...form.register("expires_at")} />
       </FormField>
       <FormRootError message={form.rootError} />
       <div className="flex justify-end gap-2">

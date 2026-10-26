@@ -42,7 +42,7 @@ async def create_key(
     session: AsyncSession = Depends(get_session, scope="function"),
 ) -> ApiKeyCreated:
     require_scope(p, "keys:write")
-    scopes = sorted(set(body.scopes))
+    scopes: list[str] = sorted(set(body.scopes))
     if bad := set(scopes) - SCOPES:
         raise HTTPException(422, f"unknown scopes: {sorted(bad)}")
     if "admin" in scopes and not p.is_admin:

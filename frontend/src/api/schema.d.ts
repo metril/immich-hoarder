@@ -741,7 +741,7 @@ export interface components {
             /** Name */
             name: string;
             /** Scopes */
-            scopes: string[];
+            scopes: ("sources:read" | "sources:write" | "sources:run" | "targets:read" | "targets:write" | "credentials:read" | "credentials:write" | "jobs:read" | "jobs:write" | "keys:read" | "keys:write" | "metrics:read" | "admin")[];
         };
         /** ApiKeyOut */
         ApiKeyOut: {

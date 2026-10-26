@@ -111,6 +111,21 @@
           },
           "scopes": {
             "items": {
+              "enum": [
+                "sources:read",
+                "sources:write",
+                "sources:run",
+                "targets:read",
+                "targets:write",
+                "credentials:read",
+                "credentials:write",
+                "jobs:read",
+                "jobs:write",
+                "keys:read",
+                "keys:write",
+                "metrics:read",
+                "admin"
+              ],
               "type": "string"
             },
             "title": "Scopes",

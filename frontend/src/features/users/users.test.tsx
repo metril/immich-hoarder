@@ -33,6 +33,16 @@ describe("users", () => {
     await waitFor(() => expect(sw).toHaveAttribute("aria-checked", "false"));
   });
 
+  it("409 with another detail shows the server message", async () => {
+    server.use(
+      http.get("*/api/v1/users", () => HttpResponse.json({ items: [u(1, "Boss", "admin"), u(2, "Other")], next_cursor: null })),
+      http.patch("*/api/v1/users/2", () => HttpResponse.json({ detail: "conflict elsewhere" }, { status: 409 })),
+    );
+    renderWithProviders(null, { me: admin, route: "/users" });
+    await userEvent.click(await screen.findByRole("switch", { name: "Disabled: Other" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("conflict elsewhere"));
+  });
+
   it("disables a user", async () => {
     let body: unknown;
     server.use(

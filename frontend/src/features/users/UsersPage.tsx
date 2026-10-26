@@ -32,7 +32,7 @@ function DisabledSwitch({ u }: { u: UserOut }) {
     set.mutate(
       { id: u.id, disabled: next },
       {
-        onError: (e) => toast.error(e instanceof ApiError && e.status === 409 ? "Cannot disable the last admin" : e.message),
+        onError: (e) => toast.error(e instanceof ApiError && e.status === 409 && e.message === "last admin" ? "Cannot disable the last admin" : e.message),
         onSettled: () => setPending(null),
       },
     );

@@ -1,5 +1,9 @@
-/** Mirrors backend/app/auth/principal.py SCOPES (not enumerated in openapi), in order. */
-export const SCOPES = [
+import type { components } from "../../api/schema";
+
+/** Derived from the generated ApiKeyIn type (backend Scope literal). */
+export type Scope = components["schemas"]["ApiKeyIn"]["scopes"][number];
+
+const ORDER = [
   "sources:read",
   "sources:write",
   "sources:run",
@@ -13,15 +17,21 @@ export const SCOPES = [
   "keys:write",
   "metrics:read",
   "admin",
-] as const;
-export type Scope = (typeof SCOPES)[number];
+] as const satisfies readonly Scope[];
 
-export const readOnlyScopes = (): string[] => SCOPES.filter((s) => s.endsWith(":read"));
-export const allScopes = (admin: boolean): string[] => SCOPES.filter((s) => admin || s !== "admin");
+// Compile error if the backend adds a scope missing from ORDER.
+type Missing = Exclude<Scope, (typeof ORDER)[number]>;
+const _exhaustive: [Missing] extends [never] ? true : never = true;
+void _exhaustive;
+
+export const SCOPES: readonly Scope[] = ORDER;
+
+export const readOnlyScopes = (): Scope[] => SCOPES.filter((s) => s.endsWith(":read"));
+export const allScopes = (admin: boolean): Scope[] => SCOPES.filter((s) => admin || s !== "admin");
 
 /** Scopes grouped by resource (the part before ":"); `admin` is its own group. */
-export function groupScopes(admin: boolean): [string, string[]][] {
-  const groups = new Map<string, string[]>();
+export function groupScopes(admin: boolean): [string, Scope[]][] {
+  const groups = new Map<string, Scope[]>();
   for (const s of allScopes(admin)) {
     const g = s.split(":")[0]!;
     groups.set(g, [...(groups.get(g) ?? []), s]);
