@@ -6,7 +6,7 @@ import { useApiForm } from "../../components/common/useApiForm";
 import { SaveBar } from "./fields";
 import { num, str } from "./setValue";
 import { useSaveSettings, type SettingsDoc } from "./hooks";
-import { RateLimitsEditor, type RateLimitErrors } from "./RateLimitsEditor";
+import { RateLimitsEditor } from "./RateLimitsEditor";
 
 const rl = z.object({ sleep_request: z.number("Required").min(0, "Min 0"), sleep: z.number("Required").min(0, "Min 0"), retries: z.number("Required").int().min(0, "Min 0") });
 const schema = z.object({
