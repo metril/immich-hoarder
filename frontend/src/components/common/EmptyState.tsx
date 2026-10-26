@@ -3,7 +3,7 @@ import { Inbox } from "lucide-react";
 
 export function EmptyState({ title, hint, action, icon }: { title: string; hint?: string; action?: ReactNode; icon?: ReactNode }) {
   return (
-    <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed p-8 text-center">
+    <div className="flex flex-col items-center gap-2 rounded-xl border bg-muted/40 p-5 text-center">
       <span aria-hidden className="grid size-10 place-items-center rounded-full bg-muted text-muted-foreground [&_svg]:size-5">
         {icon ?? <Inbox />}
       </span>

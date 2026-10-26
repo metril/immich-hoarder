@@ -144,13 +144,13 @@ export default function SourcesPage() {
   }, [q.rows, filter]);
 
   const columns: Column<SourceOut>[] = [
-    { id: "name", header: "Name", cell: (s) => <Truncate className="font-medium">{s.name}</Truncate>, width: "minmax(0,1.2fr)" },
-    { id: "ext", header: "Extractor", cell: (s) => <Badge className="font-mono">{s.extractor}</Badge>, width: "8rem" },
+    { id: "name", header: "Name", cell: (s) => <Truncate className="font-medium">{s.name}</Truncate>, width: "minmax(16rem,2fr)" },
+    { id: "ext", header: "Extractor", cell: (s) => <Badge className="font-mono">{s.extractor}</Badge>, width: "7rem" },
     { id: "target", header: "Target", cell: (s) => <Truncate>{targetName.get(s.target_id) ?? `Target #${s.target_id}`}</Truncate>, width: "minmax(0,1fr)", hideBelow: "md" },
     { id: "sched", header: "Schedule", cell: (s) => <Schedule cron={s.schedule_cron} />, width: "minmax(0,1fr)" },
     { id: "enabled", header: "Enabled", cell: (s) => <EnabledSwitch s={s} />, width: "6rem" },
-    { id: "vis", header: "Visibility", cell: (s) => <VisibilityBadge visibility={s.visibility} />, width: "8rem" },
-    { id: "actions", header: "Actions", cell: (s) => <Actions s={s} />, width: "9rem" },
+    { id: "vis", header: "Visibility", cell: (s) => <VisibilityBadge visibility={s.visibility} />, width: "7rem" },
+    { id: "actions", header: "Actions", cell: (s) => <Actions s={s} />, width: "8rem" },
   ];
 
   return (
@@ -159,7 +159,7 @@ export default function SourcesPage() {
         title="Sources"
         actions={
           <>
-            <div className="relative">
+            <div className="relative w-full sm:w-auto">
               <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
               <Input
                 data-page-search

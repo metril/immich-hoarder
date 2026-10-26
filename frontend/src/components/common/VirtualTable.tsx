@@ -80,25 +80,25 @@ export function VirtualTable<T>({
   return (
     <div className={cn("overflow-x-auto", !mobile && "rounded-xl border bg-card")}>
       <div role="table" aria-label={label} aria-rowcount={mobile ? rows.length : rows.length + 1} className={cn("flex min-h-0 flex-col", !mobile && minWidth)}>
-        {!mobile && (
-          <div role="rowgroup" className="sticky top-0 z-10 overflow-y-hidden border-b bg-muted [scrollbar-gutter:stable]">
-            <div role="row" className="grid gap-3 px-4 py-3 text-xs font-medium text-muted-foreground" style={{ gridTemplateColumns: template }}>
-              {cols.map((c) => (
-                <div key={c.id} role="columnheader" className="min-w-0 truncate">
-                  {c.header}
-                </div>
-              ))}
+        <div ref={scrollRef} role="rowgroup" className="min-h-0 flex-1 overflow-y-auto max-h-[calc(100dvh-14rem)]">
+          {!mobile && (
+            <div role="rowgroup" className="sticky top-0 z-10 border-b bg-muted">
+              <div role="row" className="grid gap-3 px-4 py-3 text-xs font-medium text-muted-foreground" style={{ gridTemplateColumns: template }}>
+                {cols.map((c) => (
+                  <div key={c.id} role="columnheader" className="min-w-0 truncate">
+                    {c.header}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        )}
-        <div ref={scrollRef} role="rowgroup" className="min-h-0 flex-1 overflow-y-auto [scrollbar-gutter:stable] max-h-[calc(100dvh-14rem)]">
+          )}
           <div style={{ height: v.getTotalSize(), position: "relative" }}>
             {items.map((vi) => {
               const r = rows[vi.index];
               if (r === undefined) return null;
               const pos = { position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${vi.start}px)` } as const;
               return mobile ? (
-                <div key={getRowId(r)} role="row" aria-rowindex={vi.index + 1} data-index={vi.index} ref={v.measureElement} style={pos} className="p-1.5">
+                <div key={getRowId(r)} role="row" aria-rowindex={vi.index + 1} data-index={vi.index} ref={v.measureElement} style={pos} className="pb-3">
                   <div
                     className={cn("flex flex-col gap-2 rounded-lg border bg-background p-4 text-sm", onRowClick && "cursor-pointer focus-visible:outline-2 focus-visible:outline-ring")}
                     {...clickable(r)}

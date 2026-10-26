@@ -80,7 +80,7 @@ export function ItemsTable({ jobId, hostTargetId, live }: { jobId: number; hostT
         onEndReached={() => {
           if (q.hasNextPage && !q.isFetchingNextPage) void q.fetchNextPage();
         }}
-        empty={<p className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">No items yet.</p>}
+        empty={<p className="rounded-xl border bg-muted/40 p-5 text-center text-sm text-muted-foreground">No items yet.</p>}
       />
     </section>
   );
