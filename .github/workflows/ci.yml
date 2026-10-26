@@ -38,7 +38,7 @@ jobs:
               - '!.release-please-manifest.json'
               - '!backend/app/_version.py'
               - '!version.txt'
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify version file is release-only
         run: |
           if [[ "$(grep -cv '^\s*$' backend/app/_version.py)" != "1" ]] \
@@ -84,7 +84,7 @@ jobs:
     if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -102,7 +102,7 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -129,7 +129,7 @@ jobs:
     env:
       IH_TEST_PG_URL: postgresql://postgres:pg@localhost:5432/postgres
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -144,7 +144,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           package_json_file: frontend/package.json
@@ -167,7 +167,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           package_json_file: frontend/package.json
@@ -183,7 +183,7 @@ jobs:
     if: needs.changes.outputs.skip != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -210,7 +210,7 @@ jobs:
     if: needs.changes.outputs.skip != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
@@ -252,7 +252,7 @@ jobs:
     if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate compose files
         run: |
           mkdir -p secrets && for s in ih_master_key ih_session_secret ih_oidc_client_secret ih_db_url ih_pg_password; do echo x > secrets/$s; done
@@ -276,7 +276,7 @@ jobs:
     if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
@@ -296,7 +296,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
