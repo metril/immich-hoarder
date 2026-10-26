@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, getRouteApi } from "@tanstack/react-router";
 import { RelativeTime } from "../../components/common/RelativeTime";
 import { useJobStream } from "../../live/useJobStream";
@@ -5,6 +6,7 @@ import { useSource } from "../sources/hooks";
 import { ItemsTable } from "./ItemsTable";
 import { JobActions } from "./JobActions";
 import { JobCounters } from "./JobCounters";
+import { LogViewer } from "./LogViewer";
 import { JobProgress } from "./JobProgress";
 import { StatusBadge } from "./StatusBadge";
 import { formatDuration, useJob } from "./hooks";
@@ -15,6 +17,7 @@ export default function JobDetail() {
   const id = Number(route.useParams().jobId);
   const job = useJob(id);
   const stream = useJobStream(id);
+  const [tab, setTab] = useState<"items" | "log">("items");
   const source = useSource(job.data?.source_id, job.data !== undefined);
 
   if (job.isPending) return <p role="status">Loading job…</p>;
@@ -39,8 +42,29 @@ export default function JobDetail() {
       <JobActions job={j} />
       <JobProgress job={j} total={stream.total} />
       <JobCounters job={j} rate={stream.rate} scratchBytes={stream.scratchBytes} />
-      {/* T12: log viewer mounts here (tab "Log") using the same useJobStream(id) state. */}
-      <ItemsTable jobId={id} hostTargetId={source.data?.target_id} live={stream.items} />
+      <div role="tablist" aria-label="Job details" className="flex gap-2">
+        {(["items", "log"] as const).map((t) => (
+          <button
+            key={t}
+            type="button"
+            role="tab"
+            id={`tab-${t}`}
+            aria-selected={tab === t}
+            aria-controls={`panel-${t}`}
+            onClick={() => setTab(t)}
+            className={`h-9 rounded-md border px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring ${tab === t ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+          >
+            {t === "items" ? "Items" : "Log"}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
+        {tab === "items" ? (
+          <ItemsTable jobId={id} hostTargetId={source.data?.target_id} live={stream.items} />
+        ) : (
+          <LogViewer jobId={id} live={j.status === "running"} stream={stream} />
+        )}
+      </div>
     </div>
   );
 }
