@@ -26,6 +26,7 @@ class JobOut(BaseModel):
     source_name: str | None
     status: JobStatus
     log_level: str | None
+    phase: str | None
     counters: dict[str, Any]
     error: str | None
     triggered_by: int | None
@@ -41,6 +42,7 @@ class JobOut(BaseModel):
             source_name=source_name,
             status=j.status,
             log_level=j.log_level,
+            phase=j.phase,
             counters=j.counters or {},
             error=j.error,
             triggered_by=j.triggered_by,

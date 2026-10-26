@@ -66,7 +66,7 @@ async def test_put_ignores_unknown_keys_already_stored(client: httpx.AsyncClient
         s.add(Setting(key="legacy", value={"x": 1}))
     r = await client.put("/api/v1/settings", json={"rip": {}}, headers=h)
     assert r.status_code == 200
-    assert r.json()["legacy"] == {"x": 1}
+    assert "legacy" not in r.json()  # the typed document only exposes known keys
     r = await client.put("/api/v1/settings", json={"legacy": {}}, headers=h)
     assert r.status_code == 422
 

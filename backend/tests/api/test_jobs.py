@@ -60,7 +60,8 @@ async def test_run_creates_job_202_and_conflict_409(client: httpx.AsyncClient) -
     assert j["source_id"] == sid and j["status"] == "queued" and j["log_level"] == "debug"
     assert j["source_name"] == "s"
     r = await client.post(f"/api/v1/sources/{sid}/run", headers=h)
-    assert r.status_code == 409 and r.json() == {"detail": "job already active"}
+    assert r.status_code == 409
+    assert r.json() == {"detail": {"msg": "job already active", "job_id": j["id"]}}
 
 
 async def test_run_requires_use(client: httpx.AsyncClient) -> None:
@@ -341,3 +342,14 @@ async def test_delete_source_blocked_by_active_job(client: httpx.AsyncClient) ->
     assert (await client.delete(f"/api/v1/sources/{sid}", headers=h)).status_code == 409
     await _finish(jid)
     assert (await client.delete(f"/api/v1/sources/{sid}", headers=h)).status_code == 204
+
+
+async def test_run_conflict_409_includes_job_id(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    sid = await _src(client, h)
+    jid = (await client.post(f"/api/v1/sources/{sid}/run", headers=h)).json()["id"]
+    r = await client.post(f"/api/v1/jobs/{jid}/retry", headers=h)
+    assert r.status_code == 409 and r.json()["detail"] == {
+        "msg": "job already active",
+        "job_id": jid,
+    }

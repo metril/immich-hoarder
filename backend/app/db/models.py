@@ -204,6 +204,7 @@ class Job(Timestamps, Base):
     )
     status: Mapped[JobStatus] = mapped_column(_enum(JobStatus), default=JobStatus.queued)
     log_level: Mapped[str | None] = mapped_column(String(16))
+    phase: Mapped[str | None] = mapped_column(String(16))
     counters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     started_at: Mapped[datetime | None] = mapped_column(DateTime)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime)

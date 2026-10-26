@@ -1,13 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
-from app.auth.deps import require_admin
+from app.auth.deps import current_principal, require_admin
 from app.auth.principal import Principal
 from app.db.engine import get_session
 from app.db.models import Role, User
-from app.schemas.users import UserOut, UserPatch
+from app.schemas.users import UserOut, UserPatch, UserRef
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -21,6 +21,36 @@ async def list_users(
 ) -> Page[UserOut]:
     rows, nxt = await paginate(session, select(User), cursor, limit)
     return Page(items=[UserOut.model_validate(r) for r in rows], next_cursor=nxt)
+
+
+DIRECTORY_LIMIT = 20
+
+
+@router.get("/directory", response_model=list[UserRef])
+async def user_directory(
+    q: str = Query(min_length=2, max_length=100),
+    _p: Principal = Depends(current_principal),
+    session: AsyncSession = Depends(get_session, scope="function"),
+) -> list[UserRef]:
+    """Minimal id/name/email lookup for sharing; any authenticated principal."""
+    term = q.strip()
+    if len(term) < 2:
+        raise HTTPException(422, "q must be at least 2 characters")
+    rows = (
+        await session.scalars(
+            select(User)
+            .where(
+                User.disabled.is_(False),
+                or_(
+                    User.name.icontains(term, autoescape=True),
+                    User.email.icontains(term, autoescape=True),
+                ),
+            )
+            .order_by(func.lower(User.name), User.id)
+            .limit(DIRECTORY_LIMIT)
+        )
+    ).all()
+    return [UserRef(id=u.id, name=u.name, email=u.email) for u in rows]
 
 
 @router.patch("/{user_id}", response_model=UserOut)

@@ -32,7 +32,12 @@ RESTART_ERROR = "interrupted by restart"
 
 
 class JobConflict(Exception):
-    """The source already has a queued or running job."""
+    """The source already has a queued or running job (``job_id``, when known)."""
+
+    def __init__(self, source_id: int, job_id: int | None = None) -> None:
+        super().__init__(source_id)
+        self.source_id = source_id
+        self.job_id = job_id
 
 
 class JobNotActive(Exception):
@@ -167,8 +172,9 @@ class JobSupervisor:
                 )
                 .limit(1)
             )
-            if active.first() is not None:
-                raise JobConflict(source_id)
+            row = active.first()
+            if row is not None:
+                raise JobConflict(source_id, row[0])
             job = Job(
                 source_id=source_id,
                 triggered_by=triggered_by,
@@ -179,9 +185,21 @@ class JobSupervisor:
             try:
                 await s.flush()
             except IntegrityError:
-                raise JobConflict(source_id) from None
+                await s.rollback()
+                raise JobConflict(source_id, await self._active_job_id(source_id)) from None
         self._wake.set()
         return job
+
+    async def _active_job_id(self, source_id: int) -> int | None:
+        async with self._sf() as s:
+            return await s.scalar(
+                select(Job.id)
+                .where(
+                    Job.source_id == source_id,
+                    Job.status.in_((JobStatus.queued, JobStatus.running)),
+                )
+                .limit(1)
+            )
 
     async def cancel(self, job_id: int) -> None:
         if job_id in self.running:

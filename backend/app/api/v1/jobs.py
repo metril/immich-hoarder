@@ -48,8 +48,8 @@ async def _enqueue(
 async def _submit(sup: JobSupervisor, source_id: int, p: Principal, level: str | None) -> Job:
     try:
         return await sup.enqueue(source_id, p.user_id, level)
-    except JobConflict:
-        raise HTTPException(409, "job already active") from None
+    except JobConflict as e:
+        raise HTTPException(409, {"msg": "job already active", "job_id": e.job_id}) from None
 
 
 async def _visible_job(session: AsyncSession, p: Principal, job_id: int) -> Job:

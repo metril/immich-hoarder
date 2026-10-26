@@ -17,3 +17,9 @@ class UserOut(BaseModel):
 class UserPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
     disabled: bool | None = None
+
+
+class UserRef(BaseModel):
+    id: int
+    name: str | None
+    email: str | None
