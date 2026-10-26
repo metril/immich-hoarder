@@ -7,7 +7,7 @@ import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.common import get_obj, secret_box
@@ -268,16 +268,21 @@ async def delete_source(
     require_scope(p, "sources:write")
     s: Source = await get_obj(session, Source, obj_id, p)
     await require_owner_or_admin(session, s, p)
-    active = await session.scalar(
-        select(Job.id)
-        .where(Job.source_id == obj_id, Job.status.in_((JobStatus.queued, JobStatus.running)))
-        .limit(1)
+    # one atomic statement: no job can become active between the check and the delete
+    res = await session.execute(
+        delete(Source).where(
+            Source.id == obj_id,
+            ~exists().where(
+                Job.source_id == Source.id,
+                Job.status.in_((JobStatus.queued, JobStatus.running)),
+            ),
+        )
     )
-    if active is not None:
-        raise HTTPException(409, "source has an active job")
+    if res.rowcount == 0:  # type: ignore[attr-defined]
+        if await session.scalar(select(Source.id).where(Source.id == obj_id)) is not None:
+            raise HTTPException(409, "source has an active job")
+        raise HTTPException(404, "not found")
     await delete_shares(session, Source.share_type, obj_id)
-    await session.delete(s)
-    await session.flush()
     await _sync(request, session, obj_id)
     return Response(status_code=204)
 

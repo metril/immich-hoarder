@@ -454,7 +454,9 @@ class JobSupervisor:
         if h.escalation is not None:
             h.escalation.cancel()
         res = h.done_result
-        if res is not None:
+        if self._stop:  # shutdown wins over any worker outcome, cancelled included
+            self._finish(job_id, "failed", RESTART_ERROR, source_id=h.source_id)
+        elif res is not None:
             self._finish(job_id, res["status"], res.get("error"), res.get("counters"), h.source_id)
         elif h.cancel_requested:
             self._finish(job_id, "cancelled", None, source_id=h.source_id)

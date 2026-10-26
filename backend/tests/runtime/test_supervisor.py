@@ -624,3 +624,21 @@ async def test_startup_recovery_counted_in_metrics(env: Env) -> None:
     sup = env.make(fw.fast_worker)
     await sup.start()
     assert m.jobs_total.labels("failed")._value.get() == 1
+
+
+async def test_cooperative_cancel_on_stop_ends_failed_but_user_cancel_stays_cancelled(
+    env: Env,
+) -> None:
+    _, s1 = await env.seed()
+    _, s2 = await env.seed()
+    sup = env.make(fw.slow_worker)
+    await sup.start()
+    j1 = await sup.enqueue(s1, None, "info")
+    await wait_until(lambda: (env.scratch / str(j1.id) / "f").exists())
+    await sup.cancel(j1.id)
+    await wait_for(env, j1.id, JobStatus.cancelled)
+    j2 = await sup.enqueue(s2, None, "info")
+    await wait_until(lambda: (env.scratch / str(j2.id) / "f").exists())
+    await sup.stop()
+    done = await wait_for(env, j2.id, JobStatus.failed)
+    assert done.error == "interrupted by restart"
