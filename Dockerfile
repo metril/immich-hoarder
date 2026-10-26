@@ -1,6 +1,12 @@
-FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS web
+FROM node:26.11.1-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a AS web
 WORKDIR /web
-RUN corepack enable
+# Node 26 no longer bundles corepack: install pnpm from the registry tarball and fail closed
+# unless its sha512 matches package.json "packageManager" (keep PNPM_SHA512 in sync).
+ARG PNPM_VERSION=12.12.1
+ARG PNPM_SHA512=b7f98934c0b1f29a65f5da52f2d7f994e7faad573ffdddea1497fb4dcb5aec051590ee7c7d95a38172b4bfae103a5b83edf2ee866e11731c2cafa96063610ac5
+RUN wget -q -O /tmp/pnpm.tgz "https://registry.npmjs.org/pnpm/-/pnpm-${PNPM_VERSION}.tgz" \
+    && echo "${PNPM_SHA512}  /tmp/pnpm.tgz" | sha512sum -c - \
+    && npm i -g /tmp/pnpm.tgz && rm /tmp/pnpm.tgz
 COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc ./
 RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
 COPY frontend/ ./
