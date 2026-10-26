@@ -42,7 +42,7 @@ export function RipSettingsForm({ value }: { value?: SettingsDoc["rip"] }) {
   const e = form.formState.errors.rip;
   return (
     <form onSubmit={form.submit} className="grid gap-5" noValidate>
-      <FormField label="Upload concurrency" error={e?.upload_concurrency?.message}>
+      <FormField label="Upload concurrency" error={e?.upload_concurrency?.message} hint="Files uploaded to Immich in parallel within a single job (1–16). Higher is faster but loads Immich more.">
         <Input type="number" {...form.register("rip.upload_concurrency", { valueAsNumber: true })} />
       </FormField>
       <FormField label="Job scratch max (bytes)" error={e?.job_scratch_max_bytes?.message} hint="Empty = unlimited">

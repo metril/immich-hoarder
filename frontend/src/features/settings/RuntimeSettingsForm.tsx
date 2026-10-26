@@ -53,7 +53,7 @@ export function RuntimeSettingsForm({ value }: { value?: SettingsDoc["runtime"] 
       <FormField label="Backups to keep" error={e?.backup_keep?.message} hint="0 keeps none">
         <Input type="number" {...form.register("runtime.backup_keep", { valueAsNumber: true })} />
       </FormField>
-      <FormField label="Max concurrent jobs" error={e?.max_concurrent_jobs?.message} hint="Empty = server default">
+      <FormField label="Max concurrent jobs" error={e?.max_concurrent_jobs?.message} hint="Jobs that may run at once (1–64). Empty uses the server default (IH_MAX_CONCURRENT_JOBS, defaults to CPU count). Only one job per Immich target runs at a time, so with one target jobs run sequentially.">
         <Input type="number" {...form.register("runtime.max_concurrent_jobs", num)} />
       </FormField>
       <FormField label="Cancel grace (seconds)" error={e?.cancel_grace_s?.message}>
