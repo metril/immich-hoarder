@@ -7,7 +7,7 @@ import { Select } from "../../components/ui/select";
 import { cn } from "../../components/ui/cn";
 import {
   HOUR_STEPS, MAX_DAILY_TIMES, MINUTE_STEPS, MODE_LABELS, build, buildLocal, defaultSpec, formatRun, localOffset, localTimeZone,
-  nextRuns, parse, parseCron, type Mode, type Spec, type Time,
+  isAlias, nextRuns, parse, parseCron, type Mode, type Spec, type Time,
 } from "./cron";
 
 const WEEK = [
@@ -40,6 +40,15 @@ function Toggle({ pressed, onClick, label, children, className }: { pressed: boo
   );
 }
 
+function nextFreeHour(hours: number[]): number {
+  const start = ((hours[hours.length - 1] ?? 0) + 6) % 24;
+  for (let i = 0; i < 24; i++) {
+    const h = (start + i) % 24;
+    if (!hours.includes(h)) return h;
+  }
+  return start;
+}
+
 function toggleIn(list: number[], v: number): number[] {
   if (!list.includes(v)) return [...list, v];
   return list.length > 1 ? list.filter((x) => x !== v) : list;
@@ -68,11 +77,11 @@ function useDescription(text: string | null): string | null | undefined {
   return state?.key === text ? state.desc : undefined;
 }
 
-export function CronField({ value, onChange, error }: { value: string | null; onChange: (v: string | null) => void; error?: string }) {
+export function CronField({ value, onChange, error, allowManual = true }: { value: string | null; onChange: (v: string | null) => void; error?: string; allowManual?: boolean }) {
   const offset = localOffset();
   const [spec, setSpec] = useState<Spec>(() => parse(value, offset));
   const built = build(spec, offset);
-  if (built.cron !== value) setSpec(parse(value, offset));
+  if ((built.cron?.trim() ?? "") !== (value?.trim() ?? "")) setSpec(parse(value, offset));
 
   const [now] = useState(() => Date.now());
   const update = (s: Spec) => {
@@ -82,11 +91,12 @@ export function CronField({ value, onChange, error }: { value: string | null; on
 
   const isCustom = spec.mode === "custom";
   const text = built.cron;
-  const alias = !!text && text.trim().startsWith("@");
+  const alias = !!text && isAlias(text);
+  const fieldCount = text ? text.trim().split(/\s+/).length : 0;
   const parsed = text ? parseCron(text) : null;
   const desc = useDescription(text && !alias ? (isCustom ? text : buildLocal(spec)) : null);
-  const invalid = isCustom && !!text && !parsed && !alias && desc === null;
-  const runs = text && parsed ? nextRuns(text, now, 4) : [];
+  const invalid = isCustom && !!text && !alias && (fieldCount !== 5 || (!parsed && desc === null));
+  const runs = text && parsed && !invalid ? nextRuns(text, now, 4) : [];
   const tz = localTimeZone();
 
   return (
@@ -95,7 +105,7 @@ export function CronField({ value, onChange, error }: { value: string | null; on
       <div className="grid gap-1.5">
         <Label htmlFor="sched-mode">Frequency</Label>
         <Select id="sched-mode" value={spec.mode} onChange={(e) => update(defaultSpec(e.target.value as Mode, text))}>
-          {(Object.keys(MODE_LABELS) as Mode[]).map((m) => (
+          {(Object.keys(MODE_LABELS) as Mode[]).filter((m) => allowManual || m !== "manual").map((m) => (
             <option key={m} value={m}>{MODE_LABELS[m]}</option>
           ))}
         </Select>
@@ -145,7 +155,7 @@ export function CronField({ value, onChange, error }: { value: string | null; on
                 value={toStr({ h, m: spec.minute })}
                 onChange={(e) => {
                   const t = fromStr(e.target.value);
-                  if (t) update({ ...spec, minute: t.m, hours: spec.hours.map((x, j) => (j === i ? t.h : x)) });
+                  if (t && !spec.hours.some((x, j) => j !== i && x === t.h)) update({ ...spec, minute: t.m, hours: spec.hours.map((x, j) => (j === i ? t.h : x)) });
                 }}
               />
               {spec.hours.length > 1 && (
@@ -157,7 +167,7 @@ export function CronField({ value, onChange, error }: { value: string | null; on
           ))}
           <div className="flex flex-wrap items-center gap-3">
             {spec.hours.length < MAX_DAILY_TIMES && (
-              <Button type="button" variant="outline" size="sm" onClick={() => update({ ...spec, hours: [...spec.hours, ((spec.hours[spec.hours.length - 1] ?? 0) + 6) % 24] })}>
+              <Button type="button" variant="outline" size="sm" onClick={() => update({ ...spec, hours: [...spec.hours, nextFreeHour(spec.hours)] })}>
                 <Plus /> Add time
               </Button>
             )}
@@ -196,7 +206,7 @@ export function CronField({ value, onChange, error }: { value: string | null; on
           </div>
           <TimeInput value={spec.time} onChange={(time) => update({ ...spec, time })} />
           {built.utcFallback && (
-            <p className="text-xs text-muted-foreground">This time crosses a month boundary in UTC, so it is kept as UTC rather than converted from {tz}.</p>
+            <p className="text-xs text-muted-foreground">This day and time cannot be expressed in UTC from {tz}, so the time you entered is used as UTC instead.</p>
           )}
         </>
       )}
@@ -236,11 +246,12 @@ export function CronField({ value, onChange, error }: { value: string | null; on
                 </ul>
               </div>
             )}
+            {parsed && !invalid && runs.length === 0 && <p className="text-xs text-muted-foreground">No runs in the next year</p>}
             {!parsed && !invalid && desc !== undefined && <p className="text-xs text-muted-foreground">Next runs can't be previewed; the server will validate.</p>}
           </>
         )}
-        {!isCustom && spec.mode !== "manual" && (
-          <p className="text-xs text-muted-foreground">Times in {tz}; stored as UTC (DST changes may shift runs by 1h).</p>
+        {!isCustom && spec.mode !== "manual" && !built.utcFallback && (
+          <p className="text-xs text-muted-foreground">Times in {tz}; stored as UTC (DST changes may shift runs by 1 hour (and across midnight)).</p>
         )}
       </div>
     </fieldset>

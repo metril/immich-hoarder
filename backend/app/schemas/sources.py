@@ -1,7 +1,6 @@
 from string import Formatter
 from typing import Annotated, Any, Literal
 
-from croniter import croniter
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -11,6 +10,7 @@ from pydantic import (
     model_validator,
 )
 
+from app.core.cronutil import validate_cron
 from app.core.extractors import validate_gdl_options
 from app.db.models import BackfillMode, Source, Visibility
 from app.rip.albums import ALBUM_FIELDS
@@ -18,9 +18,7 @@ from app.rip.filters import FilterSpec, validate_backfill
 
 
 def check_cron(v: str | None) -> str | None:
-    if v is not None and not croniter.is_valid(v):
-        raise ValueError("invalid cron expression")
-    return v
+    return None if v is None else validate_cron(v)
 
 
 def check_template(v: str | None) -> str | None:

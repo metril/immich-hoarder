@@ -47,7 +47,7 @@ export function RuntimeSettingsForm({ value }: { value?: SettingsDoc["runtime"] 
         control={form.control}
         name="runtime.backup_cron"
         render={({ field }) => (
-          <CronField value={field.value} onChange={(v) => field.onChange(v ?? "")} error={e?.backup_cron?.message} />
+          <CronField allowManual={false} value={field.value} onChange={(v) => field.onChange(v ?? "")} error={e?.backup_cron?.message} />
         )}
       />
       <FormField label="Backups to keep" error={e?.backup_keep?.message} hint="0 keeps none">

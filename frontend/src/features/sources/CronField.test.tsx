@@ -8,9 +8,9 @@ import { CronField } from "./CronField";
 const user = userEvent.setup({ delay: null });
 
 let last: string | null | undefined;
-function Host({ initial = null }: { initial?: string | null }) {
+function Host({ initial = null, allowManual, empty }: { initial?: string | null; allowManual?: boolean; empty?: boolean }) {
   const [v, setV] = useState<string | null>(initial);
-  return <CronField value={v} onChange={(x) => { last = x; setV(x); }} />;
+  return <CronField value={v} allowManual={allowManual} onChange={(x) => { last = x; setV(empty ? (x ?? "") : x); }} />;
 }
 
 beforeEach(() => {
@@ -86,5 +86,35 @@ describe("CronField", () => {
     // 03:00 Tue UTC = 22:00 Mon local
     expect(screen.getByRole("button", { name: "Monday" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByLabelText("At")).toHaveValue("22:00");
+  });
+
+  it("does not loop when the parent maps Manual to an empty string", async () => {
+    renderWithProviders(<Host initial="0 3 * * *" empty />);
+    await screen.findByLabelText("Frequency");
+    await user.selectOptions(screen.getByLabelText("Frequency"), "manual");
+    expect(last).toBeNull();
+    expect(screen.getByLabelText("Frequency")).toHaveValue("manual");
+  });
+
+  it("hides Manual when not allowed", async () => {
+    renderWithProviders(<Host initial="0 3 * * *" allowManual={false} />);
+    await screen.findByLabelText("Frequency");
+    expect(screen.queryByRole("option", { name: "Manual only" })).not.toBeInTheDocument();
+  });
+
+  it("flags custom expressions without 5 fields", async () => {
+    renderWithProviders(<Host initial="*/7 * * * *" />);
+    await screen.findByLabelText("Frequency");
+    const input = screen.getByLabelText("Schedule (cron)");
+    await user.clear(input);
+    await user.type(input, "0 3 * *");
+    expect(await screen.findByText("Invalid cron expression")).toBeInTheDocument();
+  });
+
+  it("adds distinct daily times", async () => {
+    renderWithProviders(<Host initial="0 3,9,15,21 * * *" />);
+    await screen.findByLabelText("Frequency");
+    await user.click(screen.getByRole("button", { name: "Add time" }));
+    expect(last).toBe("0 3,4,9,15,21 * * *");
   });
 });

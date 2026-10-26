@@ -52,7 +52,7 @@ const uniqSorted = (a: number[]) => [...new Set(a)].sort((x, y) => x - y);
 
 export interface Built {
   cron: string | null;
-  /** Monthly day crossed a month boundary on conversion; the entered time was kept as UTC. */
+  /** Monthly day was not representable in UTC (day 29+ after conversion); the entered time was kept as UTC. */
   utcFallback?: boolean;
 }
 
@@ -61,7 +61,11 @@ export function build(spec: Spec, offset: number): Built {
     case "manual": return { cron: null };
     case "custom": return { cron: spec.text === "" ? null : spec.text };
     case "minutes": return { cron: spec.n === 1 ? "* * * * *" : `*/${spec.n} * * * *` };
-    case "hourly": return { cron: `${spec.minute} ${spec.n === 1 ? "*" : `*/${spec.n}`} * * *` };
+    case "hourly": {
+      const z = shift({ h: 0, m: spec.minute }, offset);
+      // Runs land on local hours divisible by n counted from local midnight.
+      return { cron: `${z.m} ${spec.n === 1 ? "*" : `${mod(z.h, spec.n)}-23/${spec.n}`} * * *` };
+    }
     case "daily": {
       const hs = uniqSorted(spec.hours.map((h) => shift({ h, m: spec.minute }, offset).h));
       const m = shift({ h: 0, m: spec.minute }, offset).m;
@@ -75,10 +79,11 @@ export function build(spec: Spec, offset: number): Built {
     case "monthly": {
       const u = shift(spec.time, offset);
       const days = spec.days.map((d) => d + u.day);
-      if (days.some((d) => d < 1 || d > 28)) {
+      // Local day 1 that lands on the previous UTC day is the last UTC day of the month ("L").
+      if (days.some((d) => d < 0 || d > 28)) {
         return { cron: `${spec.time.m} ${spec.time.h} ${uniqSorted(spec.days).join(",")} * *`, utcFallback: true };
       }
-      return { cron: `${u.m} ${u.h} ${uniqSorted(days).join(",")} * *` };
+      return { cron: `${u.m} ${u.h} ${uniqSorted(days).map((d) => (d === 0 ? "L" : String(d))).join(",")} * *` };
     }
   }
 }
@@ -114,15 +119,15 @@ function parseBuilder(value: string, offset: number): Spec | null {
       return MINUTE_STEPS.includes(n) && n > 1 ? { mode: "minutes", n } : null;
     }
     const m = intIn(mi, 0, 59);
-    return m === null ? null : { mode: "hourly", n: 1, minute: m };
+    return m === null ? null : { mode: "hourly", n: 1, minute: mod(m - offset, 60) };
   }
   const minute = intIn(mi, 0, 59);
   if (minute === null) return null;
   if (dom === "*" && dow === "*") {
-    const s = /^\*\/(\d+)$/.exec(ho);
+    const s = /^(?:\*|\d+-23)\/(\d+)$/.exec(ho);
     if (s) {
       const n = Number(s[1]);
-      return HOUR_STEPS.includes(n) && n > 1 ? { mode: "hourly", n, minute } : null;
+      return HOUR_STEPS.includes(n) && n > 1 ? { mode: "hourly", n, minute: mod(minute - offset, 60) } : null;
     }
     const hs = intList(ho, 0, 23);
     if (!hs) return null;
@@ -141,9 +146,9 @@ function parseBuilder(value: string, offset: number): Spec | null {
     return ds ? { mode: "weekly", days: uniqSorted(ds.map((d) => mod(d + local.day, 7))), time } : null;
   }
   if (dow === "*") {
-    const ds = intList(dom, 1, 31);
-    if (!ds) return null;
-    const days = ds.map((d) => d + local.day);
+    const ds = dom.split(",").map((p) => (p === "L" ? 0 : intIn(p, 1, 31)));
+    if (ds.length === 0 || ds.includes(null)) return null;
+    const days = (ds as number[]).map((d) => d + local.day);
     return days.every((d) => d >= 1 && d <= 28) ? { mode: "monthly", days: uniqSorted(days), time } : null;
   }
   return null;
@@ -168,6 +173,8 @@ const ALIASES: Record<string, string> = {
   "@yearly": "0 0 1 1 *",
   "@annually": "0 0 1 1 *",
 };
+
+export const isAlias = (t: string): boolean => t.trim().toLowerCase() in ALIASES;
 
 function parseField(s: string, lo: number, hi: number): Set<number> | null {
   const out = new Set<number>();
@@ -195,6 +202,8 @@ export interface Matcher {
   min: number[];
   hour: number[];
   dom: Set<number>;
+  /** Day-of-month list contains `L` (last day of month). */
+  domL: boolean;
   mon: Set<number>;
   dow: Set<number>;
   domStar: boolean;
@@ -208,7 +217,10 @@ export function parseCron(expr: string): Matcher | null {
   const [fm = "", fh = "", fd = "", fo = "", fw = ""] = f;
   const mi = parseField(fm, 0, 59);
   const ho = parseField(fh, 0, 23);
-  const dom = parseField(fd, 1, 31);
+  const domParts = fd.split(",");
+  const domL = domParts.includes("L");
+  const domRest = domParts.filter((p) => p !== "L").join(",");
+  const dom = domRest === "" ? (domL ? new Set<number>() : null) : parseField(domRest, 1, 31);
   const mon = parseField(fo, 1, 12);
   const dow = parseField(fw, 0, 7);
   if (!mi || !ho || !dom || !mon || !dow) return null;
@@ -216,6 +228,7 @@ export function parseCron(expr: string): Matcher | null {
     min: [...mi].sort((a, b) => a - b),
     hour: [...ho].sort((a, b) => a - b),
     dom,
+    domL,
     mon,
     dow: new Set([...dow].map((d) => d % 7)),
     domStar: fd === "*",
@@ -234,7 +247,8 @@ export function nextRuns(expr: string, from: number, count = 4): number[] {
     const base = day0 + i * 86400000;
     const d = new Date(base);
     if (!c.mon.has(d.getUTCMonth() + 1)) continue;
-    const domOk = c.dom.has(d.getUTCDate());
+    const last = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+    const domOk = c.dom.has(d.getUTCDate()) || (c.domL && d.getUTCDate() === last);
     const dowOk = c.dow.has(d.getUTCDay());
     const ok = c.domStar && c.dowStar ? true : c.domStar ? dowOk : c.dowStar ? domOk : domOk || dowOk;
     if (!ok) continue;

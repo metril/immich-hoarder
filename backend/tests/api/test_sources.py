@@ -26,11 +26,12 @@ async def test_source_requires_use_on_target(client: httpx.AsyncClient) -> None:
     assert r.status_code == 201
 
 
-async def test_invalid_cron_422(client: httpx.AsyncClient) -> None:
+@pytest.mark.parametrize("bad", ["nope", "0 3 * *", "0 0 31 2 *", "0 3 * * * *"])
+async def test_invalid_cron_422(client: httpx.AsyncClient, bad: str) -> None:
     _, h = await actor("a")
     tid = await _target(client, h)
     r = await client.post(
-        "/api/v1/sources", json={**SRC, "target_id": tid, "schedule_cron": "nope"}, headers=h
+        "/api/v1/sources", json={**SRC, "target_id": tid, "schedule_cron": bad}, headers=h
     )
     assert r.status_code == 422
 

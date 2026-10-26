@@ -4,10 +4,10 @@ import logging
 from typing import Literal
 
 import apprise
-from croniter import croniter
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cronutil import validate_cron
 from app.db.models import Setting
 
 log = logging.getLogger(__name__)
@@ -55,9 +55,7 @@ class RuntimeSettings(BaseModel, extra="forbid"):
     @field_validator("backup_cron")
     @classmethod
     def _check_cron(cls, v: str) -> str:
-        if not croniter.is_valid(v):
-            raise ValueError("invalid cron expression")
-        return v
+        return validate_cron(v)
 
 
 # apprise echoes URLs in its logs, and async sends log from its own thread pool,

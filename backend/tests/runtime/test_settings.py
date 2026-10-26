@@ -77,6 +77,10 @@ def test_runtime_validates_cron_and_ranges() -> None:
     assert (d.max_concurrent_jobs, d.cancel_grace_s) == (None, 10)
     for bad in (
         {"backup_cron": "not a cron"},
+        {"backup_cron": "0 3 * *"},
+        {"backup_cron": "0 3 * * * *"},
+        {"backup_cron": "0 0 31 2 *"},
+        {"backup_cron": ""},
         {"retention_days": 0},
         {"retention_days": 3651},
         {"backup_keep": -1},
