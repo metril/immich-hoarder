@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, redirect } from "@tanstack/react-router";
-import { keys } from "../api/keys";
+import { meQuery } from "../api/me";
 
 export const Route = createFileRoute("/login")({
-  beforeLoad: ({ context }) => {
-    if (context.queryClient.getQueryData(keys.me())) throw redirect({ to: "/" });
+  beforeLoad: async ({ context }) => {
+    if (await context.queryClient.ensureQueryData(meQuery)) throw redirect({ to: "/" });
   },
   component: Login,
 });

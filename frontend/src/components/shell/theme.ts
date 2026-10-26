@@ -33,9 +33,19 @@ export function setTheme(t: Theme) {
   listeners.forEach((l) => l());
 }
 
+const onStorage = (e: StorageEvent) => {
+  if (e.key !== null && e.key !== KEY) return;
+  current = read();
+  listeners.forEach((l) => l());
+};
+
 const subscribe = (l: () => void) => {
+  if (listeners.size === 0) window.addEventListener("storage", onStorage);
   listeners.add(l);
-  return () => listeners.delete(l);
+  return () => {
+    listeners.delete(l);
+    if (listeners.size === 0) window.removeEventListener("storage", onStorage);
+  };
 };
 
 export function useTheme() {

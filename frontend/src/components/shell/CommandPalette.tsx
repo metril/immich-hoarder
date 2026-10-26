@@ -20,7 +20,7 @@ export default function CommandPalette({ open, onOpenChange, me }: { open: boole
   const { theme, setTheme } = useTheme();
   const signOut = useSignOut();
 
-  // Routes added by later tasks are untyped until they exist.
+  // TODO(T10/T11): drop the `as never` cast once /sources?new, /targets?new and /jobs/$jobId exist as typed routes.
   const go = (to: string, search?: Record<string, unknown>) => {
     onOpenChange(false);
     void navigate({ to, search } as never);

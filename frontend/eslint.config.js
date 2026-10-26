@@ -45,6 +45,12 @@ export default tseslint.config(
   {
     // TanStack Router routes throw redirect() objects and export Route next to components
     files: ["src/routes/**"],
-    rules: { "@typescript-eslint/only-throw-error": "off", "react-refresh/only-export-components": "off" },
+    rules: {
+      "@typescript-eslint/only-throw-error": [
+        "error",
+        { allow: [{ from: "package", package: "@tanstack/router-core", name: ["Redirect", "NotFoundError"] }] },
+      ],
+      "react-refresh/only-export-components": "off",
+    },
   },
 );

@@ -2,10 +2,11 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { keys } from "../../api/keys";
 import type { MeOut } from "../../api/me";
 import { server } from "../../test/server";
 import { renderWithProviders } from "../../test/render";
-import { pageReload } from "./reload";
+import { installPreloadErrorGuard, pageReload } from "./reload";
 import { RouteError } from "./RouteError";
 import { useShortcuts } from "./shortcuts";
 import { resetThemeCache, useTheme } from "./theme";
@@ -16,7 +17,9 @@ const user: MeOut = { ...admin, id: 2, name: "Bob", role: "user" };
 beforeEach(() => {
   server.use(http.head("*/api/v1/auth/login", () => new HttpResponse(null, { status: 204 })));
 });
+const origWidth = window.innerWidth;
 afterEach(() => {
+  window.innerWidth = origWidth;
   localStorage.clear();
   resetThemeCache();
   sessionStorage.clear();
@@ -37,6 +40,33 @@ describe("auth gate", () => {
     server.use(http.head("*/api/v1/auth/login", () => new HttpResponse(null, { status: 503 })));
     renderWithProviders(null, { me: null, route: "/login" });
     expect(await screen.findByText(/OIDC is not configured/)).toBeInTheDocument();
+  });
+
+  it.each(["/SETTINGS", "/Settings", "/settings/", "/USERS"])("non-admin visiting %s redirects home", async (path) => {
+    const { router } = renderWithProviders(null, { me: user, route: path });
+    await screen.findByRole("navigation", { name: "Main" });
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+  });
+
+  it("admin can visit mixed-case /SETTINGS", async () => {
+    renderWithProviders(null, { me: admin, route: "/SETTINGS" });
+    await screen.findByRole("navigation", { name: "Main" });
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Settings");
+  });
+
+  it("401 mid-session shows the login screen", async () => {
+    const { queryClient, router } = renderWithProviders(null, { me: admin, route: "/" });
+    await screen.findByRole("navigation", { name: "Main" });
+    act(() => {
+      queryClient.setQueryData(keys.me(), null);
+    });
+    expect(await screen.findByRole("link", { name: "Sign in with SSO" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/login");
+  });
+
+  it("signed-in user visiting /login goes home", async () => {
+    const { router } = renderWithProviders(null, { me: admin, route: "/login" });
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
   });
 
   it("non-admin visiting /settings redirects home", async () => {
@@ -70,6 +100,22 @@ describe("nav", () => {
     await u.click(within(sheet).getByRole("link", { name: "Jobs" }));
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Navigation" })).toBeNull());
   });
+
+  it("sheet traps focus, closes on Escape and restores focus to the trigger", async () => {
+    const u = userEvent.setup();
+    renderWithProviders(null, { me: admin, route: "/" });
+    const trigger = await screen.findByRole("button", { name: "Open navigation" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    await u.click(trigger);
+    const sheet = await screen.findByRole("dialog", { name: "Navigation" });
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(trigger.getAttribute("aria-controls")).toBe(sheet.id);
+    for (let i = 0; i < 15; i++) await u.tab();
+    expect(sheet.contains(document.activeElement)).toBe(true);
+    await u.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Navigation" })).toBeNull());
+    expect(trigger).toHaveFocus();
+  });
 });
 
 describe("theme", () => {
@@ -83,6 +129,19 @@ describe("theme", () => {
     await u.click(screen.getByRole("button", { name: "Theme" }));
     await u.click(screen.getByRole("menuitemradio", { name: "Light" }));
     expect(document.documentElement).not.toHaveClass("dark");
+  });
+
+  it("follows ih-theme changes from other tabs", () => {
+    function H() {
+      useTheme();
+      return null;
+    }
+    render(<H />);
+    localStorage.setItem("ih-theme", "dark");
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: "ih-theme", newValue: "dark" }));
+    });
+    expect(document.documentElement).toHaveClass("dark");
   });
 
   it("system theme follows matchMedia", () => {
@@ -152,11 +211,23 @@ describe("shortcuts", () => {
     renderWithProviders(null, { me: admin, route: "/" });
     await screen.findByRole("navigation", { name: "Main" });
     await u.keyboard("?");
-    expect(await screen.findByRole("dialog", { name: "Keyboard shortcuts" })).toBeInTheDocument();
+    const dlg = await screen.findByRole("dialog", { name: "Keyboard shortcuts" });
+    expect(dlg.contains(document.activeElement)).toBe(true);
+    await u.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).toBeNull());
   });
 });
 
 describe("RouteError", () => {
+  it("reloads once on vite:preloadError", () => {
+    const reload = vi.spyOn(pageReload, "reload").mockImplementation(() => {});
+    const dispose = installPreloadErrorGuard();
+    window.dispatchEvent(new Event("vite:preloadError"));
+    window.dispatchEvent(new Event("vite:preloadError"));
+    expect(reload).toHaveBeenCalledTimes(1);
+    dispose();
+  });
+
   it("reloads once on chunk load error", () => {
     const reload = vi.spyOn(pageReload, "reload").mockImplementation(() => {});
     const err = new TypeError("Failed to fetch dynamically imported module: /assets/x.js");

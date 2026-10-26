@@ -1,7 +1,8 @@
+import type { LinkProps } from "@tanstack/react-router";
 import { Database, Key, KeyRound, LayoutDashboard, ListChecks, Settings, Target, Users, type LucideIcon } from "lucide-react";
 
 export interface NavItem {
-  to: string;
+  to: LinkProps["to"] & string;
   label: string;
   icon: LucideIcon;
   admin?: boolean;
@@ -21,11 +22,8 @@ export const NAV: NavItem[] = [
 
 export const navFor = (admin: boolean) => NAV.filter((n) => !n.admin || admin);
 
-export const isAdminPath = (pathname: string) =>
-  NAV.some((n) => n.admin && (pathname === n.to || pathname.startsWith(`${n.to}/`)));
-
 export function titleFor(pathname: string): string {
-  const hit = NAV.filter((n) => (n.to === "/" ? pathname === "/" : pathname === n.to || pathname.startsWith(`${n.to}/`))).sort(
+  const hit = NAV.filter((n) => (n.to === "/" ? pathname === "/" : pathname.toLowerCase() === n.to || pathname.toLowerCase().startsWith(`${n.to}/`))).sort(
     (a, b) => b.to.length - a.to.length,
   )[0];
   return hit?.label ?? "Immich Hoarder";
