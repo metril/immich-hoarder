@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "e2e",
+  testIgnore: process.env.SCREENSHOTS ? [] : ["**/screenshots.spec.ts"],
   fullyParallel: true,
   expect: { timeout: 10_000 },
   forbidOnly: !!process.env.CI,

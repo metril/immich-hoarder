@@ -448,3 +448,23 @@ def test_user_rate_options_reject_non_finite_and_non_int_retries(tmp_path: Path)
     configure(src(gdl_options={"retries": 3.5}), None, admin, tmp_path, incremental=False)
     assert config.get(cat, "retries") == 3
     assert config.get(("downloader",), "retries") == 3
+
+
+def test_handle_url_overwrites_shared_kwdict_file_url(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    seen: list[str] = []
+    monkeypatch.setattr(
+        "gallery_dl.job.DownloadJob.handle_url", lambda self, url, kw: seen.append(kw["_file_url"])
+    )
+    job = HoarderJob(
+        "http://x/a.jpg",
+        archive_check=lambda k: False,
+        on_discovered=lambda m: None,
+        on_file=lambda p, m: None,
+        cancel=threading.Event(),
+    )
+    kw: dict[str, Any] = {}
+    job.handle_url("http://x/1.jpg?token=s", kw)
+    job.handle_url("http://x/2.jpg", kw)
+    assert seen == ["http://x/1.jpg", "http://x/2.jpg"]
