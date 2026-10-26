@@ -3226,17 +3226,6 @@
       },
       "UserRef": {
         "properties": {
-          "email": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Email"
-          },
           "id": {
             "title": "Id",
             "type": "integer"
@@ -3255,8 +3244,7 @@
         },
         "required": [
           "id",
-          "name",
-          "email"
+          "name"
         ],
         "title": "UserRef",
         "type": "object"
@@ -5623,7 +5611,7 @@
     },
     "/api/v1/users/directory": {
       "get": {
-        "description": "Minimal id/name/email lookup for sharing; any authenticated principal.",
+        "description": "Minimal id/name lookup (name substring or exact email) for sharing; any authenticated principal.",
         "operationId": "user_directory_api_v1_users_directory_get",
         "parameters": [
           {

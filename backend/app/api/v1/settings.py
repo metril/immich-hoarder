@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, Request
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,19 +10,36 @@ from app.auth.deps import require_admin
 from app.auth.principal import Principal
 from app.db.engine import get_session
 from app.db.models import Setting
+from app.rip.settings import RipSettings
+from app.runtime.settings import NotifySettings, RuntimeSettings
 from app.schemas.settings import SettingsDoc
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
+_MODELS: dict[str, type[BaseModel]] = {
+    "rip": RipSettings,
+    "runtime": RuntimeSettings,
+    "notify": NotifySettings,
+}
+
+
 async def _all(session: AsyncSession) -> SettingsDoc:
     rows: dict[str, Any] = {
         s.key: s.value for s in (await session.execute(select(Setting))).scalars()
     }
-    return SettingsDoc.model_validate(
-        {k: v for k, v in rows.items() if k in SettingsDoc.model_fields}
-    )
+    ok: dict[str, Any] = {}
+    for k, model in _MODELS.items():
+        if k not in rows:
+            continue
+        try:
+            model.model_validate(rows[k])
+        except ValidationError:
+            log.warning("invalid %s settings stored; omitted", k)  # detail may echo secrets
+            continue
+        ok[k] = rows[k]
+    return SettingsDoc.model_validate(ok)
 
 
 @router.get("", response_model=SettingsDoc, response_model_exclude_unset=True)

@@ -33,8 +33,11 @@ async def test_directory_excludes_disabled_and_minimal_fields(client: httpx.Asyn
     await _mk("gone", "Bobby Gone", "gone@example.com", disabled=True)
     r = await client.get("/api/v1/users/directory", params={"q": "BOBBY"}, headers=h)
     assert r.status_code == 200
-    assert r.json() == [{"id": bob, "name": "Bobby Tables", "email": "bob@example.com"}]
-    r = await client.get("/api/v1/users/directory", params={"q": "example.COM"}, headers=h)
+    assert r.json() == [{"id": bob, "name": "Bobby Tables"}]
+    # no email substring probing; an exact (case-insensitive) email still matches
+    r = await client.get("/api/v1/users/directory", params={"q": "example.com"}, headers=h)
+    assert r.json() == []
+    r = await client.get("/api/v1/users/directory", params={"q": "BOB@example.com"}, headers=h)
     assert [u["id"] for u in r.json()] == [bob]
 
 

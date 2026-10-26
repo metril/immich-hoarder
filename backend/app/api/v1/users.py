@@ -32,7 +32,7 @@ async def user_directory(
     _p: Principal = Depends(current_principal),
     session: AsyncSession = Depends(get_session, scope="function"),
 ) -> list[UserRef]:
-    """Minimal id/name/email lookup for sharing; any authenticated principal."""
+    """Minimal id/name lookup (name substring or exact email); any authenticated user."""
     term = q.strip()
     if len(term) < 2:
         raise HTTPException(422, "q must be at least 2 characters")
@@ -43,14 +43,14 @@ async def user_directory(
                 User.disabled.is_(False),
                 or_(
                     User.name.icontains(term, autoescape=True),
-                    User.email.icontains(term, autoescape=True),
+                    func.lower(User.email) == term.lower(),
                 ),
             )
-            .order_by(func.lower(User.name), User.id)
+            .order_by(func.lower(User.name).nulls_last(), User.id)
             .limit(DIRECTORY_LIMIT)
         )
     ).all()
-    return [UserRef(id=u.id, name=u.name, email=u.email) for u in rows]
+    return [UserRef(id=u.id, name=u.name) for u in rows]
 
 
 @router.patch("/{user_id}", response_model=UserOut)

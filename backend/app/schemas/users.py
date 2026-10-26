@@ -22,4 +22,3 @@ class UserPatch(BaseModel):
 class UserRef(BaseModel):
     id: int
     name: str | None
-    email: str | None
