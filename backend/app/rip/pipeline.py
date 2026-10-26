@@ -1,11 +1,12 @@
 """Rip pipeline: gallery-dl download -> analyze -> filter -> dedupe -> Immich upload/link."""
 
 import contextlib
+import logging
 import shutil
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -29,7 +30,6 @@ _COUNTERS = (
     "discovered",
     "downloaded",
     "filtered",
-    "duplicate",
     "linked",
     "uploaded",
     "failed",
@@ -86,16 +86,6 @@ def build_description(meta: dict[str, Any]) -> str:
     if meta.get("author"):
         parts.append(f"by {meta['author']}")
     return "\n".join(parts)[:_DESC_MAX]
-
-
-class _Outcome(Exception):
-    """Internal control flow: a terminal non-success outcome for the current item."""
-
-    def __init__(self, kind: str, reason: str | None = None, asset_id: str | None = None):
-        super().__init__(kind)
-        self.kind = kind
-        self.reason = reason
-        self.asset_id = asset_id
 
 
 class _Rip:
@@ -196,8 +186,17 @@ class _Rip:
                 self.counters["downloaded"] += 1
         if cancelled:
             self._unlink(path)
+            self._fail(self._url(meta, path), self._cancel_reason())
             return
-        self.pool.submit(self.item, path, meta, size)
+        self.pool.submit(self.item, path, meta, size).add_done_callback(self._log_future)
+
+    def _cancel_reason(self) -> str:
+        return "immich_unauthorized" if self.fatal else "cancelled"
+
+    def _log_future(self, fut: Future[None]) -> None:
+        exc = fut.exception()
+        if exc is not None:
+            self.log_error(f"worker crashed: {type(exc).__name__}: {exc}")
 
     @staticmethod
     def _unlink(path: Path) -> None:
@@ -206,24 +205,24 @@ class _Rip:
 
     # -- per-item (pool threads) -----------------------------------------
     def item(self, path: Path, meta: dict[str, Any], size: int) -> None:
-        url = self._url(meta, path)
-        key: bytes = meta["_key"]
+        url = path.name
         try:
+            url = self._url(meta, path)
+            key: bytes = meta["_key"]
             if self.cancel.is_set():
+                self._fail(url, self._cancel_reason())
                 return
             self.emit({"type": "item.downloaded", "url": url, "size": size})
             self._process(path, meta, url, key)
-        except _Outcome as o:
-            self._fail(url, o.kind, o.reason or o.kind)
         except ImmichAuthError:
             self._fatal(url)
         except ImmichUnavailable:
-            self._fail(url, "failed", "immich_unavailable")
+            self._fail(url, "immich_unavailable")
         except ImmichError:
-            self._fail(url, "failed", "immich_error")
+            self._fail(url, "immich_error")
         except Exception as e:
             self.log_error(f"internal error processing item: {type(e).__name__}: {e}")
-            self._fail(url, "failed", "internal_error")
+            self._fail(url, "internal_error")
         finally:
             self._unlink(path)
             with self.cond:
@@ -233,9 +232,9 @@ class _Rip:
     def _fatal(self, url: str) -> None:
         self.fatal = "immich unauthorized"
         self.cancel.set()
-        self._fail(url, "failed", "immich_unauthorized")
+        self._fail(url, "immich_unauthorized")
 
-    def _fail(self, url: str, _kind: str, reason: str) -> None:
+    def _fail(self, url: str, reason: str) -> None:
         self.bump("failed")
         self.emit({"type": "item.failed", "url": url, "reason": reason})
 
@@ -300,14 +299,15 @@ class _Rip:
             how = "phash"
         if ref is not None and ref.immich_asset_id:
             existing = ref.immich_asset_id
+        elif ctx.store.match_deleted(tid, info.sha1, info.phash, self.src.filters.phash_distance):
+            self._deleted(url, key, info, None)
+            return
         else:
             sha1hex = info.sha1.hex()
             res = self.client.bulk_check([("x", sha1hex)]).get("x")
             if res is not None and res.action == "reject" and res.reason == "duplicate":
                 if res.is_trashed:
-                    self._record(key, info.sha1, info.phash, None)
-                    self.bump("deleted_in_immich")
-                    self.emit({"type": "item.deleted_in_immich", "url": url})
+                    self._deleted(url, key, info, None)
                     return
                 existing, how = res.asset_id, "immich"
         fresh = False
@@ -331,24 +331,12 @@ class _Rip:
                 fresh = True
         else:
             asset_id = existing
-        if not fresh:
-            self.bump("duplicate")
-            self.emit(
-                {
-                    "type": "item.duplicate",
-                    "url": url,
-                    "reason": how,
-                    "immich_asset_id": asset_id,
-                }
-            )
         outcome = self._link(asset_id, meta)
         if outcome == "gone":
-            self._record(key, info.sha1, info.phash, None)
-            self.bump("deleted_in_immich")
-            self.emit({"type": "item.deleted_in_immich", "url": url, "immich_asset_id": asset_id})
+            self._deleted(url, key, info, asset_id)
             return
         if outcome == "failed":
-            self._fail(url, "failed", "link_failed")
+            self._fail(url, "link_failed")
             return
         if fresh:
             self._describe(asset_id, meta)
@@ -358,7 +346,23 @@ class _Rip:
             self.emit({"type": "item.uploaded", "url": url, "immich_asset_id": asset_id})
         else:
             self.bump("linked")
-            self.emit({"type": "item.linked", "url": url, "immich_asset_id": asset_id})
+            self.emit(
+                {
+                    "type": "item.linked",
+                    "url": url,
+                    "immich_asset_id": asset_id,
+                    "duplicate": True,
+                    "reason": how,
+                }
+            )
+
+    def _deleted(self, url: str, key: bytes, info: MediaInfo, asset_id: str | None) -> None:
+        self._record(key, info.sha1, info.phash, None)
+        self.bump("deleted_in_immich")
+        ev: dict[str, Any] = {"type": "item.deleted_in_immich", "url": url}
+        if asset_id:
+            ev["immich_asset_id"] = asset_id
+        self.emit(ev)
 
     def _link(self, asset_id: str, meta: dict[str, Any]) -> Literal["ok", "gone", "failed"]:
         name = render_album(self.src.album_template, meta, self.src.name)
@@ -399,7 +403,10 @@ class _Rip:
 
         def tick() -> None:
             while not stop_tick.wait(2.0):
-                self.progress()
+                try:
+                    self.progress()
+                except Exception as e:
+                    logging.getLogger(__name__).error("progress emit failed: %s", type(e).__name__)
 
         ticker = threading.Thread(target=tick, daemon=True)
         ticker.start()
@@ -434,8 +441,11 @@ class _Rip:
             error = self.fatal
         elif self.cancel.is_set():
             status = "cancelled"
+            error = None
         else:
-            ok = sum(v for k, v in self.counters.items() if k not in ("failed", "discovered"))
+            ok = sum(
+                self.counters[k] for k in ("uploaded", "linked", "filtered", "deleted_in_immich")
+            )
             if error is None and gdl_status != 0 and ok == 0:
                 error = f"gallery-dl exited with status {gdl_status}"
             status = "failed" if error else "succeeded"

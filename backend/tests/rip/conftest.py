@@ -28,6 +28,7 @@ class _Handler(BaseHTTPRequestHandler):
         pages = {
             "/page/dup": ("/img/a.jpg", "/img/a2.jpg"),
             "/page/two": ("/img/a.jpg", "/img/b.png"),
+            "/page/bad": ("/img/a.jpg", "/img/missing.jpg"),
         }
         if u.path in pages:
             body = "\n".join(base + x for x in pages[u.path]).encode()

@@ -69,7 +69,9 @@ class DedupeStore:
             row = c.execute(stmt).first()
         return _ref(row[0]) if row else None
 
-    def _phash_stmt(self, target_id: int, phash_signed: int, max_distance: int) -> Select[Any]:
+    def _phash_stmt(
+        self, target_id: int, phash_signed: int, max_distance: int, deleted: bool = False
+    ) -> Select[Any]:
         # UNION of 4 single-index lookups (the planner reliably uses each
         # (target_id, phN) index, unlike an OR). Distance is computed and
         # filtered in SQL so the candidate set never reaches Python.
@@ -79,7 +81,9 @@ class DedupeStore:
             select(AssetSeen.immich_asset_id, AssetSeen.phash).where(
                 AssetSeen.target_id == target_id,
                 col == c,
-                AssetSeen.immich_asset_id.is_not(None),
+                AssetSeen.immich_asset_id.is_(None)
+                if deleted
+                else AssetSeen.immich_asset_id.is_not(None),
             )
             for col, c in zip(cols, cs, strict=True)
         ]
@@ -96,6 +100,27 @@ class DedupeStore:
         with self._engine.connect() as c:
             row = c.execute(self._phash_stmt(target_id, phash_signed, max_distance)).first()
         return _ref(row[0]) if row else None
+
+    def match_deleted(
+        self, target_id: int, sha1: bytes, phash_signed: int | None, max_distance: int | None
+    ) -> bool:
+        """True when a row without an asset id (deleted in Immich) matches by sha1 or pHash."""
+        stmt = (
+            select(AssetSeen.id)
+            .where(
+                AssetSeen.target_id == target_id,
+                AssetSeen.sha1 == sha1,
+                AssetSeen.immich_asset_id.is_(None),
+            )
+            .limit(1)
+        )
+        with self._engine.connect() as c:
+            if c.execute(stmt).first() is not None:
+                return True
+            if phash_signed is None or max_distance is None:
+                return False
+            ps = self._phash_stmt(target_id, phash_signed, max_distance, deleted=True)
+            return c.execute(ps).first() is not None
 
     def record(
         self,

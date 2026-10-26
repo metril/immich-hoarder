@@ -199,3 +199,18 @@ def test_sync_engine_pg_url_parts_survive() -> None:
     )
     assert dict(u.query) == {"sslmode": "require", "application_name": "x"}
     eng.dispose()
+
+
+def test_match_deleted_sha1_and_phash(engine: Engine) -> None:
+    store = DedupeStore(engine)
+    sha = b"\x07" * 20
+    _rec(store, b"a" * 16, sha1=sha, phash=PH, asset=None)
+    _rec(store, b"b" * 16, sha1=b"\x08" * 20, phash=PH ^ 0xFFFF_FFFF_0000_0000, asset=ASSET)
+    assert store.match_deleted(1, sha, None, None)
+    assert not store.match_deleted(2, sha, None, None)
+    assert not store.match_deleted(1, b"\x09" * 20, None, None)
+    assert store.match_deleted(1, b"\x09" * 20, to_signed64(PH ^ 0b111), 3)
+    assert not store.match_deleted(1, b"\x09" * 20, to_signed64(PH ^ 0b1111), 3)
+    assert not store.match_deleted(1, b"\x09" * 20, to_signed64(PH ^ 1), None)
+    # rows with an asset id are not "deleted"
+    assert not store.match_deleted(1, b"\x08" * 20, None, None)

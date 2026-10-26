@@ -183,6 +183,11 @@ def a_info(env: Env, tmp_path: Path) -> Any:
     return analyze(p)
 
 
+def _rows(engine: Engine) -> int:
+    with engine.connect() as c:
+        return int(c.execute(select(func.count()).select_from(AssetSeen)).scalar() or 0)
+
+
 def test_new_image_uploaded_linked_described_recorded(env: Env) -> None:
     r = env.run("/img/a.jpg")
     assert r.status == "succeeded" and r.error is None
@@ -204,9 +209,10 @@ def test_local_sha1_duplicate_links_without_upload(env: Env) -> None:
         target_id=1, source_id=1, key=b"k" * 16, sha1=sha1, phash=None, immich_asset_id=ASSET
     )
     r = env.run("/img/a.jpg")
-    assert r.counters["duplicate"] == 1 and env.uploads == []
+    assert r.counters["linked"] == 1 and env.uploads == []
     assert env.linked == [ASSET]
-    assert "item.duplicate" in env.types() and "item.linked" in env.types()
+    ev = [e for e in env.events if e["type"] == "item.linked"]
+    assert ev and ev[0]["duplicate"] is True and "item.duplicate" not in env.types()
 
 
 def test_phash_near_duplicate_links(env: Env, tmp_path: Path) -> None:
@@ -311,24 +317,26 @@ def test_same_image_twice_in_run_uploaded_once(env: Env) -> None:
     env.upload_delay = 0.4
     r = env.run("/page/dup", extractor="recursive", concurrency=4)
     assert len(env.uploads) == 1
-    assert r.counters["uploaded"] == 1 and r.counters["duplicate"] == 1
+    assert r.counters["uploaded"] == 1 and r.counters["linked"] == 1
     assert env.linked == [env.uploads[0]] * 2
 
 
-def test_immich_unavailable_items_failed_job_finishes(env: Env) -> None:
+def test_immich_unavailable_items_failed_job_finishes(env: Env, engine: Engine) -> None:
     env.router.post(f"{BASE}/assets/bulk-upload-check").mock(return_value=httpx.Response(503))
     r = env.run("/img/a.jpg")
     assert r.status == "succeeded" and r.counters["failed"] == 1
     ev = [e for e in env.events if e["type"] == "item.failed"]
     assert ev[0]["reason"] == "immich_unavailable"
+    assert _rows(engine) == 0 and not any(env.scratch.iterdir())
 
 
-def test_auth_error_fails_job(env: Env) -> None:
+def test_auth_error_fails_job(env: Env, engine: Engine) -> None:
     env.router.post(f"{BASE}/assets/bulk-upload-check").mock(
         return_value=httpx.Response(401, json={"message": "no"})
     )
     r = env.run("/page/two", extractor="recursive")
     assert r.status == "failed" and r.error == "immich unauthorized"
+    assert _rows(engine) == 0
     assert not any(env.scratch.iterdir())
 
 
@@ -371,3 +379,47 @@ def test_build_description() -> None:
     assert build_description({"url": "http://u"}) == "http://u"
     assert build_description({}) == ""
     assert len(build_description({"title": "x" * 5000})) == 2000
+
+
+def test_gdl_error_and_all_uploads_failing_is_failed(env: Env) -> None:
+    env.router.post(f"{BASE}/assets").mock(return_value=httpx.Response(400, json={}))
+    r = env.run("/page/bad", extractor="recursive")
+    assert r.counters["failed"] >= 1 and r.status == "failed"
+
+
+def test_deleted_exact_copy_from_new_url_not_reuploaded(env: Env) -> None:
+    env.bulk_response = lambda i: {
+        "id": i,
+        "action": "reject",
+        "reason": "duplicate",
+        "assetId": ASSET,
+        "isTrashed": True,
+    }
+    env.run("/img/a.jpg")
+    env.bulk_response = lambda i: {"id": i, "action": "accept"}  # trash emptied
+    env.events.clear()
+    r = env.run("/img/a2.jpg")
+    assert r.counters["deleted_in_immich"] == 1 and env.uploads == []
+
+
+def test_deleted_near_copy_from_new_url_not_reuploaded(env: Env, tmp_path: Path) -> None:
+    info = a_info(env, tmp_path)
+    env.store.record(
+        target_id=1,
+        source_id=1,
+        key=b"k" * 16,
+        sha1=b"\x01" * 20,
+        phash=info.phash ^ 1,
+        immich_asset_id=None,
+    )
+    r = env.run("/img/a.jpg")
+    assert r.counters["deleted_in_immich"] == 1 and env.uploads == []
+
+
+def test_scratch_empty_when_gallery_dl_raises(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    def boom(*a: Any, **k: Any) -> int:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("app.rip.pipeline.run_job", boom)
+    r = env.run("/img/a.jpg")
+    assert r.status == "failed" and not any(env.scratch.iterdir())
