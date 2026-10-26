@@ -1,7 +1,7 @@
 """In-process pub/sub for job events (per-job streams plus a dashboard stream)."""
 
 import asyncio
-from collections import defaultdict
+from collections import defaultdict, deque
 from types import TracebackType
 from typing import Any
 
@@ -12,16 +12,22 @@ class Subscription:
     def __init__(self, bus: "EventBus", job_id: int | None) -> None:
         self._bus = bus
         self.job_id = job_id
-        self._queue: asyncio.Queue[dict[str, Any]] = asyncio.Queue(maxsize=QUEUE_SIZE)
+        self._buf: deque[dict[str, Any]] = deque()
+        self._wake = asyncio.Event()
+
+    def empty(self) -> bool:
+        return not self._buf
 
     def put(self, ev: dict[str, Any]) -> None:
-        q = self._queue
-        if q.full():
-            # drop the two oldest so both the gap marker and the new event fit
-            q.get_nowait()
-            q.get_nowait()
-            q.put_nowait({"type": "gap"})
-        q.put_nowait(ev)
+        buf = self._buf
+        if len(buf) >= QUEUE_SIZE:
+            # drop exactly one oldest event; mark the hole with one coalesced gap
+            if buf[0]["type"] == "gap":
+                buf.popleft()
+            buf.popleft()
+            buf.appendleft({"type": "gap"})
+        buf.append(ev)
+        self._wake.set()
 
     def close(self) -> None:
         self._bus._remove(self)
@@ -41,7 +47,10 @@ class Subscription:
         return self
 
     async def __anext__(self) -> dict[str, Any]:
-        return await self._queue.get()
+        while not self._buf:
+            self._wake.clear()
+            await self._wake.wait()
+        return self._buf.popleft()
 
 
 class EventBus:

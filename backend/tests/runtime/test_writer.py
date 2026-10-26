@@ -21,8 +21,9 @@ from app.db.models import (
     Source,
     User,
 )
+from app.runtime import writer as writer_mod
 from app.runtime.bus import EventBus
-from app.runtime.writer import JobWriter
+from app.runtime.writer import IpcBridge, JobWriter, make_ipc_queue
 
 ASSET = str(uuid.uuid4())
 
@@ -156,17 +157,201 @@ async def test_stop_flushes_pending(env: Any) -> None:
     assert await _count(sf, JobEvent) == 5
 
 
-async def test_writer_survives_db_error(env: Any, caplog: pytest.LogCaptureFixture) -> None:
+async def test_writer_survives_db_error(
+    env: Any, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, sf = env
+    monkeypatch.setattr(writer_mod, "BATCH_MAX", 1)
+    w = JobWriter(sf, EventBus())
+    w.submit(("event", 999, {"type": "log", "level": "info", "msg": "bad fk"}))
+    w.submit(("event", 1, {"type": "log", "level": "info", "msg": "ok"}))
+    w.start()
+    with caplog.at_level(logging.ERROR):
+        await w.stop()
+    assert await _count(sf, JobEvent) == 1
+    assert "writer" in caplog.text
+
+
+async def test_batch_max_splits_transactions(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    eng, sf = env
+    commits = 0
+
+    def on_commit(_c: Any) -> None:
+        nonlocal commits
+        commits += 1
+
+    event.listen(eng.sync_engine, "commit", on_commit)
+    monkeypatch.setattr(writer_mod, "BATCH_MAX", 3)
+    w = JobWriter(sf, EventBus())
+    for i in range(7):
+        w.submit(("event", 1, {"type": "phase", "name": str(i)}))
+    w.start()
+    await w.stop()
+    assert commits == 3
+    assert await _count(sf, JobEvent) == 7
+
+
+async def test_poisoned_messages_dropped_individually(env: Any) -> None:
+    _, sf = env
+    bus = EventBus()
+    w = JobWriter(sf, bus)
+    rec = {
+        "target_id": 1,
+        "source_id": 1,
+        "key": b"p" * 16,
+        "sha1": None,
+        "phash": None,
+        "immich_asset_id": None,
+    }
+    with bus.subscribe(None) as dash:
+        w.submit(("event", 1, {"msg": "no type"}))
+        w.submit(("status", 1, "bogus", {}))
+        w.submit(("event", 999, {"type": "log", "msg": "fk violation"}))
+        w.submit(("record", rec))
+        w.submit(("status", 1, "succeeded", {}))
+        w.start()
+        await w.stop()
+        got = await _drain(dash)
+    assert [(e["type"], e.get("status")) for e in got] == [("status", "succeeded")]
+    async with sf() as s:
+        job = await s.get(Job, 1)
+        assert job is not None and job.status == JobStatus.succeeded
+    assert await _count(sf, AssetSeen) == 1
+    assert await _count(sf, JobEvent) == 0
+
+
+async def _drain(sub: Any) -> list[dict[str, Any]]:
+    out = []
+    while not sub.empty():
+        out.append(await sub.__anext__())
+    return out
+
+
+async def test_log_level_defaults_to_info(env: Any) -> None:
     _, sf = env
     w = JobWriter(sf, EventBus())
     w.start()
-    with caplog.at_level(logging.ERROR):
-        w.submit(("event", 999, {"type": "log", "level": "info", "msg": "bad fk"}))
-        await asyncio.sleep(0.4)
-        w.submit(("event", 1, {"type": "log", "level": "info", "msg": "ok"}))
+    w.submit(("event", 1, {"type": "log", "msg": "x"}))
+    await w.stop()
+    async with sf() as s:
+        ev = (await s.execute(select(JobEvent))).scalar_one()
+    assert ev.level == "info"
+
+
+async def test_record_persisted_with_final_status(env: Any) -> None:
+    _, sf = env
+    w = JobWriter(sf, EventBus())
+    w.start()
+    w.submit(
+        (
+            "record",
+            {
+                "target_id": 1,
+                "source_id": 1,
+                "key": b"r" * 16,
+                "sha1": None,
+                "phash": None,
+                "immich_asset_id": None,
+            },
+        )
+    )
+    w.submit(("status", 1, "succeeded", {}))
+    await w.stop()
+    assert await _count(sf, AssetSeen) == 1
+    async with sf() as s:
+        job = await s.get(Job, 1)
+        assert job is not None and job.status == JobStatus.succeeded
+
+
+async def test_publish_error_does_not_kill_writer(
+    env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, sf = env
+    bus = EventBus()
+    real = bus.publish
+    calls = 0
+
+    def flaky(job_id: int | None, ev: dict[str, Any]) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("boom")
+        real(job_id, ev)
+
+    monkeypatch.setattr(bus, "publish", flaky)
+    monkeypatch.setattr(writer_mod, "BATCH_MAX", 1)
+    w = JobWriter(sf, bus)
+    with bus.subscribe(1) as sub:
+        w.submit(("event", 1, {"type": "phase", "name": "a"}))
+        w.submit(("event", 1, {"type": "phase", "name": "b"}))
+        w.start()
         await w.stop()
-    assert await _count(sf, JobEvent) == 1
-    assert "writer batch failed" in caplog.text
+        got = await _drain(sub)
+    assert [e["name"] for e in got] == ["b"]
+    assert await _count(sf, JobEvent) == 2
+
+
+async def test_start_idempotent_and_submit_after_stop_dropped(
+    env: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    _, sf = env
+    w = JobWriter(sf, EventBus())
+    w.start()
+    first = w._task
+    w.start()
+    assert w._task is first
+    await w.stop()
+    with caplog.at_level(logging.WARNING):
+        w.submit(("event", 1, {"type": "phase", "name": "late"}))
+    assert "after stop" in caplog.text
+    assert w._queue.empty()
+
+
+async def test_stop_timeout_cancels(env: Any, monkeypatch: pytest.MonkeyPatch) -> None:
+    _, sf = env
+    w = JobWriter(sf, EventBus())
+
+    async def slow(_batch: Any) -> None:
+        await asyncio.sleep(30)
+
+    monkeypatch.setattr(w, "_flush", slow)
+    w.start()
+    w.submit(("event", 1, {"type": "phase", "name": "x"}))
+    await asyncio.sleep(0)
+    await w.stop(timeout=0.2)
+    assert w._task is None
+
+
+def test_make_ipc_queue_bounded() -> None:
+    seen: list[int] = []
+
+    class Ctx:
+        def Queue(self, maxsize: int) -> str:  # noqa: N802
+            seen.append(maxsize)
+            return "q"
+
+    assert make_ipc_queue(Ctx()) == "q"
+    assert seen == [10000]
+
+
+async def test_ipc_bridge_survives_get_error(caplog: pytest.LogCaptureFixture) -> None:
+    class Q:
+        n = 0
+
+        def get(self) -> Any:
+            self.n += 1
+            if self.n == 1:
+                raise OSError("corrupt")
+            return None
+
+        def put(self, _m: Any) -> None: ...
+
+    b = IpcBridge(Q(), None, asyncio.get_running_loop())  # type: ignore[arg-type]
+    with caplog.at_level(logging.ERROR):
+        b.start()
+        await asyncio.to_thread(b._thread.join, 2)
+    assert not b._thread.is_alive()
+    assert "ipc bridge" in caplog.text
 
 
 async def test_ipc_bridge_forwards_and_stops() -> None:
