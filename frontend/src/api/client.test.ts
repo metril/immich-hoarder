@@ -12,6 +12,24 @@ afterEach(() => {
 });
 
 describe("api client", () => {
+  it("sets csrf on POST/PUT/PATCH/DELETE, not GET", async () => {
+    document.cookie = "ih_csrf=abc";
+    const seen: Record<string, string | null> = {};
+    server.use(
+      http.all("*/api/v1/*", ({ request }) => {
+        seen[request.method] = request.headers.get("x-csrf-token");
+        return HttpResponse.json({});
+      }),
+    );
+    const body = {} as never;
+    await api.GET("/api/v1/targets", {});
+    await api.POST("/api/v1/targets", { body });
+    await api.PUT("/api/v1/settings", { body });
+    await api.PATCH("/api/v1/credentials/{obj_id}", { params: { path: { obj_id: 1 } }, body });
+    await api.DELETE("/api/v1/targets/{obj_id}", { params: { path: { obj_id: 1 } } });
+    expect(seen).toEqual({ GET: null, POST: "abc", PUT: "abc", PATCH: "abc", DELETE: "abc" });
+  });
+
   it("adds csrf header on mutations only", async () => {
     document.cookie = "ih_csrf=tok123";
     const seen: Record<string, string | null> = {};

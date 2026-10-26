@@ -53,4 +53,34 @@ describe("unwrap", () => {
       expect((e as ApiError).message).toBe("Boom");
     }
   });
+
+  it("ignores non-object error bodies", () => {
+    for (const error of ["<html>bad gateway</html>", ""]) {
+      try {
+        unwrap({ error, response: new Response(null, { status: 502, statusText: "Bad Gateway" }) });
+        expect.unreachable();
+      } catch (e) {
+        expect((e as ApiError).message).toBe("Bad Gateway");
+        expect((e as ApiError).fieldErrors).toEqual({});
+      }
+    }
+  });
+
+  it("empty string detail falls back to status text", () => {
+    try {
+      unwrap({ error: { detail: "" }, response: new Response(null, { status: 500, statusText: "Boom" }) });
+      expect.unreachable();
+    } catch (e) {
+      expect((e as ApiError).message).toBe("Boom");
+    }
+  });
+
+  it("maps empty loc key to root", () => {
+    try {
+      unwrap({ error: { detail: [{ loc: ["body"], msg: "bad body", type: "x" }] }, response: res(422) });
+      expect.unreachable();
+    } catch (e) {
+      expect((e as ApiError).fieldErrors).toEqual({ root: "bad body" });
+    }
+  });
 });

@@ -22,15 +22,15 @@ function isRecord(v: unknown): v is Record<string, unknown> {
 }
 
 function build(status: number, error: unknown, statusText: string): ApiError {
-  const detail = isRecord(error) && "detail" in error ? error.detail : error;
+  const detail = isRecord(error) ? error.detail : undefined;
   let message = statusText || `HTTP ${status}`;
   const fieldErrors: Record<string, string> = {};
   if (typeof detail === "string") {
-    message = detail;
+    if (detail) message = detail;
   } else if (Array.isArray(detail)) {
     for (const item of detail as ValidationItem[]) {
       if (!isRecord(item) || !Array.isArray(item.loc) || typeof item.msg !== "string") continue;
-      fieldErrors[item.loc.slice(1).join(".")] = item.msg;
+      fieldErrors[item.loc.slice(1).join(".") || "root"] = item.msg;
     }
     const first = Object.values(fieldErrors)[0];
     if (first) message = first;
