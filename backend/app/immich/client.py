@@ -268,7 +268,10 @@ class ImmichClient:
     ) -> tuple[bytes, str]:
         def do() -> httpx.Response:
             req = self._http.build_request(
-                "GET", f"/assets/{asset_id}/thumbnail", params={"size": size}
+                "GET",
+                f"/assets/{asset_id}/thumbnail",
+                params={"size": size},
+                headers={"Accept-Encoding": "identity"},
             )
             resp = self._http.send(req, stream=True)
             if resp.status_code in _RETRY_STATUSES:
@@ -282,6 +285,11 @@ class ImmichClient:
                 if resp.status_code in (400, 404):
                     raise AssetGone(resp.status_code, _message(resp))
                 self._check(resp)
+            if resp.headers.get("content-encoding", "identity").strip().lower() not in (
+                "",
+                "identity",
+            ):
+                raise ImmichError(resp.status_code, "unexpected content encoding")
             try:
                 declared = int(resp.headers.get("content-length", "0"))
             except ValueError:

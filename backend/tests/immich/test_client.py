@@ -332,3 +332,14 @@ def test_thumbnail_content_length_rejected_early(client: ImmichClient) -> None:
     )
     with pytest.raises(ImmichError):
         client.thumbnail("big", "thumbnail", max_bytes=10)
+
+
+def test_thumbnail_rejects_content_encoding_and_asks_identity(client: ImmichClient) -> None:
+    route = respx.get(f"{BASE}/assets/z/thumbnail").mock(
+        return_value=httpx.Response(
+            200, content=b"x", headers={"content-type": "image/png", "content-encoding": "gzip"}
+        )
+    )
+    with pytest.raises(ImmichError):
+        client.thumbnail("z", "thumbnail")
+    assert route.calls[0].request.headers["accept-encoding"] == "identity"

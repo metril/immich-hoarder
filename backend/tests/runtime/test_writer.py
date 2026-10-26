@@ -91,6 +91,18 @@ async def test_item_events_become_job_items(env: Any) -> None:
     assert await _count(sf, JobEvent) == 0
 
 
+async def test_item_asset_id_canonicalised(env: Any) -> None:
+    _, sf = env
+    w = JobWriter(sf, EventBus())
+    w.start()
+    raw = "{ABCDEFAB-1111-2222-3333-444444444444}"
+    w.submit(("event", 1, {"type": "item.uploaded", "url": "u", "immich_asset_id": raw}))
+    await w.stop()
+    async with sf() as s:
+        row = (await s.execute(select(JobItem))).scalars().one()
+    assert row.immich_asset_id == "abcdefab-1111-2222-3333-444444444444"
+
+
 async def test_progress_updates_counters_not_events(env: Any) -> None:
     _, sf = env
     bus = EventBus()
