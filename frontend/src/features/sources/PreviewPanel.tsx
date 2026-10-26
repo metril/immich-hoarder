@@ -5,6 +5,8 @@ import { api } from "../../api/client";
 import { ApiError, unwrap } from "../../api/errors";
 import { type SourceIn } from "./hooks";
 
+export const PREVIEW_TIMEOUT_MS = 65_000;
+
 /** Dry run: POST /sources/preview with limit 50. The request is aborted when the panel unmounts. */
 export function PreviewPanel({ draft }: { draft: SourceIn }) {
   const ctl = useRef<AbortController | null>(null);
@@ -14,9 +16,10 @@ export function PreviewPanel({ draft }: { draft: SourceIn }) {
       ctl.current?.abort();
       const c = new AbortController();
       ctl.current = c;
-      return unwrap(await api.POST("/api/v1/sources/preview", { body: { ...draft, limit: 50 }, signal: c.signal }));
+      return unwrap(await api.POST("/api/v1/sources/preview", { body: { ...draft, limit: 50 }, signal: AbortSignal.any([c.signal, AbortSignal.timeout(PREVIEW_TIMEOUT_MS)]) }));
     },
   });
+  const timedOut = m.error instanceof DOMException && m.error.name === "TimeoutError";
   const busy = m.error instanceof ApiError && (m.error.status === 429 || m.error.status === 503);
   return (
     <div className="grid gap-3">
@@ -37,7 +40,7 @@ export function PreviewPanel({ draft }: { draft: SourceIn }) {
       </div>
       {m.isError && (
         <p role="alert" className="text-sm text-destructive">
-          {m.error.message}
+          {timedOut ? "Preview timed out" : m.error.message}
           {busy && " The preview service is busy; try again shortly."}
         </p>
       )}

@@ -1,6 +1,7 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useState } from "react";
 import { Dialog } from "radix-ui";
-import { useSource, type SourceOut } from "./hooks";
+import { PreviewPanel } from "./PreviewPanel";
+import { useSource, type SourceIn, type SourceOut } from "./hooks";
 
 // R3: the editor (zod, react-hook-form, cronstrue) is its own lazy chunk.
 const SourceForm = lazy(() => import("./SourceForm").then((m) => ({ default: m.SourceForm })));
@@ -27,13 +28,27 @@ export function SourceSheet({ edit, isNew, rows, onClose }: { edit?: number; isN
                 <p role="status">Loading…</p>
               )
             ) : (
-              <Suspense fallback={<p role="status">Loading editor…</p>}>
-                <SourceForm initial={source} onSaved={onClose} onCancel={onClose} />
-              </Suspense>
+              <EditorWithPreview source={source} onClose={onClose} />
             )}
           </div>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
+  );
+}
+
+/** Mounted only while the sheet is open, so the draft resets on close. */
+function EditorWithPreview({ source, onClose }: { source?: SourceOut; onClose: () => void }) {
+  const [draft, setDraft] = useState<SourceIn | null>(null);
+  return (
+    <>
+      <Suspense fallback={<p role="status">Loading editor…</p>}>
+        <SourceForm initial={source} onSaved={onClose} onCancel={onClose} onDraft={setDraft} />
+      </Suspense>
+      <section aria-label="Dry run" className="mt-6 border-t pt-4">
+        <h3 className="mb-2 text-sm font-medium">Dry run (unsaved values)</h3>
+        {draft ? <PreviewPanel draft={draft} /> : <p className="text-sm text-muted-foreground">Fix the form errors to dry-run this draft.</p>}
+      </section>
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -74,5 +74,24 @@ describe("sources page", () => {
     await userEvent.click(await screen.findByRole("button", { name: "Delete Cats" }));
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("source has an active job"));
+  });
+
+  it("new-source sheet dry-runs the unsaved draft", async () => {
+    let body: Record<string, unknown> = {};
+    setup("/sources?new=1");
+    server.use(
+      http.post("*/api/v1/sources/preview", async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json({ items: [{ url: "https://e.com/a.jpg", title: "A", date: null, filename: "a.jpg", verdict: null }] });
+      }),
+    );
+    await userEvent.type(await screen.findByLabelText("Name"), "Draft");
+    await userEvent.type(screen.getByLabelText("URL"), "https://example.com/draft");
+    await screen.findByRole("option", { name: "Home" });
+    await userEvent.selectOptions(screen.getByLabelText("Target"), "1");
+    const region = screen.getByRole("region", { name: "Dry run" });
+    await userEvent.click(await within(region).findByRole("button", { name: "Dry run" }));
+    expect(await within(region).findByText("would grab")).toBeInTheDocument();
+    expect(body).toMatchObject({ name: "Draft", url: "https://example.com/draft", target_id: 1, limit: 50 });
   });
 });

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Controller } from "react-hook-form";
 import { FormField, FormRootError, inputClass } from "../../components/common/FormField";
 import { useApiForm } from "../../components/common/useApiForm";
@@ -9,7 +9,7 @@ import { ExtractorHint } from "./ExtractorHint";
 import { FilterBuilder } from "./FilterBuilder";
 import { NotifyField } from "./NotifyField";
 import { useUsableCredentials, useUsableTargets } from "./pickers";
-import { useCreateSource, useUpdateSource, type FilterSpec, type SourceOut, type SourcePatch } from "./hooks";
+import { useCreateSource, useUpdateSource, type FilterSpec, type SourceIn, type SourceOut, type SourcePatch } from "./hooks";
 import { LOG_LEVELS, defaultValues, sourceSchema, type SourceFormOutput } from "./schema";
 
 const PATCH_KEYS = ["name", "url", "target_id", "credential_id", "album_template", "schedule_cron", "backfill_mode", "backfill_value",
@@ -30,7 +30,7 @@ function dirtyPatch(next: SourceFormOutput, base: SourceFormOutput): SourcePatch
 
 const btn = "rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring";
 
-export function SourceForm({ initial, onSaved, onCancel }: { initial?: SourceOut; onSaved: (s: SourceOut) => void; onCancel?: () => void }) {
+export function SourceForm({ initial, onSaved, onCancel, onDraft }: { initial?: SourceOut; onSaved: (s: SourceOut) => void; onCancel?: () => void; onDraft?: (d: SourceIn | null) => void }) {
   const create = useCreateSource();
   const update = useUpdateSource(initial?.id ?? 0);
   const targets = useUsableTargets(initial?.target_id);
@@ -53,6 +53,13 @@ export function SourceForm({ initial, onSaved, onCancel }: { initial?: SourceOut
   const fe = (e.filters ?? {}) as Partial<Record<keyof FilterSpec, { message?: string }>>;
   const filterErrors = Object.fromEntries(Object.entries(fe).map(([k, x]) => [k, x?.message]));
   const url = form.watch("url");
+  // Expose the current (parsed) values so the sheet can dry-run an unsaved draft.
+  const draftKey = JSON.stringify(form.watch());
+  useEffect(() => {
+    const r = sourceSchema.safeParse(JSON.parse(draftKey));
+    onDraft?.(r.success ? r.data : null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
 
   return (
     <form onSubmit={form.submit} className="grid gap-4" noValidate aria-label={initial ? `Edit ${initial.name}` : "New source"}>

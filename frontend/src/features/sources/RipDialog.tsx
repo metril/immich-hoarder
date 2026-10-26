@@ -17,11 +17,11 @@ function Body({ onDone }: { onDone: () => void }) {
   const rip = useRip();
   const navigate = useNavigate();
   const fe = (rip.error as { fieldErrors?: Record<string, string> } | null)?.fieldErrors ?? {};
-  const field = (id: string, label: string, key: string, el: React.ReactNode) => (
+  const field = (id: string, label: string, key: string, el: (p: { id: string; "aria-invalid"?: true; "aria-describedby"?: string }) => React.ReactNode) => (
     <div className="grid gap-1.5">
       <label htmlFor={id} className="text-sm font-medium">{label}</label>
-      {el}
-      {fe[key] && <p role="alert" className="text-sm text-destructive">{fe[key]}</p>}
+      {el({ id, "aria-invalid": fe[key] ? true : undefined, "aria-describedby": fe[key] ? `${id}-err` : undefined })}
+      {fe[key] && <p id={`${id}-err`} role="alert" className="text-sm text-destructive">{fe[key]}</p>}
     </div>
   );
   return (
@@ -30,8 +30,13 @@ function Body({ onDone }: { onDone: () => void }) {
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
+        const body: RipIn = {
+          url: url.trim(), target_id: Number(target), credential_id: cred ? Number(cred) : null, album_template: album,
+          name: "", visibility: "private", enabled: true, ephemeral: false, allow_animated: false, backfill_mode: "full",
+          filters: { phash_distance: 3 }, gdl_options: {}, notify: { credential_ids: [], on: ["failure"] },
+        };
         rip.mutate(
-          { url: url.trim(), target_id: Number(target), credential_id: cred ? Number(cred) : null, album_template: album, visibility: "private" } as RipIn,
+          body,
           {
             onSuccess: (job) => {
               onDone();
@@ -41,12 +46,12 @@ function Body({ onDone }: { onDone: () => void }) {
         );
       }}
     >
-      {field("rip-url", "URL", "url", <input id="rip-url" className={inputClass} inputMode="url" value={url} onChange={(e) => setUrl(e.target.value)} />)}
+      {field("rip-url", "URL", "url", (p) => <input {...p} className={inputClass} inputMode="url" value={url} onChange={(e) => setUrl(e.target.value)} />)}
       {field(
         "rip-target",
         "Target",
         "target_id",
-        <select id="rip-target" className={inputClass} value={target} onChange={(e) => setTarget(e.target.value)}>
+        (p) => <select {...p} className={inputClass} value={target} onChange={(e) => setTarget(e.target.value)}>
           <option value="">Select a target…</option>
           {targets.map((t) => (
             <option key={t.id} value={t.id}>{t.name}</option>
@@ -57,14 +62,14 @@ function Body({ onDone }: { onDone: () => void }) {
         "rip-cred",
         "Credential (optional)",
         "credential_id",
-        <select id="rip-cred" className={inputClass} value={cred} onChange={(e) => setCred(e.target.value)}>
+        (p) => <select {...p} className={inputClass} value={cred} onChange={(e) => setCred(e.target.value)}>
           <option value="">None</option>
           {creds.map((c) => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>,
       )}
-      {field("rip-album", "Album template (optional)", "album_template", <input id="rip-album" className={inputClass} value={album} onChange={(e) => setAlbum(e.target.value)} />)}
+      {field("rip-album", "Album template (optional)", "album_template", (p) => <input {...p} className={inputClass} value={album} onChange={(e) => setAlbum(e.target.value)} />)}
       <p className="text-xs text-muted-foreground">Ad-hoc rips are always private to you.</p>
       {rip.isError && !Object.keys(fe).length && <p role="alert" className="text-sm text-destructive">{rip.error.message}</p>}
       <div className="flex justify-end gap-2">

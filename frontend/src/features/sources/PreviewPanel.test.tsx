@@ -48,4 +48,12 @@ describe("PreviewPanel", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("preview capacity reached"));
     expect(screen.getByRole("alert")).toHaveTextContent("busy");
   });
+
+  it("shows a timeout message when the client timeout fires", async () => {
+    vi.spyOn(AbortSignal, "timeout").mockImplementation(() => AbortSignal.abort(new DOMException("t", "TimeoutError")));
+    server.use(http.post("*/api/v1/sources/preview", async () => { await delay(50); return HttpResponse.json({ items: [] }); }));
+    renderWithProviders(<PreviewPanel draft={draft} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Dry run" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("Preview timed out"));
+  });
 });
