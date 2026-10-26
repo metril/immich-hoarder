@@ -4,6 +4,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { keys } from "../../api/keys";
 import type { MeOut } from "../../api/me";
+import { dashboardDefaults } from "../../test/handlers";
 import { server } from "../../test/server";
 import { renderWithProviders } from "../../test/render";
 import { installPreloadErrorGuard, pageReload } from "./reload";
@@ -15,7 +16,7 @@ const admin: MeOut = { id: 1, name: "Ada", email: "a@x.io", groups: [], role: "a
 const user: MeOut = { ...admin, id: 2, name: "Bob", role: "user" };
 
 beforeEach(() => {
-  server.use(http.head("*/api/v1/auth/login", () => new HttpResponse(null, { status: 204 })));
+  server.use(...dashboardDefaults, http.head("*/api/v1/auth/login", () => new HttpResponse(null, { status: 204 })));
 });
 const origWidth = window.innerWidth;
 afterEach(() => {
@@ -37,7 +38,7 @@ describe("auth gate", () => {
   });
 
   it("shows OIDC hint only on 503", async () => {
-    server.use(http.head("*/api/v1/auth/login", () => new HttpResponse(null, { status: 503 })));
+    server.use(...dashboardDefaults, http.head("*/api/v1/auth/login", () => new HttpResponse(null, { status: 503 })));
     renderWithProviders(null, { me: null, route: "/login" });
     expect(await screen.findByText(/OIDC is not configured/)).toBeInTheDocument();
   });

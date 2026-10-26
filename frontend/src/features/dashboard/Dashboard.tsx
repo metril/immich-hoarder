@@ -1,9 +1,10 @@
 import { useMe } from "../../api/me";
-import { useJobs } from "../jobs/hooks";
+import { useJobs, type JobOut } from "../jobs/hooks";
 import { useSources } from "../sources/hooks";
+import { ErrorState } from "./ErrorState";
+import { failedLabel } from "./hooks";
 import { LiveJobs } from "./LiveJobs";
 import { RecentUploads } from "./RecentUploads";
-import { failedLast24h } from "./hooks";
 import { StatTiles } from "./StatTiles";
 
 export default function Dashboard() {
@@ -12,15 +13,40 @@ export default function Dashboard() {
   const queued = useJobs({ status: "queued" });
   const failed = useJobs({ status: "failed" });
   const sources = useSources();
-  const live = [...running.rows, ...queued.rows];
+  const qs = [running, queued, failed, sources];
+  const isError = qs.some((q) => q.isError);
+  const isPending = !isError && qs.some((q) => q.isPending);
+
+  // Lists are separate queries; a job moving queued -> running can briefly sit in both, so merge by id and split by status.
+  const byId = new Map<number, JobOut>();
+  for (const j of [...queued.rows, ...running.rows]) byId.set(j.id, j);
+  const active = [...byId.values()];
+  const runningRows = active.filter((j) => j.status === "running");
+  const queuedRows = active.filter((j) => j.status === "queued");
+
   return (
     <div className="grid gap-6 p-4">
       <h1 className="text-xl font-semibold">{me?.name ? `Welcome, ${me.name}` : "Dashboard"}</h1>
-      <StatTiles running={running.rows.length} queued={queued.rows.length} failed={failedLast24h(failed.rows)} sources={sources.rows.length} />
-      <section aria-labelledby="live-h" className="grid gap-2">
-        <h2 id="live-h" className="text-base font-semibold">Live jobs</h2>
-        <LiveJobs jobs={live} hasSources={sources.rows.length > 0} />
-      </section>
+      {isError ? (
+        <ErrorState what="jobs" onRetry={() => qs.forEach((q) => q.isError && void q.refetch())} />
+      ) : (
+        <>
+          <StatTiles
+            running={isPending ? undefined : runningRows.length}
+            queued={isPending ? undefined : queuedRows.length}
+            failed={isPending ? undefined : failedLabel(failed.rows, !!failed.hasNextPage)}
+            sources={isPending ? undefined : sources.rows.length}
+          />
+          <section aria-labelledby="live-h" className="grid gap-2">
+            <h2 id="live-h" className="text-base font-semibold">Live jobs</h2>
+            {isPending ? (
+              <div role="status" aria-label="Loading jobs" className="h-24 animate-pulse rounded-lg bg-muted" />
+            ) : (
+              <LiveJobs jobs={[...runningRows, ...queuedRows]} hasSources={sources.rows.length > 0} />
+            )}
+          </section>
+        </>
+      )}
       <section aria-labelledby="up-h" className="grid gap-2">
         <h2 id="up-h" className="text-base font-semibold">Recent uploads</h2>
         <RecentUploads />

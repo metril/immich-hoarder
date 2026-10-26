@@ -91,6 +91,9 @@ beforeAll(() => {
   window.scrollTo = () => {};
 });
 
+// "/" is the lazy dashboard; warm its chunk so cold imports do not eat findBy timeouts.
+beforeAll(() => import("../features/dashboard/Dashboard"), 30_000);
+
 beforeEach(() => FakeEventSource.reset());
 afterEach(() => {
   cleanup();

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Dialog } from "radix-ui";
 import { EmptyState } from "../../components/common/EmptyState";
+import { ErrorState } from "./ErrorState";
 import { thumbUrl } from "../jobs/hooks";
 import { fileName, useRecentUploads, type UploadOut } from "./hooks";
 
@@ -10,6 +11,7 @@ export function RecentUploads() {
   const q = useRecentUploads();
   const [broken, setBroken] = useState<Set<number>>(new Set());
   const [open, setOpen] = useState<UploadOut | null>(null);
+  if (q.isError) return <ErrorState what="recent uploads" onRetry={() => void q.refetch()} />;
   if (q.isPending)
     return (
       <div role="status" aria-label="Loading uploads" className="grid animate-pulse gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))" }}>

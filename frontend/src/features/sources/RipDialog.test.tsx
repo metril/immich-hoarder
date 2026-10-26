@@ -1,9 +1,10 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { beforeAll, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { MeOut } from "../../api/me";
 import { renderWithProviders } from "../../test/render";
+import { dashboardDefaults } from "../../test/handlers";
 import { server } from "../../test/server";
 
 const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user" };
@@ -11,6 +12,7 @@ const target = { id: 1, name: "Home", url: "https://immich.example", has_api_key
 
 function setup() {
   server.use(
+    ...dashboardDefaults,
     http.head("*/api/v1/auth/login", () => new HttpResponse(null, { status: 204 })),
     http.get("*/api/v1/targets", () => HttpResponse.json({ items: [target], next_cursor: null })),
     http.get("*/api/v1/credentials", () => HttpResponse.json({ items: [], next_cursor: null })),
@@ -27,9 +29,6 @@ async function openRip() {
   await screen.findByRole("option", { name: "Home" });
   return rip;
 }
-
-// "/" is the lazy dashboard; warm its chunk so the palette opens within findBy timeouts.
-beforeAll(() => import("../dashboard/Dashboard"), 30_000);
 
 describe("RipDialog", () => {
   it("palette Ad-hoc rip submits POST /rip and navigates to the job", async () => {

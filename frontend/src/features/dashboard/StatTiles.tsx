@@ -1,4 +1,4 @@
-export function StatTiles({ running, queued, failed, sources }: { running: number; queued: number; failed: number; sources: number }) {
+export function StatTiles({ running, queued, failed, sources }: { running?: number; queued?: number; failed?: string; sources?: number }) {
   const tiles = [
     ["Running", running],
     ["Queued", queued],
@@ -10,7 +10,9 @@ export function StatTiles({ running, queued, failed, sources }: { running: numbe
       {tiles.map(([label, n]) => (
         <div key={label} className="rounded-lg border p-3">
           <dt className="text-sm text-muted-foreground">{label}</dt>
-          <dd className="text-2xl font-semibold tabular-nums">{n}</dd>
+          <dd className="text-2xl font-semibold tabular-nums">
+            {n === undefined ? <span role="status" aria-label={`Loading ${label}`} className="inline-block h-8 w-10 animate-pulse rounded bg-muted" /> : n}
+          </dd>
         </div>
       ))}
     </dl>
