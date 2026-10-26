@@ -55,6 +55,7 @@ class CredentialKind(enum.StrEnum):
     cookies = "cookies"
     userpass = "userpass"
     token = "token"
+    apprise = "apprise"
 
 
 class BackfillMode(enum.StrEnum):

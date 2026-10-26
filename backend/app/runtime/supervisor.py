@@ -17,10 +17,11 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.config import Settings
 from app.core.crypto import SecretBox
 from app.db.models import AssetSeen, Job, JobStatus, Source
-from app.rip.build import build_snapshots
+from app.rip.build import build_snapshots, check_notify_refs, credential_snapshot
 from app.rip.pipeline import sweep_scratch
 from app.rip.settings import load_rip_settings
-from app.runtime.settings import load_runtime_settings
+from app.runtime.notify import notify_job
+from app.runtime.settings import load_notify_settings, load_runtime_settings
 from app.runtime.worker import WorkerSpec, worker_main
 from app.runtime.writer import JobWriter
 
@@ -82,6 +83,7 @@ class JobSupervisor:
         self._wake = asyncio.Event()
         self._stop = False
         self._loop_task: asyncio.Task[None] | None = None
+        self._notify_tasks: set[asyncio.Task[None]] = set()
         self._skip: set[int] = set()  # queued jobs cancelled but not yet committed
         writer.add_done_listener(self._on_done)
 
@@ -306,18 +308,70 @@ class JobSupervisor:
                 log_level=job.log_level or source.log_level or self._settings.log_level,
             )
 
-    def _finish(self, job_id: int, status: str, error: str | None, counters: Any = None) -> None:
+    def _finish(
+        self,
+        job_id: int,
+        status: str,
+        error: str | None,
+        counters: Any = None,
+        source_id: int | None = None,
+    ) -> None:
         fields: dict[str, Any] = {"error": error, "finished_at": _now()}
         if counters is not None:
             fields["counters"] = counters
         self._writer.submit(("status", job_id, status, fields))
+        if source_id is not None:
+            task = asyncio.create_task(
+                self._notify(job_id, source_id, status, error, dict(counters or {}))
+            )
+            self._notify_tasks.add(task)
+            task.add_done_callback(self._notify_tasks.discard)
+
+    async def _notify(
+        self, job_id: int, source_id: int, status: str, error: str | None, counters: dict[str, Any]
+    ) -> None:
+        """Runs detached, after the final status commits; never raises."""
+        try:
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                async with self._sf() as s:
+                    job = await s.get(Job, job_id)
+                if job is not None and job.status == status:
+                    break
+                await asyncio.sleep(0.1)
+            async with self._sf() as s:
+                src = await s.get(Source, source_id)
+                if src is None:
+                    return
+                name, cfg = src.name, dict(src.notify or {})
+                gl = await load_notify_settings(s)
+                box = SecretBox(self._settings.master_key.get_secret_value())
+                src_urls: list[str] = []
+                for cid in cfg.get("credential_ids") or []:
+                    try:
+                        await check_notify_refs(s, src.owner_id, {"credential_ids": [cid]})
+                        src_urls.append(
+                            (await credential_snapshot(s, cid, box)).secret.get_secret_value()
+                        )
+                    except HTTPException:
+                        continue
+            if src_urls:
+                await notify_job(
+                    job_id, name, counters, status, error, src_urls, cfg.get("on") or ["failure"]
+                )
+            if gl.urls:
+                await notify_job(job_id, name, counters, status, error, gl.urls, gl.on)
+        except Exception as e:
+            log.warning("job %s: notification setup failed (%s)", job_id, type(e).__name__)
 
     async def _run_job(self, job_id: int, h: RunHandle) -> None:
         try:
             await self._run_job_inner(job_id, h)
         except Exception as e:
             log.exception("job %s supervision failed", job_id)
-            self._finish(job_id, "failed", f"supervisor error: {type(e).__name__}")
+            self._finish(
+                job_id, "failed", f"supervisor error: {type(e).__name__}", source_id=h.source_id
+            )
         finally:
             await asyncio.to_thread(shutil.rmtree, self._settings.scratch_dir / str(job_id), True)
             self.running.pop(job_id, None)
@@ -339,10 +393,10 @@ class JobSupervisor:
     async def _run_job_inner(self, job_id: int, h: RunHandle) -> None:
         spec = await self._prepare(job_id, h)
         if isinstance(spec, str):
-            self._finish(job_id, "failed", spec)
+            self._finish(job_id, "failed", spec, source_id=h.source_id)
             return
         if h.cancel_requested or job_id in self._skip:
-            self._finish(job_id, "cancelled", None)
+            self._finish(job_id, "cancelled", None, source_id=h.source_id)
             return
         self._writer.submit(("status", job_id, "running", {"started_at": _now()}))
         proc = self._ctx.Process(
@@ -364,8 +418,8 @@ class JobSupervisor:
             h.escalation.cancel()
         res = h.done_result
         if res is not None:
-            self._finish(job_id, res["status"], res.get("error"), res.get("counters"))
+            self._finish(job_id, res["status"], res.get("error"), res.get("counters"), h.source_id)
         elif h.cancel_requested:
-            self._finish(job_id, "cancelled", None)
+            self._finish(job_id, "cancelled", None, source_id=h.source_id)
         else:
-            self._finish(job_id, "failed", "worker crashed")
+            self._finish(job_id, "failed", "worker crashed", source_id=h.source_id)

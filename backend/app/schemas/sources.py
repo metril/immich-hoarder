@@ -1,5 +1,5 @@
 from string import Formatter
-from typing import Any
+from typing import Any, Literal
 
 from croniter import croniter
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -31,7 +31,22 @@ def check_template(v: str | None) -> str | None:
     return v
 
 
+class SourceNotify(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    credential_ids: list[int] = []
+    on: list[Literal["success", "failure", "new_items"]] = ["failure"]
+
+
 class _Validated(BaseModel):
+    @field_validator("notify", check_fields=False)
+    @classmethod
+    def _notify(cls, v: dict[str, Any] | None) -> dict[str, Any] | None:
+        if v is None:
+            return v
+        if not v:
+            return {}
+        return SourceNotify.model_validate(v).model_dump(mode="json")
+
     @field_validator("schedule_cron", check_fields=False)
     @classmethod
     def _cron(cls, v: str | None) -> str | None:

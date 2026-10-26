@@ -474,3 +474,29 @@ async def test_escalation_after_sigterm_exit_raises_nothing(
         await wait_for(env, job.id, JobStatus.cancelled)
     assert res is None
     assert [r for r in caplog.records if r.levelname == "ERROR"] == []
+
+
+async def test_global_notify_sent_after_final_status(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import apprise
+
+    from app.db.models import Setting
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        apprise.Apprise, "notify", lambda self, body="", title="", **k: calls.append(title) or True
+    )
+    async with env.sf() as s:
+        s.add(Setting(key="notify", value={"urls": ["json://localhost/"], "on": ["success"]}))
+        await s.commit()
+    _, src = await env.seed()
+    sup = env.make(fw.fast_worker)
+    await sup.start()
+    job = await sup.enqueue(src, None, "info")
+    await wait_for(env, job.id, JobStatus.succeeded)
+    for _ in range(100):
+        if calls:
+            break
+        await asyncio.sleep(0.05)
+    assert calls == ["immich-hoarder: s succeeded"]

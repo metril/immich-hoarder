@@ -18,7 +18,7 @@ from app.core.crypto import SecretBox
 from app.core.extractors import UnsupportedURL, validate_proxy, validate_url
 from app.db.engine import get_session
 from app.db.models import BackfillMode, Perm, Source
-from app.rip.build import check_refs, credential_snapshot
+from app.rip.build import check_notify_refs, check_refs, credential_snapshot
 from app.rip.filters import FilterSpec, validate_backfill
 from app.rip.preview import (
     PREVIEW_MAX,
@@ -91,6 +91,7 @@ async def list_sources(
 async def build_source(session: AsyncSession, p: Principal, body: SourceIn) -> Source:
     """Validate a create payload and add the resulting Source (flushed) owned by `p`."""
     await check_refs(session, p.user_id, body.target_id, body.credential_id)
+    await check_notify_refs(session, p.user_id, body.notify)
     extractor = await _extractor_for(session, body.url)
     await _check_proxy(session, body.proxy)
     s = Source(
@@ -240,6 +241,7 @@ async def patch_source(
     if "url" in data:
         s.extractor = await _extractor_for(session, s.url)
     await check_refs(session, s.owner_id, s.target_id, s.credential_id)
+    await check_notify_refs(session, s.owner_id, s.notify)
     await session.flush()
     out = SourceOut.of(s)
     await _sync(request, session, obj_id)
