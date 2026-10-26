@@ -23,8 +23,23 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", "0")
             self.end_headers()
             return
+        base = f"http://{self.headers['Host']}"
+        a = _img("JPEG", (200, 10, 10))
+        pages = {
+            "/page/dup": ("/img/a.jpg", "/img/a2.jpg"),
+            "/page/two": ("/img/a.jpg", "/img/b.png"),
+        }
+        if u.path in pages:
+            body = "\n".join(base + x for x in pages[u.path]).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         routes = {
-            "/img/a.jpg": ("image/jpeg", _img("JPEG", (200, 10, 10))),
+            "/img/a.jpg": ("image/jpeg", a),
+            "/img/a2.jpg": ("image/jpeg", a),
             "/img/b.png": ("image/png", _img("PNG", (10, 200, 10))),
             "/vid/c.mp4": ("video/mp4", b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64),
             "/html/fake.jpg": ("text/html", b"<html>not an image</html>"),
