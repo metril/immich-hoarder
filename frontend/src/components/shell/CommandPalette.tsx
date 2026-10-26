@@ -6,6 +6,7 @@ import type { MeOut } from "../../api/me";
 import { navFor } from "./nav";
 import { useSignOut } from "./session";
 import { useTheme } from "./theme";
+import { RipDialog } from "../../features/sources/RipDialog";
 
 type Row = { id: number; name?: string | null };
 
@@ -15,15 +16,20 @@ const groupCls = "px-1 py-1 text-xs text-muted-foreground [&_[cmdk-group-heading
 /** Lazy chunk (cmdk): loaded on first open only. */
 export default function CommandPalette({ open, onOpenChange, me }: { open: boolean; onOpenChange: (o: boolean) => void; me: MeOut }) {
   const [q, setQ] = useState("");
+  const [rip, setRip] = useState(false);
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { theme, setTheme } = useTheme();
   const signOut = useSignOut();
 
-  // TODO(T10/T11): drop the `as never` cast once /sources?new, /targets?new and /jobs/$jobId exist as typed routes.
+  // TODO(T11): drop the `as never` cast once /targets?new and /jobs/$jobId exist as typed routes.
   const go = (to: string, search?: Record<string, unknown>) => {
     onOpenChange(false);
     void navigate({ to, search } as never);
+  };
+  const goSources = (search: { new?: boolean; q?: string }) => {
+    onOpenChange(false);
+    void navigate({ to: "/sources", search });
   };
   const run = (fn: () => void) => () => {
     onOpenChange(false);
@@ -38,6 +44,7 @@ export default function CommandPalette({ open, onOpenChange, me }: { open: boole
   const jobId = /^#?(\d+)$/.exec(q.trim())?.[1];
 
   return (
+    <>
     <Command.Dialog
       open={open}
       onOpenChange={(o) => {
@@ -70,8 +77,11 @@ export default function CommandPalette({ open, onOpenChange, me }: { open: boole
           ))}
         </Command.Group>
         <Command.Group heading="Actions" className={groupCls}>
-          <Command.Item value="action New source" className={itemCls} onSelect={() => go("/sources", { new: 1 })}>
+          <Command.Item value="action New source" className={itemCls} onSelect={() => goSources({ new: true })}>
             New source
+          </Command.Item>
+          <Command.Item value="action Ad-hoc rip" className={itemCls} onSelect={run(() => setRip(true))}>
+            Ad-hoc rip
           </Command.Item>
           <Command.Item value="action New target" className={itemCls} onSelect={() => go("/targets", { new: 1 })}>
             New target
@@ -86,7 +96,7 @@ export default function CommandPalette({ open, onOpenChange, me }: { open: boole
         {recent.length > 0 && (
           <Command.Group heading="Recent sources" className={groupCls}>
             {recent.map((s) => (
-              <Command.Item key={s.id} value={`source ${s.id} ${s.name ?? ""}`} className={itemCls} onSelect={() => go("/sources", { q: s.name ?? String(s.id) })}>
+              <Command.Item key={s.id} value={`source ${s.id} ${s.name ?? ""}`} className={itemCls} onSelect={() => goSources({ q: s.name ?? String(s.id) })}>
                 {s.name ?? `Source #${s.id}`}
               </Command.Item>
             ))}
@@ -94,5 +104,7 @@ export default function CommandPalette({ open, onOpenChange, me }: { open: boole
         )}
       </Command.List>
     </Command.Dialog>
+    <RipDialog open={rip} onOpenChange={setRip} />
+    </>
   );
 }
