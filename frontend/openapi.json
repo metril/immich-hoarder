@@ -764,6 +764,7 @@
             "default": [
               "failure"
             ],
+            "description": "Events that trigger a notification.",
             "items": {
               "enum": [
                 "success",
@@ -777,6 +778,7 @@
           },
           "urls": {
             "default": [],
+            "description": "Apprise notification URLs.",
             "items": {
               "type": "string"
             },
@@ -1447,18 +1449,21 @@
         "properties": {
           "retries": {
             "default": 4,
+            "description": "Number of retries after a failed request.",
             "minimum": 0.0,
             "title": "Retries",
             "type": "integer"
           },
           "sleep": {
             "default": 0.0,
+            "description": "Seconds to wait between file downloads.",
             "minimum": 0.0,
             "title": "Sleep",
             "type": "number"
           },
           "sleep_request": {
             "default": 1.0,
+            "description": "Seconds to wait between requests to the site.",
             "minimum": 0.0,
             "title": "Sleep Request",
             "type": "number"
@@ -1774,6 +1779,7 @@
         "properties": {
           "allow_private_hosts": {
             "default": false,
+            "description": "Allow downloads from private and loopback network addresses.",
             "title": "Allow Private Hosts",
             "type": "boolean"
           },
@@ -1787,6 +1793,7 @@
                 "type": "null"
               }
             ],
+            "description": "Scratch size limit for a single job, in bytes; unset means no per-job limit.",
             "title": "Job Scratch Max Bytes"
           },
           "proxy": {
@@ -1798,6 +1805,7 @@
                 "type": "null"
               }
             ],
+            "description": "Proxy URL used for all downloads; unset means no proxy.",
             "title": "Proxy"
           },
           "rate_limits": {
@@ -1805,11 +1813,13 @@
               "$ref": "#/components/schemas/RateLimit"
             },
             "default": {},
+            "description": "Per-site rate limits keyed by extractor name.",
             "title": "Rate Limits",
             "type": "object"
           },
           "upload_concurrency": {
             "default": 4,
+            "description": "Number of simultaneous uploads to Immich.",
             "maximum": 16.0,
             "minimum": 1.0,
             "title": "Upload Concurrency",
@@ -1850,11 +1860,13 @@
         "properties": {
           "backup_cron": {
             "default": "0 3 * * *",
+            "description": "Five-field cron expression for scheduled backups.",
             "title": "Backup Cron",
             "type": "string"
           },
           "backup_keep": {
             "default": 7,
+            "description": "Number of most recent backups to keep.",
             "maximum": 365.0,
             "minimum": 0.0,
             "title": "Backup Keep",
@@ -1862,6 +1874,7 @@
           },
           "cancel_grace_s": {
             "default": 10,
+            "description": "Seconds a cancelled job gets to stop before it is killed.",
             "maximum": 300.0,
             "minimum": 0.0,
             "title": "Cancel Grace S",
@@ -1878,10 +1891,12 @@
                 "type": "null"
               }
             ],
+            "description": "Override for the maximum number of simultaneous jobs; unset uses the IH_MAX_CONCURRENT_JOBS value.",
             "title": "Max Concurrent Jobs"
           },
           "retention_days": {
             "default": 30,
+            "description": "Days that finished job records are kept.",
             "maximum": 3650.0,
             "minimum": 1.0,
             "title": "Retention Days",
