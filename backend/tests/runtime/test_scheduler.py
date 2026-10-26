@@ -124,7 +124,7 @@ async def test_fire_conflict_skipped(sf: Any, caplog: pytest.LogCaptureFixture) 
     sch = SourceScheduler(sup, sf)  # type: ignore[arg-type]
     await sch.start()
     try:
-        sup.exc = JobConflict()
+        sup.exc = JobConflict(7)
         with caplog.at_level(logging.INFO):
             await sch._fire(7)
         assert sup.calls == [(7, None, None)]

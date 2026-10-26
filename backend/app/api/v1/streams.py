@@ -19,6 +19,7 @@ from app.db.engine import session_scope
 from app.db.models import Job, JobEvent, JobItem, JobStatus, Perm, Source
 from app.runtime.bus import EventBus
 from app.runtime.visibility import visible_jobs_stmt
+from app.runtime.writer import iso_utc
 
 router = APIRouter(tags=["jobs"])
 
@@ -79,11 +80,22 @@ async def job_stream(
             fresh = await s.get(Job, job.id)
         cur = fresh or job
         for e in reversed(events):
-            yield _sse({**e.data, "type": e.type})
+            yield _sse(
+                {
+                    **e.data,
+                    "type": e.type,
+                    "id": e.id,
+                    "ts": iso_utc(e.ts),
+                    "level": e.level,
+                    "job_id": job.id,
+                }
+            )
         for i in reversed(items):
             yield _sse(
                 {
                     "type": f"item.{i.outcome}",
+                    "id": i.id,
+                    "job_id": job.id,
                     "url": i.url,
                     "reason": i.reason,
                     "immich_asset_id": i.immich_asset_id,
@@ -134,7 +146,7 @@ async def dashboard_stream(
             if ev.get("type") == "gap":
                 yield _sse(ev)
                 continue
-            if ev.get("type") not in ("status", "progress"):
+            if ev.get("type") not in ("status", "progress", "phase"):
                 continue
             jid = ev.get("job_id")
             if not isinstance(jid, int):

@@ -25,6 +25,33 @@ async def _user_exists(session: AsyncSession, principal_id: str) -> bool:
     return await session.get(User, int(principal_id)) is not None
 
 
+async def _with_names(session: AsyncSession, entries: list[ShareEntry]) -> list[ShareEntry]:
+    ids = [
+        int(e.principal_id)
+        for e in entries
+        if e.principal_type == PrincipalType.user
+        and e.principal_id.isascii()
+        and e.principal_id.isdigit()
+    ]
+    names: dict[int, str | None] = {}
+    if ids:
+        names = {
+            uid: name
+            for uid, name in (
+                await session.execute(select(User.id, User.name).where(User.id.in_(ids)))
+            ).all()
+        }
+    out: list[ShareEntry] = []
+    for e in entries:
+        pname: str | None
+        if e.principal_type == PrincipalType.group:
+            pname = e.principal_id
+        else:
+            pname = names.get(int(e.principal_id)) if e.principal_id.isdigit() else None
+        out.append(e.model_copy(update={"principal_name": pname}))
+    return out
+
+
 def shares_router(model: type[Any], resource: str) -> APIRouter:
     router = APIRouter()
     stype: str = model.share_type
@@ -47,12 +74,15 @@ def shares_router(model: type[Any], resource: str) -> APIRouter:
         ).scalars()
         return SharesBody(
             visibility=obj.visibility,
-            shares=[
-                ShareEntry(
-                    principal_type=s.principal_type, principal_id=s.principal_id, perm=s.perm
-                )
-                for s in rows
-            ],
+            shares=await _with_names(
+                session,
+                [
+                    ShareEntry(
+                        principal_type=s.principal_type, principal_id=s.principal_id, perm=s.perm
+                    )
+                    for s in rows
+                ],
+            ),
         )
 
     @router.put("/{obj_id}/shares", response_model=SharesBody)
@@ -86,6 +116,8 @@ def shares_router(model: type[Any], resource: str) -> APIRouter:
             )
         obj.visibility = body.visibility
         await session.flush()
-        return SharesBody(visibility=body.visibility, shares=list(seen.values()))
+        return SharesBody(
+            visibility=body.visibility, shares=await _with_names(session, list(seen.values()))
+        )
 
     return router

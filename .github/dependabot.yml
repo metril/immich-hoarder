@@ -18,3 +18,18 @@ updates:
       interval: weekly
     commit-message:
       prefix: "chore(deps)"
+  - package-ecosystem: npm
+    directory: "/frontend"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      tanstack:
+        patterns: ["@tanstack/*"]
+      radix:
+        patterns: ["radix-ui"]
+      lint:
+        patterns: ["eslint*", "@eslint/*", "typescript-eslint", "globals"]
+      test:
+        patterns: ["vitest", "@testing-library/*", "msw", "jsdom", "@playwright/test"]

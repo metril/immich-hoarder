@@ -10,3 +10,9 @@ backend/tests
 *.db
 .env
 secrets
+frontend/node_modules
+frontend/dist
+frontend/e2e
+frontend/.lighthouseci
+frontend/test-results
+frontend/playwright-report

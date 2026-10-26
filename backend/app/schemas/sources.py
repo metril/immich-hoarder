@@ -1,8 +1,15 @@
 from string import Formatter
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from croniter import croniter
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    WithJsonSchema,
+    field_validator,
+    model_validator,
+)
 
 from app.core.extractors import validate_gdl_options
 from app.db.models import BackfillMode, Source, Visibility
@@ -35,6 +42,15 @@ class SourceNotify(BaseModel):
     model_config = ConfigDict(extra="forbid")
     credential_ids: list[int] = []
     on: list[Literal["success", "failure", "new_items"]] = ["failure"]
+
+
+# Runtime stays dict[str, Any]; the schema is exact so generated client types are precise.
+FiltersT = Annotated[
+    dict[str, Any], WithJsonSchema(FilterSpec.model_json_schema(mode="serialization"))
+]
+NotifyT = Annotated[
+    dict[str, Any], WithJsonSchema(SourceNotify.model_json_schema(mode="serialization"))
+]
 
 
 class _Validated(BaseModel):
@@ -84,8 +100,8 @@ class SourceIn(_Validated):
     backfill_mode: BackfillMode = BackfillMode.full
     backfill_value: str | None = None
     allow_animated: bool = False
-    filters: dict[str, Any] = {}
-    notify: dict[str, Any] = {}
+    filters: FiltersT = {}
+    notify: NotifyT = {}
     gdl_options: dict[str, Any] = {}
     proxy: str | None = None
     log_level: str | None = None
@@ -110,8 +126,8 @@ class SourcePatch(_Validated):
     backfill_mode: BackfillMode | None = None
     backfill_value: str | None = None
     allow_animated: bool | None = None
-    filters: dict[str, Any] | None = None
-    notify: dict[str, Any] | None = None
+    filters: FiltersT | None = None
+    notify: NotifyT | None = None
     gdl_options: dict[str, Any] | None = None
     proxy: str | None = None
     log_level: str | None = None
@@ -132,8 +148,8 @@ class SourceOut(BaseModel):
     backfill_mode: BackfillMode
     backfill_value: str | None
     allow_animated: bool
-    filters: dict[str, Any]
-    notify: dict[str, Any]
+    filters: FiltersT
+    notify: NotifyT
     gdl_options: dict[str, Any]
     proxy: str | None
     log_level: str | None
@@ -141,7 +157,10 @@ class SourceOut(BaseModel):
     ephemeral: bool
     owner_id: int
     visibility: Visibility
+    can_edit: bool  # output-only: caller may PATCH
+    can_use: bool  # output-only: caller may run it
 
     @classmethod
-    def of(cls, s: Source) -> "SourceOut":
-        return cls.model_validate(s)
+    def of(cls, s: Source, can_edit: bool, can_use: bool) -> "SourceOut":
+        data = {f: getattr(s, f) for f in cls.model_fields if f not in ("can_edit", "can_use")}
+        return cls.model_validate(data | {"can_edit": can_edit, "can_use": can_use})

@@ -1,4 +1,10 @@
-# Plan 4 adds a node build stage for the web frontend here.
+FROM node:24.21.0-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS web
+WORKDIR /web
+RUN corepack enable
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/.npmrc ./
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store pnpm install --frozen-lockfile
+COPY frontend/ ./
+RUN pnpm build
 
 FROM ghcr.io/astral-sh/uv:0.10.9@sha256:10902f58a1606787602f303954cea099626a4adb02acbac4c69920fe9d278f82 AS uv
 
@@ -21,6 +27,7 @@ COPY --from=builder /opt/venv /opt/venv
 # backend/ keeps alembic.ini and alembic/ next to the app package (see app/db/migrate.py)
 COPY backend/ /srv/backend/
 RUN python -m compileall -q /srv/backend
+COPY --from=web /web/dist /srv/web
 WORKDIR /srv/backend
 USER 10001
 VOLUME /data

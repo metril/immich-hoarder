@@ -6,7 +6,7 @@ from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
 from app.auth.apikeys import create_api_key
 from app.auth.authz import require_scope
 from app.auth.deps import current_principal
-from app.auth.principal import SCOPES, Principal
+from app.auth.principal import Principal
 from app.db.engine import get_session
 from app.db.models import ApiKey, User
 from app.schemas.apikeys import ApiKeyCreated, ApiKeyIn, ApiKeyOut
@@ -43,8 +43,6 @@ async def create_key(
 ) -> ApiKeyCreated:
     require_scope(p, "keys:write")
     scopes = sorted(set(body.scopes))
-    if bad := set(scopes) - SCOPES:
-        raise HTTPException(422, f"unknown scopes: {sorted(bad)}")
     if "admin" in scopes and not p.is_admin:
         raise HTTPException(403, "admin scope requires an admin")
     if p.scopes is not None and not p.is_admin and not set(scopes) <= p.scopes:

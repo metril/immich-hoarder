@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal, get_args
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -9,23 +9,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings
 from app.db.models import Role, User
 
-SCOPES = frozenset(
-    {
-        "sources:read",
-        "sources:write",
-        "sources:run",
-        "targets:read",
-        "targets:write",
-        "credentials:read",
-        "credentials:write",
-        "jobs:read",
-        "jobs:write",
-        "keys:read",
-        "keys:write",
-        "metrics:read",
-        "admin",
-    }
-)
+Scope = Literal[
+    "sources:read",
+    "sources:write",
+    "sources:run",
+    "targets:read",
+    "targets:write",
+    "credentials:read",
+    "credentials:write",
+    "jobs:read",
+    "jobs:write",
+    "keys:read",
+    "keys:write",
+    "metrics:read",
+    "admin",
+]
+SCOPES = frozenset(get_args(Scope))
 
 
 @dataclass(frozen=True)

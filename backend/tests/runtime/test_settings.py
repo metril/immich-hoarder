@@ -66,7 +66,7 @@ async def test_put_ignores_unknown_keys_already_stored(client: httpx.AsyncClient
         s.add(Setting(key="legacy", value={"x": 1}))
     r = await client.put("/api/v1/settings", json={"rip": {}}, headers=h)
     assert r.status_code == 200
-    assert r.json()["legacy"] == {"x": 1}
+    assert "legacy" not in r.json()  # the typed document only exposes known keys
     r = await client.put("/api/v1/settings", json={"legacy": {}}, headers=h)
     assert r.status_code == 422
 
@@ -164,3 +164,15 @@ def test_apprise_logger_always_quiet() -> None:
     finally:
         lg.removeHandler(h)
         logging.getLogger().removeHandler(root_h)
+
+
+async def test_invalid_stored_row_omitted_and_overwritable(client: httpx.AsyncClient) -> None:
+    h = await _admin_headers()
+    async with session_scope() as s:
+        s.add(Setting(key="runtime", value={"retention_days": -5}))
+    r = await client.get("/api/v1/settings", headers=h)
+    assert r.status_code == 200 and "runtime" not in r.json()
+    r = await client.put("/api/v1/settings", json={"notify": {"on": ["success"]}}, headers=h)
+    assert r.status_code == 200
+    r = await client.put("/api/v1/settings", json={"runtime": {"retention_days": 9}}, headers=h)
+    assert r.status_code == 200 and r.json()["runtime"] == {"retention_days": 9}

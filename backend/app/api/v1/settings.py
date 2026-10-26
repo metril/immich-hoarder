@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,47 +12,56 @@ from app.db.engine import get_session
 from app.db.models import Setting
 from app.rip.settings import RipSettings
 from app.runtime.settings import NotifySettings, RuntimeSettings
+from app.schemas.settings import SettingsDoc
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["settings"])
 
-SCHEMAS: dict[str, type[BaseModel]] = {
+
+_MODELS: dict[str, type[BaseModel]] = {
     "rip": RipSettings,
     "runtime": RuntimeSettings,
     "notify": NotifySettings,
 }
 
 
-async def _all(session: AsyncSession) -> dict[str, Any]:
-    return {s.key: s.value for s in (await session.execute(select(Setting))).scalars()}
+async def _all(session: AsyncSession) -> SettingsDoc:
+    rows: dict[str, Any] = {
+        s.key: s.value for s in (await session.execute(select(Setting))).scalars()
+    }
+    ok: dict[str, Any] = {}
+    for k, model in _MODELS.items():
+        if k not in rows:
+            continue
+        try:
+            model.model_validate(rows[k])
+        except ValidationError:
+            log.warning("invalid %s settings stored; omitted", k)  # detail may echo secrets
+            continue
+        ok[k] = rows[k]
+    return SettingsDoc.model_validate(ok)
 
 
-@router.get("")
+@router.get("", response_model=SettingsDoc, response_model_exclude_unset=True)
 async def get_settings(
     _p: Principal = Depends(require_admin),
     session: AsyncSession = Depends(get_session, scope="function"),
-) -> dict[str, Any]:
+) -> SettingsDoc:
     return await _all(session)
 
 
-@router.put("")
+@router.put("", response_model=SettingsDoc, response_model_exclude_unset=True)
 async def put_settings(
-    body: dict[str, Any],
+    body: SettingsDoc,
     request: Request,
     _p: Principal = Depends(require_admin),
     session: AsyncSession = Depends(get_session, scope="function"),
-) -> dict[str, Any]:
-    unknown = sorted(set(body) - SCHEMAS.keys())
-    if unknown:
-        raise HTTPException(422, f"unknown settings keys: {', '.join(unknown)}")
-    for k, v in body.items():
-        try:
-            SCHEMAS[k].model_validate(v)
-        except ValidationError as e:
-            raise HTTPException(
-                422, e.errors(include_url=False, include_context=False, include_input=False)
-            ) from None
-    for k, v in body.items():
+) -> SettingsDoc:
+    # only keys present in the request are written; a null value is ignored
+    changed = {
+        k: v for k, v in body.model_dump(mode="json", exclude_unset=True).items() if v is not None
+    }
+    for k, v in changed.items():
         row = await session.get(Setting, k)
         if row is None:
             session.add(Setting(key=k, value=v))
@@ -61,7 +70,7 @@ async def put_settings(
     await session.flush()
     await session.commit()
     sched = getattr(request.app.state, "scheduler", None)
-    if sched is not None and "runtime" in body:
+    if sched is not None and "runtime" in changed:
         try:
             await sched.sync_maintenance()
         except Exception as e:

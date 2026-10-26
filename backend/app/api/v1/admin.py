@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, Literal
+from typing import Literal
 
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -22,17 +22,18 @@ from app.runtime.maintenance import (
     prune_jobs,
 )
 from app.runtime.settings import load_runtime_settings
+from app.schemas.admin import BackupInfo, BackupList, BackupOut, ImportResult, PruneOut
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
-@router.post("/backup", status_code=201)
+@router.post("/backup", status_code=201, response_model=BackupOut)
 async def create_backup(
     request: Request,
     _p: Principal = Depends(require_admin),
     session: AsyncSession = Depends(get_session, scope="function"),
-) -> dict[str, str]:
+) -> BackupOut:
     settings: Settings = request.app.state.settings
     rt = await load_runtime_settings(session)
     try:
@@ -46,26 +47,25 @@ async def create_backup(
         raise HTTPException(507, "backup failed") from None
     if path is None:
         raise HTTPException(409, "backups are not supported for this database")
-    return {"file": path.name}
+    return BackupOut(file=path.name)
 
 
-@router.get("/backups")
-async def get_backups(
-    request: Request, _p: Principal = Depends(require_admin)
-) -> dict[str, list[dict[str, object]]]:
+@router.get("/backups", response_model=BackupList)
+async def get_backups(request: Request, _p: Principal = Depends(require_admin)) -> BackupList:
     settings: Settings = request.app.state.settings
-    return {"items": await asyncio.to_thread(list_backups, settings.backup_dir)}
+    rows = await asyncio.to_thread(list_backups, settings.backup_dir)
+    return BackupList(items=[BackupInfo.model_validate(r) for r in rows])
 
 
-@router.post("/maintenance/prune")
+@router.post("/maintenance/prune", response_model=PruneOut)
 async def run_prune(
     _p: Principal = Depends(require_admin),
     session: AsyncSession = Depends(get_session, scope="function"),
-) -> dict[str, int]:
+) -> PruneOut:
     rt = await load_runtime_settings(session)
     jobs = await prune_jobs(session, rt.retention_days)
     eph = await prune_ephemeral_sources(session)
-    return {"jobs": jobs, "ephemeral_sources": eph}
+    return PruneOut(jobs=jobs, ephemeral_sources=eph)
 
 
 MAX_IMPORT_BYTES = 5 * 1024 * 1024
@@ -102,14 +102,23 @@ async def _read_limited(request: Request) -> bytes:
     return bytes(buf)
 
 
-@router.post("/import")
+@router.post(
+    "/import",
+    response_model=ImportResult,
+    openapi_extra={
+        "requestBody": {
+            "content": {"application/yaml": {"schema": {"type": "string"}}},
+            "required": True,
+        }
+    },
+)
 async def import_yaml(
     request: Request,
     dry_run: bool = False,
     p: Principal = Depends(require_admin),
     session: AsyncSession = Depends(get_session, scope="function"),
     box: SecretBox = Depends(secret_box),
-) -> dict[str, Any]:
+) -> ImportResult:
     raw = await _read_limited(request)
     try:
         doc = yaml.safe_load(raw.decode())
@@ -142,4 +151,4 @@ async def import_yaml(
         applied,
         len(res.errors),
     )
-    return {**res.as_dict(), "applied": applied}
+    return ImportResult(**res.as_dict(), applied=applied)

@@ -60,7 +60,8 @@ async def test_run_creates_job_202_and_conflict_409(client: httpx.AsyncClient) -
     assert j["source_id"] == sid and j["status"] == "queued" and j["log_level"] == "debug"
     assert j["source_name"] == "s"
     r = await client.post(f"/api/v1/sources/{sid}/run", headers=h)
-    assert r.status_code == 409 and r.json() == {"detail": "job already active"}
+    assert r.status_code == 409
+    assert r.json() == {"detail": {"msg": "job already active", "job_id": j["id"]}}
 
 
 async def test_run_requires_use(client: httpx.AsyncClient) -> None:
@@ -341,3 +342,51 @@ async def test_delete_source_blocked_by_active_job(client: httpx.AsyncClient) ->
     assert (await client.delete(f"/api/v1/sources/{sid}", headers=h)).status_code == 409
     await _finish(jid)
     assert (await client.delete(f"/api/v1/sources/{sid}", headers=h)).status_code == 204
+
+
+async def test_run_conflict_409_includes_job_id(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    sid = await _src(client, h)
+    jid = (await client.post(f"/api/v1/sources/{sid}/run", headers=h)).json()["id"]
+    r = await client.post(f"/api/v1/jobs/{jid}/retry", headers=h)
+    assert r.status_code == 409 and r.json()["detail"] == {
+        "msg": "job already active",
+        "job_id": jid,
+    }
+
+
+async def test_enqueue_integrity_race_returns_409(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlalchemy as sa
+
+    from app.runtime import supervisor as sup_mod
+
+    _, h = await actor("a")
+    sid = await _src(client, h)
+    jid = (await client.post(f"/api/v1/sources/{sid}/run", headers=h)).json()["id"]
+    real = sup_mod.select
+    calls = 0
+
+    def blind_first(*a: Any) -> Any:  # the pre-check misses, so the unique index fires
+        nonlocal calls
+        calls += 1
+        q = real(*a)
+        return q.where(sa.false()) if calls == 1 else q
+
+    monkeypatch.setattr(sup_mod, "select", blind_first)
+    r = await client.post(f"/api/v1/sources/{sid}/run", headers=h)
+    assert r.status_code == 409
+    assert r.json()["detail"] == {"msg": "job already active", "job_id": jid}
+
+
+async def test_get_job_returns_phase(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    sid = await _src(client, h)
+    jid = (await client.post(f"/api/v1/sources/{sid}/run", headers=h)).json()["id"]
+    assert (await client.get(f"/api/v1/jobs/{jid}", headers=h)).json()["phase"] is None
+    async with session_scope() as s:
+        j = await s.get(Job, jid)
+        assert j
+        j.phase = "draining"
+    assert (await client.get(f"/api/v1/jobs/{jid}", headers=h)).json()["phase"] == "draining"

@@ -11,6 +11,7 @@ from app.auth.principal import Principal, resolve_role, upsert_user
 from app.core.config import Settings
 from app.db.engine import get_session
 from app.db.models import User
+from app.schemas.auth import MeOut
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -27,8 +28,12 @@ def _redirect_uri(settings: Settings) -> str:
 
 
 @router.get("/login")
+@router.head("/login", include_in_schema=False)
 async def login(request: Request) -> Response:
     settings: Settings = request.app.state.settings
+    if request.method == "HEAD":  # availability probe; never starts an auth flow
+        _client(request)
+        return Response(status_code=204)
     resp: Response = await _client(request).authorize_redirect(request, _redirect_uri(settings))
     return resp
 
@@ -74,17 +79,11 @@ async def logout(request: Request) -> Response:
     return resp
 
 
-@router.get("/me")
+@router.get("/me", response_model=MeOut)
 async def me(
     p: Principal = Depends(current_principal),
     session: AsyncSession = Depends(get_session, scope="function"),
-) -> dict[str, Any]:
+) -> MeOut:
     user = await session.get(User, p.user_id)
     assert user is not None
-    return {
-        "id": user.id,
-        "email": user.email,
-        "name": user.name,
-        "role": p.role.value,
-        "groups": sorted(p.groups),
-    }
+    return MeOut(id=user.id, email=user.email, name=user.name, role=p.role, groups=sorted(p.groups))

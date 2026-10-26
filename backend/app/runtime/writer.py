@@ -8,6 +8,7 @@ import threading
 import time
 import uuid
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy import update
@@ -39,6 +40,25 @@ def _norm_level(level: object) -> str:
     lv = str(level or "info").lower()
     lv = _LEVEL_ALIASES.get(lv, lv)
     return lv if lv in _LEVELS else "info"
+
+
+def iso_utc(ts: datetime) -> str:
+    """ISO 8601 with an explicit UTC offset (DB timestamps are naive UTC)."""
+    return (ts.replace(tzinfo=UTC) if ts.tzinfo is None else ts.astimezone(UTC)).isoformat()
+
+
+def _live_event(
+    job_id: int, ev: dict[str, Any], row: tuple[int, datetime | None] | None
+) -> dict[str, Any]:
+    """Bus copy of an event, shaped like the replayed one (id/ts/level/job_id)."""
+    out = {**ev, "job_id": job_id}
+    if row is not None:
+        out["id"] = row[0]
+        if row[1] is not None:
+            out["ts"] = iso_utc(row[1])
+        if ev["type"] in ("log", "phase"):
+            out["level"] = _norm_level(ev.get("level"))
+    return out
 
 
 class JobWriter:
@@ -153,9 +173,10 @@ class JobWriter:
                 batch.append(nxt)
             await self._flush(batch)
 
-    async def _commit(self, msgs: list[Msg]) -> None:
+    async def _commit(self, msgs: list[Msg]) -> dict[int, tuple[int, datetime | None]]:
+        """Apply ``msgs``; return {index: (row id, ts)} for the event and item rows written."""
         async with self._sf() as session, session.begin():
-            await self._apply(session, msgs)
+            return await self._apply(session, msgs)
 
     async def _flush(self, batch: list[Msg]) -> None:
         valid: list[Msg] = []
@@ -168,15 +189,19 @@ class JobWriter:
         if not valid:
             return
         ok: list[Msg] = []
+        rows: dict[int, tuple[int, datetime | None]] = {}  # id(msg) -> (row id, ts)
         try:
-            await self._commit(valid)
+            res = await self._commit(valid)
             ok = valid
+            rows = {id(valid[i]): r for i, r in res.items()}
         except Exception:
             log.exception("writer batch failed; retrying %d messages individually", len(valid))
             for msg in valid:
                 try:
-                    await self._commit([msg])
+                    res = await self._commit([msg])
                     ok.append(msg)
+                    if 0 in res:
+                        rows[id(msg)] = res[0]
                 except Exception:
                     log.exception("writer: message dropped (%s)", msg[0])
         for msg in ok:
@@ -187,7 +212,7 @@ class JobWriter:
                     log.exception("writer: observer failed")
             try:
                 if msg[0] == "event":
-                    self._bus.publish(msg[1], msg[2])
+                    self._bus.publish(msg[1], _live_event(msg[1], msg[2], rows.get(id(msg))))
                 elif msg[0] == "status":
                     self._bus.publish(
                         msg[1], {"type": "status", "job_id": msg[1], "status": msg[2]}
@@ -202,11 +227,15 @@ class JobWriter:
                     except Exception:
                         log.exception("writer: done listener failed")
 
-    async def _apply(self, session: AsyncSession, batch: list[Msg]) -> None:
+    async def _apply(
+        self, session: AsyncSession, batch: list[Msg]
+    ) -> dict[int, tuple[int, datetime | None]]:
         counters: dict[int, dict[str, Any]] = {}
+        phases: dict[int, str] = {}
         statuses: list[Msg] = []
+        written: dict[int, JobItem | JobEvent] = {}
         dialect = session.get_bind().dialect.name
-        for msg in batch:
+        for idx, msg in enumerate(batch):
             kind = msg[0]
             if kind == "event":
                 _, job_id, ev = msg
@@ -214,18 +243,28 @@ class JobWriter:
                 if typ.startswith("item."):
                     outcome = typ.removeprefix("item.")
                     reason = ev.get("reason")
-                    session.add(
-                        JobItem(
-                            job_id=job_id,
-                            url=str(ev.get("url", ""))[:URL_MAX],
-                            outcome=outcome,
-                            reason=None if reason is None else str(reason)[:REASON_MAX],
-                            immich_asset_id=_canon_id(ev.get("immich_asset_id")),
-                        )
+                    item = JobItem(
+                        job_id=job_id,
+                        url=str(ev.get("url", ""))[:URL_MAX],
+                        outcome=outcome,
+                        reason=None if reason is None else str(reason)[:REASON_MAX],
+                        immich_asset_id=_canon_id(ev.get("immich_asset_id")),
                     )
+                    session.add(item)
+                    written[idx] = item
                 elif typ in ("log", "phase"):
                     level = _norm_level(ev.get("level"))
-                    session.add(JobEvent(job_id=job_id, level=level, type=typ, data=ev))
+                    ev_row = JobEvent(
+                        job_id=job_id,
+                        ts=datetime.now(UTC).replace(tzinfo=None),
+                        level=level,
+                        type=typ,
+                        data=ev,
+                    )
+                    session.add(ev_row)
+                    written[idx] = ev_row
+                    if typ == "phase" and ev.get("name") is not None:
+                        phases[job_id] = str(ev["name"])[:16]
                 elif typ == "progress":
                     counters[job_id] = ev["counters"]
             elif kind == "record":
@@ -236,6 +275,8 @@ class JobWriter:
         await session.flush()
         for job_id, c in counters.items():
             await session.execute(update(Job).where(Job.id == job_id).values(counters=c))
+        for job_id, name in phases.items():
+            await session.execute(update(Job).where(Job.id == job_id).values(phase=name))
         for _, job_id, status, fields in statuses:
             vals = {k: v for k, v in fields.items() if k in _STATUS_FIELDS}
             await session.execute(
@@ -243,6 +284,7 @@ class JobWriter:
                 .where(Job.id == job_id, Job.status.notin_(_TERMINAL))
                 .values(status=JobStatus(status), **vals)
             )
+        return {i: (r.id, r.ts if isinstance(r, JobEvent) else None) for i, r in written.items()}
 
 
 def _canon_id(v: Any) -> str | None:

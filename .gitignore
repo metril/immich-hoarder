@@ -13,3 +13,8 @@ htmlcov/
 *.db
 node_modules/
 .superpowers/
+frontend/dist/
+frontend/.lighthouseci/
+frontend/test-results/
+frontend/playwright-report/
+frontend/coverage/

@@ -7,7 +7,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.common import get_obj, secret_box
 from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
 from app.api.v1.shares import delete_shares, shares_router
-from app.auth.authz import require_owner_or_admin, require_scope, visible_to
+from app.auth.authz import (
+    access_flags,
+    can_edit,
+    can_use,
+    require_owner_or_admin,
+    require_scope,
+    visible_to,
+)
 from app.auth.deps import current_principal
 from app.auth.principal import Principal
 from app.core.crypto import SecretBox
@@ -32,7 +39,8 @@ async def list_targets(
     rows, nxt = await paginate(
         session, visible_to(select(ImmichTarget), ImmichTarget, p), cursor, limit
     )
-    return Page(items=[TargetOut.of(r) for r in rows], next_cursor=nxt)
+    ed, us = await access_flags(session, ImmichTarget, p, [r.id for r in rows])
+    return Page(items=[TargetOut.of(r, r.id in ed, r.id in us) for r in rows], next_cursor=nxt)
 
 
 @router.post("", response_model=TargetOut, status_code=201)
@@ -52,7 +60,7 @@ async def create_target(
     )
     session.add(t)
     await session.flush()
-    return TargetOut.of(t)
+    return TargetOut.of(t, True, True)
 
 
 @router.get("/{obj_id}", response_model=TargetOut)
@@ -62,7 +70,8 @@ async def get_target(
     session: AsyncSession = Depends(get_session, scope="function"),
 ) -> TargetOut:
     require_scope(p, "targets:read")
-    return TargetOut.of(await get_obj(session, ImmichTarget, obj_id, p))
+    t: ImmichTarget = await get_obj(session, ImmichTarget, obj_id, p)
+    return TargetOut.of(t, await can_edit(session, t, p), await can_use(session, t, p))
 
 
 @router.patch("/{obj_id}", response_model=TargetOut)
@@ -81,7 +90,7 @@ async def patch_target(
     for k, v in data.items():
         setattr(t, k, v)
     await session.flush()
-    return TargetOut.of(t)
+    return TargetOut.of(t, True, True)
 
 
 @router.delete("/{obj_id}", status_code=204)

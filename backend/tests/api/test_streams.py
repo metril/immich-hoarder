@@ -119,6 +119,8 @@ async def test_job_stream_replays_then_live_then_end(env: Any) -> None:
     assert [e["event"] for e in replay] == ["log", "item.linked", "progress", "status"]
     assert json.loads(replay[1]["data"]) == {
         "type": "item.linked",
+        "id": 1,
+        "job_id": job.id,
         "url": "u1",
         "reason": None,
         "immich_asset_id": "a1",

@@ -1,0 +1,44 @@
+import { useState } from "react";
+import { screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { describe, expect, it } from "vitest";
+import { renderWithProviders } from "../../test/render";
+import { FilterBuilder } from "./FilterBuilder";
+import type { FilterSpec } from "./hooks";
+import { emptyFilters } from "./schema";
+
+const user = userEvent.setup({ delay: null });
+
+let last: FilterSpec = emptyFilters();
+function Host({ start = emptyFilters() }: { start?: FilterSpec }) {
+  const [v, setV] = useState(start);
+  return <FilterBuilder value={v} onChange={(x) => { last = x; setV(x); }} />;
+}
+
+describe("FilterBuilder", () => {
+  it("filter builder empty inputs become null", async () => {
+    renderWithProviders(<Host start={{ ...emptyFilters(), min_width: 100 }} />);
+    await user.clear(await screen.findByLabelText("Min width (px)"));
+    expect(last.min_width).toBeNull();
+    expect(screen.getByTestId("filter-summary")).toHaveTextContent("No filters active");
+  });
+
+  it("size units store bytes", async () => {
+    renderWithProviders(<Host />);
+    await user.type(await screen.findByLabelText("Min size"), "2");
+    expect(last.min_bytes).toBe(2048);
+    await user.selectOptions(screen.getByLabelText("Min size unit"), "MB");
+    expect(last.min_bytes).toBe(2 * 1024 * 1024);
+  });
+
+  it("invalid regex shows error", async () => {
+    renderWithProviders(<Host />);
+    await user.type(await screen.findByLabelText("Title include"), "(");
+    expect(await screen.findByText("Invalid regular expression")).toBeInTheDocument();
+  });
+
+  it("renders a root filters error", () => {
+    renderWithProviders(<FilterBuilder value={emptyFilters()} onChange={() => {}} error="filters are inconsistent" />);
+    return screen.findByRole("alert").then((a) => expect(a).toHaveTextContent("filters are inconsistent"));
+  });
+});
