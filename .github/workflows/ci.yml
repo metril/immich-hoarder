@@ -229,6 +229,8 @@ jobs:
       - name: Playwright smoke
         working-directory: frontend
         run: pnpm e2e
+      - name: Allow Chrome sandbox (ubuntu 24.04 AppArmor)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Lighthouse
         working-directory: frontend
         run: |
