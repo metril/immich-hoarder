@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
+from starlette.background import BackgroundTask
 
 from app.api.v1.jobs import _visible_job
 from app.auth.authz import require_scope, visible_to
@@ -18,6 +19,7 @@ from app.auth.principal import Principal
 from app.db.engine import session_scope
 from app.db.models import Job, JobEvent, JobItem, JobStatus, Perm, Source
 from app.runtime.bus import EventBus
+from app.runtime.visibility import visible_jobs_stmt
 
 router = APIRouter(tags=["jobs"])
 
@@ -55,6 +57,7 @@ async def job_stream(
     session_factory: SessionFactory,
     job: Job,
     is_disconnected: IsDisconnected,
+    still_visible: Callable[[], Awaitable[bool]] | None = None,
 ) -> AsyncIterator[Sse]:
     with bus.subscribe(job.id) as sub:  # subscribe first so no event is missed
         async with session_factory() as s:
@@ -87,17 +90,29 @@ async def job_stream(
                     "immich_asset_id": i.immich_asset_id,
                 }
             )
-        yield _sse({"type": "progress", **(cur.counters or {})})
-        yield _sse({"type": "status", "status": str(cur.status)})
+        yield _sse({"type": "progress", "counters": cur.counters or {}})
+        yield _sse({"type": "status", "job_id": job.id, "status": str(cur.status)})
         if cur.status in TERMINAL:
             yield {"event": "end", "data": "{}"}
             return
+        checked = time.monotonic()
         while not await is_disconnected():
+            if still_visible is not None and time.monotonic() - checked >= VISIBLE_TTL:
+                checked = time.monotonic()
+                if not await still_visible():
+                    yield {"event": "end", "data": "{}"}
+                    return
             ev = await _next(sub)
             if ev is None:
                 continue
             yield _sse(ev)
-            if _is_terminal(ev):
+            if ev.get("type") == "gap":
+                async with session_factory() as s:
+                    row = await s.get(Job, job.id)
+                if row is None or row.status in TERMINAL:
+                    yield {"event": "end", "data": "{}"}
+                    return
+            elif _is_terminal(ev):
                 yield {"event": "end", "data": "{}"}
                 return
 
@@ -115,7 +130,12 @@ async def dashboard_stream(
     with bus.subscribe(None) as sub:
         while not await is_disconnected():
             ev = await _next(sub)
-            if ev is None or ev.get("type") not in ("status", "progress"):
+            if ev is None:
+                continue
+            if ev.get("type") == "gap":
+                yield _sse(ev)
+                continue
+            if ev.get("type") not in ("status", "progress"):
                 continue
             jid = ev.get("job_id")
             if not isinstance(jid, int):
@@ -142,26 +162,68 @@ def _bus(request: Request) -> EventBus:
     return bus  # type: ignore[no-any-return]
 
 
+async def visible_source_ids(p: Principal) -> set[int] | None:
+    """Source ids the principal may use; None means all (admin)."""
+    if p.is_admin:
+        return None
+    async with session_scope() as s:
+        stmt = visible_to(select(Source.id), Source, p, Perm.use)
+        return set((await s.scalars(stmt)).all())
+
+
+async def job_source_id(job_id: int) -> int | None:
+    async with session_scope() as s:
+        return await s.scalar(select(Job.source_id).where(Job.id == job_id))
+
+
+async def job_visible(p: Principal, job_id: int) -> bool:
+    async with session_scope() as s:
+        return (await s.scalar(visible_jobs_stmt(p).where(Job.id == job_id))) is not None
+
+
+MAX_STREAMS = 10
+_active: dict[int, int] = {}
+
+
+def _acquire(uid: int) -> Callable[[], None]:
+    if _active.get(uid, 0) >= MAX_STREAMS:
+        raise HTTPException(429, "too many streams")
+    _active[uid] = _active.get(uid, 0) + 1
+    done = False
+
+    def release() -> None:
+        nonlocal done
+        if done:
+            return
+        done = True
+        if _active.get(uid, 0) <= 1:
+            _active.pop(uid, None)
+        else:
+            _active[uid] -= 1
+
+    return release
+
+
+async def _guarded(gen: AsyncIterator[Sse], release: Callable[[], None]) -> AsyncIterator[Sse]:
+    try:
+        async for item in gen:
+            yield item
+    finally:
+        release()
+
+
 @router.get("/jobs/stream")
 async def dashboard(
     request: Request, p: Principal = Depends(current_principal)
 ) -> EventSourceResponse:
     require_scope(p, "jobs:read")
     bus = _bus(request)
-
-    async def visible() -> set[int] | None:
-        if p.is_admin:
-            return None
-        async with session_scope() as s:
-            stmt = visible_to(select(Source.id), Source, p, Perm.use)
-            return set((await s.scalars(stmt)).all())
-
-    async def job_source(job_id: int) -> int | None:
-        async with session_scope() as s:
-            return await s.scalar(select(Job.source_id).where(Job.id == job_id))
-
+    release = _acquire(p.user_id)
+    gen = dashboard_stream(
+        bus, lambda: visible_source_ids(p), job_source_id, request.is_disconnected
+    )
     return EventSourceResponse(
-        dashboard_stream(bus, visible, job_source, request.is_disconnected), ping=PING_SECONDS
+        _guarded(gen, release), ping=PING_SECONDS, background=BackgroundTask(release)
     )
 
 
@@ -173,6 +235,10 @@ async def stream_job(
     bus = _bus(request)
     async with session_scope() as s:
         job = await _visible_job(s, p, job_id)
+    release = _acquire(p.user_id)
+    gen = job_stream(
+        bus, session_scope, job, request.is_disconnected, lambda: job_visible(p, job_id)
+    )
     return EventSourceResponse(
-        job_stream(bus, session_scope, job, request.is_disconnected), ping=PING_SECONDS
+        _guarded(gen, release), ping=PING_SECONDS, background=BackgroundTask(release)
     )
