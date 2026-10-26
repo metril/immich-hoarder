@@ -42,4 +42,9 @@ export default tseslint.config(
     files: ["src/components/ui/**"],
     rules: { "react-refresh/only-export-components": "off" },
   },
+  {
+    // TanStack Router routes throw redirect() objects and export Route next to components
+    files: ["src/routes/**"],
+    rules: { "@typescript-eslint/only-throw-error": "off", "react-refresh/only-export-components": "off" },
+  },
 );

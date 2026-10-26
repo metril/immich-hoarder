@@ -88,6 +88,7 @@ beforeAll(() => {
   HTMLElement.prototype.getBoundingClientRect = () =>
     ({ width: 1024, height: 800, top: 0, left: 0, right: 1024, bottom: 800, x: 0, y: 0, toJSON: () => ({}) });
   Element.prototype.scrollIntoView = () => {};
+  window.scrollTo = () => {};
 });
 
 beforeEach(() => FakeEventSource.reset());
