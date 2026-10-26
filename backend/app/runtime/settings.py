@@ -1,6 +1,7 @@
 """Admin-configurable runtime and notify settings (keys "runtime", "notify")."""
 
 import logging
+import threading
 from typing import Literal
 
 import apprise
@@ -13,7 +14,7 @@ from app.db.models import Setting
 log = logging.getLogger(__name__)
 
 
-async def _load_model[M: BaseModel](session: AsyncSession, key: str, model: type[M]) -> M:
+async def load_model[M: BaseModel](session: AsyncSession, key: str, model: type[M]) -> M:
     """Load a settings row validated as ``model``; defaults if missing or invalid."""
     row = await session.get(Setting, key)
     if row is None:
@@ -31,7 +32,7 @@ class RuntimeSettings(BaseModel, extra="forbid"):
     backup_cron: str = "0 3 * * *"
     backup_keep: int = Field(default=7, ge=0, le=365)
     max_concurrent_jobs: int | None = Field(default=None, ge=1, le=64)
-    cancel_grace_s: int = 10
+    cancel_grace_s: int = Field(default=10, ge=0, le=300)
 
     @field_validator("backup_cron")
     @classmethod
@@ -41,15 +42,25 @@ class RuntimeSettings(BaseModel, extra="forbid"):
         return v
 
 
+class _Quiet(logging.Filter):
+    """Drop apprise records emitted by the thread currently validating a URL."""
+
+    local = threading.local()
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return not getattr(self.local, "active", False)
+
+
+logging.getLogger("apprise").addFilter(_Quiet())
+
+
 def _apprise_ok(url: str) -> bool:
     # apprise logs the offending URL on failure; keep it out of our logs.
-    lg = logging.getLogger("apprise")
-    prev = lg.disabled
-    lg.disabled = True
+    _Quiet.local.active = True
     try:
         return bool(apprise.Apprise().add(url))
     finally:
-        lg.disabled = prev
+        _Quiet.local.active = False
 
 
 class NotifySettings(BaseModel, extra="forbid"):
@@ -66,8 +77,8 @@ class NotifySettings(BaseModel, extra="forbid"):
 
 
 async def load_runtime_settings(session: AsyncSession) -> RuntimeSettings:
-    return await _load_model(session, "runtime", RuntimeSettings)
+    return await load_model(session, "runtime", RuntimeSettings)
 
 
 async def load_notify_settings(session: AsyncSession) -> NotifySettings:
-    return await _load_model(session, "notify", NotifySettings)
+    return await load_model(session, "notify", NotifySettings)

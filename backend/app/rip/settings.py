@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.extractors import UnsupportedURL, validate_proxy
-from app.runtime.settings import _load_model
+from app.runtime.settings import load_model
 
 
 class RateLimit(BaseModel, extra="forbid"):
@@ -32,4 +32,4 @@ class RipSettings(BaseModel, extra="forbid"):
 
 
 async def load_rip_settings(session: AsyncSession) -> RipSettings:
-    return await _load_model(session, "rip", RipSettings)
+    return await load_model(session, "rip", RipSettings)

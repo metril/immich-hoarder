@@ -57,7 +57,7 @@ pythonpath = ["backend"]
 testpaths = ["backend/tests"]
 filterwarnings = [
     "ignore:The httpx module is deprecated; please use httpx2 instead\\.:authlib.deprecate.AuthlibDeprecationWarning",
-    "ignore:'imghdr' is deprecated:DeprecationWarning",
+    "ignore:'imghdr' is deprecated:DeprecationWarning:apprise.*",
 ]
 
 [tool.ruff]

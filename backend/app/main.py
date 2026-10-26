@@ -1,7 +1,10 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
@@ -48,6 +51,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.include_router(auth_api.router)
     app.include_router(api_router)
+
+    @app.exception_handler(RequestValidationError)
+    async def _validation_error(_req: Request, exc: RequestValidationError) -> JSONResponse:
+        # Same shape as FastAPI's default, minus input/ctx which can echo secrets.
+        detail = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in exc.errors()]
+        return JSONResponse(status_code=422, content={"detail": jsonable_encoder(detail)})
 
     @app.get("/healthz", include_in_schema=False)
     async def healthz() -> dict[str, str]:

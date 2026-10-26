@@ -1,4 +1,5 @@
 import logging
+import threading
 from pathlib import Path
 
 import httpx
@@ -13,9 +14,11 @@ from app.db.engine import session_scope
 from app.db.migrate import upgrade_head_async
 from app.db.models import Role, Setting, User
 from app.rip.settings import RipSettings, load_rip_settings
+from app.runtime import settings as rt_settings
 from app.runtime.settings import (
     NotifySettings,
     RuntimeSettings,
+    load_model,
     load_notify_settings,
     load_runtime_settings,
 )
@@ -81,6 +84,8 @@ def test_runtime_validates_cron_and_ranges() -> None:
         {"backup_keep": 366},
         {"max_concurrent_jobs": 0},
         {"max_concurrent_jobs": 65},
+        {"cancel_grace_s": -1},
+        {"cancel_grace_s": 301},
         {"bogus": 1},
     ):
         with pytest.raises(ValidationError):
@@ -106,6 +111,7 @@ async def test_loaders_default_on_missing_and_invalid(
     assert await load_runtime_settings(session) == RuntimeSettings()
     assert await load_notify_settings(session) == NotifySettings()
     assert await load_rip_settings(session) == RipSettings()
+    assert await load_model(session, "runtime", RuntimeSettings) == RuntimeSettings()
     assert not caplog.records
     session.add_all(
         [
@@ -121,9 +127,59 @@ async def test_loaders_default_on_missing_and_invalid(
         assert await load_rip_settings(session) == RipSettings()
     assert len(caplog.records) == 3
     assert "secret-token" not in caplog.text
-    session.add(Setting(key="x", value={}))
     row = await session.get(Setting, "runtime")
     assert row
     row.value = {"retention_days": 9}
     await session.flush()
     assert (await load_runtime_settings(session)).retention_days == 9
+
+
+async def test_body_validation_error_hides_input(client: httpx.AsyncClient) -> None:
+    h = await _admin_headers()
+    r = await client.put("/api/v1/settings", json=["json://secret"], headers=h)
+    assert r.status_code == 422
+    assert "secret" not in r.text
+    assert "input" not in r.json()["detail"][0]
+    assert "ctx" not in r.json()["detail"][0]
+
+
+def test_apprise_log_filter_is_thread_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    lg = logging.getLogger("apprise")
+    seen: list[str] = []
+
+    class H(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            seen.append(record.getMessage())
+
+    h = H()
+    lg.addHandler(h)
+    old = lg.level
+    lg.setLevel(logging.DEBUG)
+
+    class Fake:
+        raises = False
+
+        def add(self, url: str) -> bool:
+            lg.error("mine-%s", url)
+            t = threading.Thread(target=lambda: lg.error("other"))
+            t.start()
+            t.join()
+            if Fake.raises:
+                raise RuntimeError("boom")
+            return True
+
+    monkeypatch.setattr(rt_settings.apprise, "Apprise", Fake)
+    try:
+        assert rt_settings._apprise_ok("json://x")
+        assert seen == ["other"]
+        assert not lg.disabled
+        seen.clear()
+        Fake.raises = True
+        with pytest.raises(RuntimeError):
+            rt_settings._apprise_ok("json://x")
+        seen.clear()
+        lg.error("after")
+        assert seen == ["after"]
+    finally:
+        lg.removeHandler(h)
+        lg.setLevel(old)
