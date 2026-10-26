@@ -1,6 +1,8 @@
 import { useState } from "react";
-import { Dialog } from "radix-ui";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 /** Shows the plaintext once. The parent clears `secret` on close, so it is dropped from state. */
 export function KeyRevealDialog({ secret, onClose }: { secret: string | null; onClose: () => void }) {
@@ -14,7 +16,7 @@ export function KeyRevealDialog({ secret, onClose }: { secret: string | null; on
     }
   };
   return (
-    <Dialog.Root
+    <Dialog
       open={secret !== null}
       onOpenChange={(o) => {
         if (!o) {
@@ -23,30 +25,33 @@ export function KeyRevealDialog({ secret, onClose }: { secret: string | null; on
         }
       }}
     >
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content onEscapeKeyDown={(e) => e.preventDefault()} onPointerDownOutside={(e) => e.preventDefault()} onInteractOutside={(e) => e.preventDefault()} className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-popover p-4 text-popover-foreground shadow-xl">
-          <Dialog.Title className="text-base font-semibold">API key created</Dialog.Title>
-          <Dialog.Description className="mt-2 text-sm font-medium text-destructive">
-            This key will not be shown again
-          </Dialog.Description>
-          <input
+      <DialogContent
+        onEscapeKeyDown={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onInteractOutside={(e) => e.preventDefault()}
+      >
+        <DialogHeader>
+          <DialogTitle>API key created</DialogTitle>
+          <DialogDescription className="font-medium text-destructive">This key will not be shown again</DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          <Input
             readOnly
             aria-label="API key"
             value={secret ?? ""}
             onFocus={(e) => e.currentTarget.select()}
-            className="mt-3 h-9 w-full rounded-md border bg-background px-3 font-mono text-xs focus-visible:outline-2 focus-visible:outline-ring"
+            className="font-mono text-xs"
           />
-          <div className="mt-4 flex justify-end gap-2">
-            <button type="button" onClick={() => void copy()} className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring">
-              {copied ? "Copied" : "Copy"}
-            </button>
-            <Dialog.Close className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring">
-              Done
-            </Dialog.Close>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => void copy()}>
+            {copied ? "Copied" : "Copy"}
+          </Button>
+          <DialogClose asChild>
+            <Button>Done</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

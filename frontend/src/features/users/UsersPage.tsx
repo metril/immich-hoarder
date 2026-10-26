@@ -7,8 +7,13 @@ import { useMe } from "../../api/me";
 import type { components } from "../../api/schema";
 import { EmptyState } from "../../components/common/EmptyState";
 import { flatItems, useCursorList } from "../../components/common/useCursorList";
-import { useMediaQuery } from "../../components/common/useMediaQuery";
-import { VirtualTable, type Column } from "../../components/common/VirtualTable";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page";
+import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Truncate } from "@/components/ui/truncate";
 
 type UserOut = components["schemas"]["UserOut"];
 
@@ -38,60 +43,89 @@ function DisabledSwitch({ u }: { u: UserOut }) {
     );
   };
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
+    <Switch
       aria-label={`Disabled: ${u.name ?? u.sub}`}
+      checked={checked}
       disabled={me?.id === u.id || set.isPending}
-      onClick={toggle}
-      className={`relative h-6 w-11 shrink-0 rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50 ${checked ? "bg-destructive" : "bg-muted"}`}
-    >
-      <span className={`absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow transition-transform ${checked ? "translate-x-5" : ""}`} />
-    </button>
+      onCheckedChange={toggle}
+      className="data-[state=checked]:bg-destructive"
+    />
   );
 }
 
-const columns: Column<UserOut>[] = [
-  { id: "name", header: "Name", cell: (u) => <span className="block truncate">{u.name ?? u.sub}</span> },
-  { id: "email", header: "Email", cell: (u) => <span className="block truncate">{u.email ?? "—"}</span> },
-  {
-    id: "role",
-    header: "Role",
-    cell: (u) => (
-      <span className={`rounded px-1.5 py-0.5 text-xs ${u.role === "admin" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>{u.role}</span>
-    ),
-    width: "6rem",
-  },
-  { id: "groups", header: "Groups", cell: (u) => <span className="block truncate">{u.groups.join(", ") || "—"}</span> },
-  { id: "disabled", header: "Disabled", cell: (u) => <DisabledSwitch u={u} />, width: "6rem" },
-];
+const initials = (n: string) =>
+  n
+    .split(/[\s@._-]+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("") || "?";
 
 export default function UsersPage() {
   const q = useCursorList("users", "/api/v1/users");
   const rows = flatItems(q);
-  const mobile = useMediaQuery("(max-width: 767px)");
   return (
-    <div className="space-y-4 p-4">
-      <h1 className="text-xl font-semibold">Users</h1>
-      <p className="text-sm text-muted-foreground">Roles come from OIDC groups; you can only enable or disable accounts here.</p>
+    <>
+      <PageHeader title="Users" description="Roles come from OIDC groups; you can only enable or disable accounts here." />
       {q.isPending ? (
         <p role="status">Loading…</p>
       ) : q.isError ? (
         <p role="alert" className="text-destructive">{q.error.message}</p>
+      ) : rows.length === 0 ? (
+        <EmptyState title="No users" hint="Users appear after their first sign-in." />
       ) : (
-        <VirtualTable
-          label="Users"
-          rows={rows}
-          columns={columns}
-          rowHeight={mobile ? 240 : 56}
-          getRowId={(u) => u.id}
-          onEndReached={() => {
-            if (q.hasNextPage && !q.isFetchingNextPage) void q.fetchNextPage();
-          }}
-          empty={<EmptyState title="No users" hint="Users appear after their first sign-in." />}
-        />
+        <>
+          <Card className="overflow-hidden">
+            <Table aria-label="Users">
+              <TableHeader>
+                <TableRow className="h-11 hover:bg-transparent">
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Groups</TableHead>
+                  <TableHead>Disabled</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((u) => (
+                  <TableRow key={u.id}>
+                    <TableCell className="max-w-60 py-3">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <span
+                          aria-hidden
+                          className="flex size-8 shrink-0 items-center justify-center rounded-full bg-primary/15 text-xs font-semibold text-accent-foreground"
+                        >
+                          {initials(u.name ?? u.sub)}
+                        </span>
+                        <Truncate className="font-medium">{u.name ?? u.sub}</Truncate>
+                      </div>
+                    </TableCell>
+                    <TableCell className="max-w-60 py-3">
+                      <Truncate>{u.email ?? "—"}</Truncate>
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <Badge tone={u.role === "admin" ? "primary" : "neutral"}>{u.role}</Badge>
+                    </TableCell>
+                    <TableCell className="max-w-60 py-3">
+                      <Truncate>{u.groups.join(", ") || "—"}</Truncate>
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <DisabledSwitch u={u} />
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+          {q.hasNextPage && (
+            <div className="flex justify-center">
+              <Button variant="outline" loading={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>
+                Load more
+              </Button>
+            </div>
+          )}
+        </>
       )}
-    </div>
+    </>
   );
 }

@@ -1,12 +1,16 @@
 import { useState } from "react";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import { Dialog } from "radix-ui";
+import { Plus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { PageHeader } from "@/components/ui/page";
+import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Truncate } from "@/components/ui/truncate";
 import { isAdmin, useMe } from "../../api/me";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { EmptyState } from "../../components/common/EmptyState";
 import { SharingDialog } from "../../components/common/SharingDialog";
-import { useMediaQuery } from "../../components/common/useMediaQuery";
-import { VirtualTable, type Column } from "../../components/common/VirtualTable";
 import { VisibilityBadge } from "../../components/common/VisibilityBadge";
 import { AlbumsList } from "./AlbumsList";
 import { TargetForm } from "./TargetForm";
@@ -14,100 +18,133 @@ import { TargetTestButton } from "./TargetTestButton";
 import { useDeleteTarget, useTargets, type TargetOut } from "./hooks";
 
 const route = getRouteApi("/_app/targets");
-const btn = "rounded-md border px-2 py-1 text-xs hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring";
 
 function AlbumsSheet({ t }: { t: TargetOut }) {
   const [open, setOpen] = useState(false);
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger className={btn} aria-label={`Albums of ${t.name}`}>
-        Albums
-      </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed inset-y-0 right-0 z-50 w-full max-w-sm overflow-auto border-l bg-popover p-4 text-popover-foreground shadow-xl">
-          <Dialog.Title className="text-base font-semibold">Albums · {t.name}</Dialog.Title>
-          <Dialog.Description className="sr-only">Albums on this Immich server</Dialog.Description>
-          <div className="mt-3">
-            <AlbumsList targetId={t.id} enabled={open} />
-          </div>
-          <Dialog.Close className={`${btn} mt-4`}>Close</Dialog.Close>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button size="sm" variant="outline" aria-label={`Albums of ${t.name}`}>
+          Albums
+        </Button>
+      </SheetTrigger>
+      <SheetContent>
+        <SheetHeader>
+          <SheetTitle className="break-words">Albums · {t.name}</SheetTitle>
+          <SheetDescription className="sr-only">Albums on this Immich server</SheetDescription>
+        </SheetHeader>
+        <SheetBody>
+          <AlbumsList targetId={t.id} enabled={open} />
+        </SheetBody>
+      </SheetContent>
+    </Sheet>
   );
 }
 
-function Actions({ t }: { t: TargetOut }) {
+function TargetCard({ t }: { t: TargetOut }) {
   const del = useDeleteTarget();
   const me = useMe().data;
   const owns = me != null && (me.id === t.owner_id || isAdmin(me));
   return (
-    <div className="flex flex-wrap gap-1">
-      <TargetTestButton id={t.id} name={t.name} />
-      <AlbumsSheet t={t} />
-      {owns && <SharingDialog resource="targets" id={t.id} ownerId={t.owner_id} />}
-      {t.can_edit && (
-        <TargetForm target={t} trigger={<button type="button" aria-label={`Edit ${t.name}`} className={btn}>Edit</button>} />
-      )}
-      {owns && (
-      <ConfirmDialog
-        title={`Delete ${t.name}?`}
-        body="Jobs using this target will stop working."
-        confirmLabel="Delete"
-        destructive
-        onConfirm={() => del.mutateAsync(t.id).then(() => undefined)}
-        trigger={<button type="button" aria-label={`Delete ${t.name}`} className={btn}>Delete</button>}
-      />
-      )}
-    </div>
+    <Card className="flex w-full min-w-0 flex-col">
+      <CardContent className="flex flex-1 flex-col gap-4">
+        <div className="flex min-w-0 items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <Truncate className="font-display text-base font-semibold">{t.name}</Truncate>
+            <Truncate className="mt-1 font-mono text-xs text-muted-foreground">{t.url}</Truncate>
+          </div>
+          <VisibilityBadge visibility={t.visibility} />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {t.has_api_key ? (
+            <Badge tone="success" dot>
+              API key saved
+            </Badge>
+          ) : (
+            <Badge tone="warning" dot>
+              No API key
+            </Badge>
+          )}
+        </div>
+      </CardContent>
+      <CardFooter className="flex-wrap">
+        <TargetTestButton id={t.id} name={t.name} />
+        <AlbumsSheet t={t} />
+        {owns && <SharingDialog resource="targets" id={t.id} ownerId={t.owner_id} />}
+        {t.can_edit && (
+          <TargetForm
+            target={t}
+            trigger={
+              <Button size="sm" variant="outline" aria-label={`Edit ${t.name}`}>
+                Edit
+              </Button>
+            }
+          />
+        )}
+        {owns && (
+          <ConfirmDialog
+            title={`Delete ${t.name}?`}
+            body="Jobs using this target will stop working."
+            confirmLabel="Delete"
+            destructive
+            onConfirm={() => del.mutateAsync(t.id).then(() => undefined)}
+            trigger={
+              <Button size="sm" variant="outline" aria-label={`Delete ${t.name}`}>
+                Delete
+              </Button>
+            }
+          />
+        )}
+      </CardFooter>
+    </Card>
   );
 }
 
-const columns: Column<TargetOut>[] = [
-  { id: "name", header: "Name", cell: (t) => <span className="block truncate" title={t.name}>{t.name}</span>, width: "minmax(0,1fr)" },
-  { id: "url", header: "URL", cell: (t) => <span className="block truncate" title={t.url}>{t.url}</span>, width: "minmax(0,1.2fr)" },
-  { id: "vis", header: "Visibility", cell: (t) => <VisibilityBadge visibility={t.visibility} />, width: "8rem" },
-  {
-    id: "key",
-    header: "API key",
-    cell: (t) => (t.has_api_key ? <span className="rounded-full border px-2 py-0.5 text-xs">API key saved</span> : "—"),
-    width: "9rem",
-  },
-  { id: "actions", header: "Actions", cell: (t) => <Actions t={t} />, width: "22rem" },
-];
-
 export default function TargetsPage() {
   const q = useTargets();
-  const mobile = useMediaQuery("(max-width: 767px)");
   const search = route.useSearch();
   const navigate = useNavigate();
   return (
-    <div className="space-y-4 p-4">
-      <div className="flex items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">Targets</h1>
-        <TargetForm
-          open={search.new === true}
-          onOpenChange={(o) => void navigate({ to: "/targets", search: o ? { new: true } : {}, replace: !o })}
-          trigger={<button type="button" className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring">Add target</button>} />
-      </div>
+    <>
+      <PageHeader
+        title="Targets"
+        description="Immich servers that jobs upload to."
+        actions={
+          <TargetForm
+            open={search.new === true}
+            onOpenChange={(o) => void navigate({ to: "/targets", search: o ? { new: true } : {}, replace: !o })}
+            trigger={
+              <Button>
+                <Plus aria-hidden /> Add target
+              </Button>
+            }
+          />
+        }
+      />
       {q.isPending ? (
         <p role="status">Loading…</p>
       ) : q.isError ? (
         <p role="alert" className="text-destructive">{q.error.message}</p>
+      ) : q.rows.length === 0 ? (
+        <EmptyState title="No targets yet" hint="Add an Immich server to upload to." />
       ) : (
-        <VirtualTable
-          label="Targets"
-          rows={q.rows}
-          columns={columns}
-          rowHeight={mobile ? 260 : 56}
-          getRowId={(t) => t.id}
-          onEndReached={() => {
-            if (q.hasNextPage && !q.isFetchingNextPage) void q.fetchNextPage();
-          }}
-          empty={<EmptyState title="No targets yet" hint="Add an Immich server to upload to." />}
-        />
+        <>
+          <ul aria-label="Targets" className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+            {q.rows.map((t) => (
+              <li key={t.id} className="flex min-w-0">
+                <TargetCard t={t} />
+              </li>
+            ))}
+          </ul>
+          {q.hasNextPage && (
+            <div className="flex justify-center">
+              <Button variant="outline" loading={q.isFetchingNextPage} onClick={() => void q.fetchNextPage()}>
+                Load more
+              </Button>
+            </div>
+          )}
+        </>
       )}
-    </div>
+    </>
   );
 }

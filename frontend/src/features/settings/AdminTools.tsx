@@ -3,12 +3,15 @@ import { toast } from "sonner";
 import { ApiError } from "../../api/errors";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { RelativeTime } from "../../components/common/RelativeTime";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Truncate } from "@/components/ui/truncate";
 import { useMediaQuery } from "../../components/common/useMediaQuery";
 import { fmtBytes } from "../sources/schema";
 import { downloadExport, importYaml, useBackup, useBackups, usePrune, type ImportResult } from "./hooks";
 
 const MAX_IMPORT = 5 * 1024 * 1024;
-const btn = "rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50";
 
 function Backups() {
   const list = useBackups();
@@ -27,19 +30,19 @@ function Backups() {
         ),
     });
   return (
-    <section aria-labelledby="h-backups" className="grid gap-2">
-      <div className="flex items-center justify-between">
+    <section aria-labelledby="h-backups" className="grid gap-3">
+      <div className="flex items-center justify-between gap-3">
         <h2 id="h-backups" className="text-base font-semibold">Backups</h2>
-        <button type="button" className={btn} disabled={backup.isPending} onClick={run}>Back up now</button>
+        <Button variant="outline" size="sm" loading={backup.isPending} onClick={run}>Back up now</Button>
       </div>
       {list.isError ? (
         <p role="alert" className="text-sm text-destructive">{list.error.message}</p>
       ) : (list.data?.items.length ?? 0) === 0 ? (
         <p className="text-sm text-muted-foreground">{list.isPending ? "Loading…" : "No backups yet."}</p>
       ) : narrow ? (
-        <ul className="grid gap-2">
+        <ul className="grid gap-3">
           {list.data?.items.map((b) => (
-            <li key={b.file} className="grid gap-0.5 rounded-md border p-3 text-sm">
+            <li key={b.file} className="grid gap-1 rounded-lg border p-3 text-sm">
               <span className="break-all font-mono">{b.file}</span>
               <span className="text-xs text-muted-foreground">
                 <RelativeTime iso={b.mtime} /> · {fmtBytes(b.size)}
@@ -48,24 +51,28 @@ function Backups() {
           ))}
         </ul>
       ) : (
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-xs text-muted-foreground">
-              <th className="py-1 font-medium">File</th>
-              <th className="py-1 font-medium">Created</th>
-              <th className="py-1 text-right font-medium">Size</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.data?.items.map((b) => (
-              <tr key={b.file} className="border-t">
-                <td className="py-1 font-mono">{b.file}</td>
-                <td className="py-1"><RelativeTime iso={b.mtime} /></td>
-                <td className="py-1 text-right">{fmtBytes(b.size)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="rounded-lg border">
+          <Table aria-label="Backups">
+            <TableHeader>
+              <TableRow className="h-10 hover:bg-transparent">
+                <TableHead>File</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="text-right">Size</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {list.data?.items.map((b) => (
+                <TableRow key={b.file} className="h-12">
+                  <TableCell className="max-w-72 font-mono">
+                    <Truncate>{b.file}</Truncate>
+                  </TableCell>
+                  <TableCell><RelativeTime iso={b.mtime} /></TableCell>
+                  <TableCell className="text-right">{fmtBytes(b.size)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
     </section>
   );
@@ -74,7 +81,7 @@ function Backups() {
 function Prune() {
   const prune = usePrune();
   return (
-    <section aria-labelledby="h-prune" className="grid gap-2">
+    <section aria-labelledby="h-prune" className="grid gap-3">
       <h2 id="h-prune" className="text-base font-semibold">Maintenance</h2>
       <p className="text-sm text-muted-foreground">Delete finished jobs past the retention window and unused ephemeral sources.</p>
       <div>
@@ -87,7 +94,7 @@ function Prune() {
             const r = await prune.mutateAsync();
             toast.success(`Pruned ${r.jobs} jobs, ${r.ephemeral_sources} ephemeral sources`);
           }}
-          trigger={<button type="button" className={btn}>Prune now</button>}
+          trigger={<Button variant="outline" className="border-destructive text-destructive hover:bg-destructive/10">Prune now</Button>}
         />
       </div>
     </section>
@@ -108,7 +115,7 @@ function Export() {
     }
   };
   return (
-    <section aria-labelledby="h-export" className="grid gap-2">
+    <section aria-labelledby="h-export" className="grid gap-3">
       <h2 id="h-export" className="text-base font-semibold">Export configuration</h2>
       <div role="radiogroup" aria-label="Secrets" className="grid gap-1 text-sm">
         <label className="flex items-center gap-2">
@@ -121,7 +128,7 @@ function Export() {
         </label>
       </div>
       <div>
-        <button type="button" className={btn} disabled={busy} onClick={() => void go()}>Download</button>
+        <Button variant="outline" loading={busy} onClick={() => void go()}>Download</Button>
       </div>
     </section>
   );
@@ -167,7 +174,7 @@ function Import() {
   };
   const sum = (m: Record<string, number>) => Object.entries(m).map(([k, v]) => `${v} ${k}`).join(", ") || "none";
   return (
-    <section aria-labelledby="h-import" className="grid gap-2">
+    <section aria-labelledby="h-import" className="grid gap-3">
       <h2 id="h-import" className="text-base font-semibold">Import configuration</h2>
       <label className="grid gap-1 text-sm">
         <span>Config file</span>
@@ -189,7 +196,7 @@ function Import() {
       )}
       {result && !result.applied && text !== undefined && (
         <div>
-          <button type="button" className={btn} disabled={busy || result.errors.length > 0} onClick={() => void apply()}>Apply import</button>
+          <Button variant="outline" className="border-destructive text-destructive hover:bg-destructive/10" disabled={busy || result.errors.length > 0} onClick={() => void apply()}>Apply import</Button>
         </div>
       )}
     </section>
@@ -199,10 +206,26 @@ function Import() {
 export function AdminTools() {
   return (
     <div className="grid gap-8">
-      <Backups />
-      <Prune />
-      <Export />
-      <Import />
+      <Card>
+        <CardHeader>
+          <CardTitle>Backups and export</CardTitle>
+          <CardDescription>Database backups and portable configuration.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-8">
+          <Backups />
+          <Export />
+        </CardContent>
+      </Card>
+      <Card className="border-destructive/50">
+        <CardHeader>
+          <CardTitle className="text-destructive">Danger zone</CardTitle>
+          <CardDescription>These actions change or delete data. Check before applying.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-8">
+          <Prune />
+          <Import />
+        </CardContent>
+      </Card>
     </div>
   );
 }
