@@ -1,3 +1,6 @@
+import asyncio
+import shutil
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
@@ -16,12 +19,20 @@ from app.db.engine import get_session
 from app.db.models import BackfillMode, Perm, Source
 from app.rip.build import check_refs, credential_snapshot
 from app.rip.filters import FilterSpec, validate_backfill
-from app.rip.preview import PREVIEW_MAX, PreviewError, PreviewItem, preview, run_in_subprocess
+from app.rip.preview import (
+    PREVIEW_MAX,
+    PreviewError,
+    PreviewItem,
+    make_job_dir,
+    preview,
+    run_in_subprocess,
+)
 from app.rip.settings import load_rip_settings
 from app.rip.snapshot import SourceSnapshot
 from app.schemas.sources import SourceIn, SourceOut, SourcePatch
 
 PREVIEW_TIMEOUT = 60.0
+_PREVIEW_SEM = asyncio.Semaphore(2)
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 
@@ -123,14 +134,19 @@ async def preview_source(
     )
     # release the DB connection before the (slow) subprocess run
     await session.commit()
+    if _PREVIEW_SEM.locked():
+        raise HTTPException(429, "too many previews")
+    await _PREVIEW_SEM.acquire()
+    job_dir = None
     try:
+        job_dir = make_job_dir(request.app.state.settings.scratch_dir)
         items = await run_in_threadpool(
             run_in_subprocess,
             preview,
             snap,
             cred,
             rip,
-            request.app.state.settings.scratch_dir,
+            job_dir,
             body.limit,
             timeout=PREVIEW_TIMEOUT,
         )
@@ -138,6 +154,10 @@ async def preview_source(
         raise HTTPException(504, "preview timed out") from None
     except PreviewError as e:
         raise HTTPException(502, f"preview failed: {str(e)[:200]}") from None
+    finally:
+        if job_dir is not None:
+            shutil.rmtree(job_dir, ignore_errors=True)
+        _PREVIEW_SEM.release()
     return PreviewOut(items=items)
 
 

@@ -1,11 +1,15 @@
+import asyncio
+import os
+import shutil
 import sys
+import threading
+import time
 from pathlib import Path
 
 import httpx
 import pytest
 from fastapi import HTTPException
 from pydantic import SecretStr
-from sqlalchemy import select
 
 from app.api.v1 import sources as sources_api
 from app.core.config import Settings
@@ -22,9 +26,16 @@ from app.db.models import (
 )
 from app.rip.build import build_snapshots
 from app.rip.filters import FilterSpec, check_meta
-from app.rip.preview import PreviewItem, preview, run_in_subprocess
+from app.rip.pipeline import sweep_scratch
+from app.rip.preview import (
+    PreviewError,
+    PreviewItem,
+    make_job_dir,
+    preview,
+    run_in_subprocess,
+)
 from app.rip.settings import RateLimit, RipSettings
-from app.rip.snapshot import SourceSnapshot
+from app.rip.snapshot import CredentialSnapshot, SourceSnapshot
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "api"))
 from helpers import TARGET, actor  # noqa: E402
@@ -58,10 +69,21 @@ def _settings(tmp_path: Path) -> RipSettings:
     )
 
 
+def _run(
+    src: SourceSnapshot,
+    tmp_path: Path,
+    cred: CredentialSnapshot | None = None,
+    limit: int = 50,
+) -> list[PreviewItem]:
+    d = make_job_dir(tmp_path / "s")
+    try:
+        return preview(src, cred, _settings(tmp_path), d, limit)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_preview_lists_items_from_local_server(img_server: str, tmp_path: Path) -> None:
-    items = preview(
-        _src(f"{img_server}/img/a.jpg"), None, _settings(tmp_path), scratch=tmp_path / "s"
-    )
+    items = _run(_src(f"{img_server}/img/a.jpg"), tmp_path)
     assert len(items) == 1
     assert items[0].filename == "a" and items[0].verdict is None
     assert items[0].url.endswith("/img/a.jpg")
@@ -70,16 +92,14 @@ def test_preview_lists_items_from_local_server(img_server: str, tmp_path: Path) 
 
 def test_preview_title_filter_verdict(img_server: str, tmp_path: Path) -> None:
     f = FilterSpec(title_include="zzz")
-    items = preview(
-        _src(f"{img_server}/img/a.jpg", f), None, _settings(tmp_path), scratch=tmp_path / "s"
-    )
+    items = _run(_src(f"{img_server}/img/a.jpg", f), tmp_path)
     assert items[0].verdict == "title_not_included"
 
 
 def test_preview_limit(img_server: str, tmp_path: Path) -> None:
     s = _src(f"r:{img_server}/page/two")
     s.extractor = "recursive"
-    items = preview(s, None, _settings(tmp_path), tmp_path / "s", limit=1)
+    items = _run(s, tmp_path, limit=1)
     assert len(items) == 1
 
 
@@ -211,7 +231,7 @@ async def test_preview_requires_use_on_credential(client: httpx.AsyncClient) -> 
         },
         headers=hb,
     )
-    assert r.status_code == 403
+    assert r.status_code == 403 and r.json()["detail"] == "no access to credential"
 
 
 async def test_build_snapshots_rechecks_access(client: httpx.AsyncClient, settings: object) -> None:
@@ -255,4 +275,111 @@ async def test_build_snapshots_rechecks_access(client: httpx.AsyncClient, settin
         with pytest.raises(HTTPException) as e3:
             await build_snapshots(s, src, box)
         assert e3.value.status_code == 403
-    assert select and SecretStr and PreviewItem
+
+
+def test_preview_since_flows_to_verdict(img_server: str, tmp_path: Path) -> None:
+    from datetime import datetime
+
+    from app.rip import preview as pv
+
+    kw = {"date": datetime(2020, 1, 1), "url": "u", "filename": "f"}
+    src = _src("http://x/")
+    src.backfill_mode = BackfillMode.since
+    src.backfill_value = "2021-01-01"
+    assert pv._item(kw, src).verdict == "date_out_of_range"
+
+
+def test_preview_nonzero_status_raises(img_server: str, tmp_path: Path) -> None:
+    s = _src(f"r:{img_server}/nope")
+    s.extractor = "recursive"
+    with pytest.raises(PreviewError) as e:
+        _run(s, tmp_path)
+    assert str(e.value)
+
+
+def test_preview_error_scrubs_secret(img_server: str, tmp_path: Path) -> None:
+    from app.rip.preview import _summary
+
+    cred = CredentialSnapshot(site="x", kind=CredentialKind.userpass, secret=SecretStr("hunter2"))
+    assert "hunter2" not in _summary(["bad hunter2 here"], 1, cred)
+    assert len(_summary(["x" * 500], 1, None)) <= 200
+
+
+async def test_preview_404_is_502(
+    client: httpx.AsyncClient, img_server: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_extractor(session: object, url: str) -> str:
+        return "recursive"
+
+    monkeypatch.setattr(sources_api, "_extractor_for", fake_extractor)
+    _, h = await actor("a")
+    tid = await _mk_target(h, client)
+    async with session_scope() as s:
+        s.add(Setting(key="rip", value={"allow_private_hosts": True}))
+    r = await client.post(
+        "/api/v1/sources/preview",
+        json={"name": "p", "url": f"r:{img_server}/nope", "target_id": tid},
+        headers=h,
+    )
+    assert r.status_code == 502 and r.json()["detail"].startswith("preview failed: ")
+
+
+def _slow_with_cookie(src: object, cred: object, rip: object, job_dir: Path, limit: int) -> None:
+    (job_dir / ".cookies.txt").write_text("SECRET")
+    time.sleep(60)
+
+
+async def test_timeout_cleans_job_dir(
+    client: httpx.AsyncClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(sources_api, "preview", _slow_with_cookie)
+    monkeypatch.setattr(sources_api, "PREVIEW_TIMEOUT", 3.0)
+    _, h = await actor("a")
+    tid = await _mk_target(h, client)
+    r = await client.post(
+        "/api/v1/sources/preview",
+        json={"name": "p", "url": "https://www.reddit.com/r/pics/", "target_id": tid},
+        headers=h,
+    )
+    assert r.status_code == 504
+    assert list(settings.scratch_dir.glob("preview-*")) == []
+
+
+def test_sweep_preview_dirs(tmp_path: Path) -> None:
+    old, fresh, cli = tmp_path / "preview-old", tmp_path / "preview-new", tmp_path / "cli-1"
+    for d in (old, fresh, cli):
+        d.mkdir()
+    t = time.time() - 700
+    os.utime(old, (t, t))
+    os.utime(cli, (t, t))
+    sweep_scratch(tmp_path, set())
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["cli-1", "preview-new"]
+
+
+async def test_preview_429_when_busy(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    entered = threading.Semaphore(0)
+    release = threading.Event()
+
+    def slow(*a: object, **k: object) -> list[object]:
+        entered.release()
+        release.wait(20)
+        return []
+
+    monkeypatch.setattr(sources_api, "run_in_subprocess", slow)
+    monkeypatch.setattr(sources_api, "_PREVIEW_SEM", asyncio.Semaphore(2))
+    _, h = await actor("a")
+    tid = await _mk_target(h, client)
+    body = {"name": "p", "url": "https://www.reddit.com/r/pics/", "target_id": tid}
+
+    async def post() -> httpx.Response:
+        return await client.post("/api/v1/sources/preview", json=body, headers=h)
+
+    t1, t2 = asyncio.create_task(post()), asyncio.create_task(post())
+    for _ in range(2):
+        assert await asyncio.to_thread(entered.acquire, True, 15)
+    r3 = await post()
+    release.set()
+    assert r3.status_code == 429 and r3.json() == {"detail": "too many previews"}
+    assert (await t1).status_code == 200 and (await t2).status_code == 200

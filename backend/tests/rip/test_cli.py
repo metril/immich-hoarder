@@ -1,4 +1,5 @@
 import json
+import signal
 import uuid
 from pathlib import Path
 
@@ -110,10 +111,12 @@ def test_cli_run_end_to_end(
         src.url = f"{img_server}/img/a.jpg"
         s.commit()
     eng.dispose()
+    before = (signal.getsignal(signal.SIGINT), signal.getsignal(signal.SIGTERM))
     with respx.mock(assert_all_called=False) as router:
         ups = _mock_immich(router)
         code = main(["run", "--source-id", str(sid)])
     assert code == 0
+    assert before == (signal.getsignal(signal.SIGINT), signal.getsignal(signal.SIGTERM))
     out = capsys.readouterr().out
     events = [json.loads(line) for line in out.splitlines() if line]
     assert "item.uploaded" in [e["type"] for e in events]

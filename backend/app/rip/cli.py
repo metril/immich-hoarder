@@ -62,8 +62,15 @@ def _run(source_id: int, log_level: str | None) -> int:
         src.log_level = log_level
     engine = make_sync_engine(st.database_url)
     cancel = threading.Event()
-    for sig in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(sig, lambda *_: cancel.set())
+    sigs = (signal.SIGINT, signal.SIGTERM)
+    previous = {sig: signal.getsignal(sig) for sig in sigs}
+
+    def on_signal(signum: int, _frame: object) -> None:
+        cancel.set()
+        signal.signal(signum, signal.SIG_DFL)  # a second signal terminates immediately
+
+    for sig in sigs:
+        signal.signal(sig, on_signal)
     try:
         with Session(engine) as s:
             incremental = (
@@ -72,10 +79,12 @@ def _run(source_id: int, log_level: str | None) -> int:
                 ).first()
                 is not None
             )
+        ts = int(time.time())
         store = DedupeStore(engine)
         cap = rip.job_scratch_max_bytes or st.scratch_max_bytes // max(st.max_concurrent_jobs, 1)
         ctx = RipContext(
-            job_id=int(time.time()),
+            job_id=ts,
+            job_dir_name=f"cli-{ts}",
             source=src,
             target=target,
             credential=cred,
@@ -89,6 +98,8 @@ def _run(source_id: int, log_level: str | None) -> int:
         )
         result = run_rip(ctx, _emit, cancel)
     finally:
+        for sig, h in previous.items():
+            signal.signal(sig, h)
         engine.dispose()
     return _EXIT[result.status]
 

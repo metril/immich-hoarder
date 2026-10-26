@@ -26,6 +26,7 @@ from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot
 
 _DESC_MAX = 2000
 _MIN_FREE_RATIO = 0.05
+_PREVIEW_STALE_S = 600
 _COUNTERS = (
     "discovered",
     "downloaded",
@@ -51,6 +52,7 @@ class RipContext:
     store: DedupeStore
     recorder: Recorder
     client_factory: Callable[[TargetSnapshot], ImmichClient]
+    job_dir_name: str | None = None
 
 
 @dataclass
@@ -61,12 +63,21 @@ class RipResult:
 
 
 def sweep_scratch(scratch_dir: Path, active_job_ids: set[int]) -> int:
-    """Remove job dirs (numeric names) that no active job owns; return how many."""
+    """Remove orphaned numeric job dirs and stale (>10 min) preview dirs; keep cli-* dirs."""
     n = 0
     if not scratch_dir.is_dir():
         return 0
+    now = time.time()
     for p in scratch_dir.iterdir():
-        if p.is_dir() and p.name.isdigit() and int(p.name) not in active_job_ids:
+        if not p.is_dir():
+            continue
+        if p.name.isdigit():
+            stale = int(p.name) not in active_job_ids
+        elif p.name.startswith("preview-"):
+            stale = now - p.stat().st_mtime > _PREVIEW_STALE_S
+        else:
+            stale = False
+        if stale:
             shutil.rmtree(p, ignore_errors=True)
             n += 1
     return n
@@ -103,7 +114,7 @@ class _Rip:
         self.sha_lock = threading.Lock()
         self.sha_events: dict[bytes, threading.Event] = {}
         self.fatal: str | None = None
-        self.job_dir = ctx.scratch_dir / str(ctx.job_id)
+        self.job_dir = ctx.scratch_dir / (ctx.job_dir_name or str(ctx.job_id))
         self.started = time.monotonic()
         self.since: date | None = None
         if not ctx.incremental and self.src.backfill_mode == BackfillMode.since:

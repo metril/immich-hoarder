@@ -1,10 +1,9 @@
 """Dry-run preview: list what a source would fetch, without downloading anything."""
 
 import multiprocessing
-import shutil
 import tempfile
 from collections.abc import Callable
-from datetime import datetime
+from datetime import date, datetime
 from multiprocessing.connection import Connection
 from pathlib import Path
 from threading import Event
@@ -13,8 +12,9 @@ from typing import Any
 from gallery_dl import exception
 from pydantic import BaseModel
 
+from app.db.models import BackfillMode
 from app.rip.filters import check_meta
-from app.rip.gdl import HoarderJob, configure, run_job
+from app.rip.gdl import HoarderJob, capture_logs, configure, run_job
 from app.rip.settings import RipSettings
 from app.rip.snapshot import CredentialSnapshot, SourceSnapshot
 
@@ -33,6 +33,18 @@ class PreviewItem(BaseModel):
     verdict: str | None
 
 
+def make_job_dir(scratch: Path) -> Path:
+    """Create a private job dir; the caller owns it and must remove it."""
+    scratch.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix="preview-", dir=scratch))
+
+
+def _since(src: SourceSnapshot) -> date | None:
+    if src.backfill_mode == BackfillMode.since and src.backfill_value:
+        return date.fromisoformat(src.backfill_value)
+    return None
+
+
 def _item(kw: dict[str, Any], src: SourceSnapshot) -> PreviewItem:
     d = kw.get("date")
     url = kw.get("url") or kw.get("_url") or kw.get("permalink") or ""
@@ -42,42 +54,57 @@ def _item(kw: dict[str, Any], src: SourceSnapshot) -> PreviewItem:
         title=str(title) if title else None,
         date=d.isoformat() if isinstance(d, datetime) else None,
         filename=str(kw.get("filename") or ""),
-        verdict=check_meta(kw, src.filters),
+        verdict=check_meta(kw, src.filters, since=_since(src)),
     )
+
+
+def _summary(errors: list[str], status: int, cred: CredentialSnapshot | None) -> str:
+    msg = "; ".join(errors) or f"gallery-dl exited with status {status}"
+    if cred is not None:
+        secret = cred.secret.get_secret_value()
+        if secret:
+            msg = msg.replace(secret, "***")
+    return msg[:200]
 
 
 def preview(
     src: SourceSnapshot,
     cred: CredentialSnapshot | None,
     settings: RipSettings,
-    scratch: Path,
+    job_dir: Path,
     limit: int = PREVIEW_MAX,
 ) -> list[PreviewItem]:
-    """Run gallery-dl with downloads disabled and collect up to `limit` items."""
+    """Run gallery-dl with downloads disabled and collect up to `limit` items.
+
+    `job_dir` is created and removed by the caller.
+    """
     from gallery_dl import config
 
-    scratch.mkdir(parents=True, exist_ok=True)
-    job_dir = Path(tempfile.mkdtemp(prefix="preview-", dir=scratch))
     items: list[PreviewItem] = []
+    errors: list[str] = []
 
     def on_discovered(kw: dict[str, Any]) -> None:
         if len(items) >= limit:
             raise exception.StopExtraction()
         items.append(_item(kw, src))
 
-    try:
-        configure(src, cred, settings, job_dir, incremental=False)
-        config.set(("extractor",), "download", False)
-        job = HoarderJob(
-            src.url,
-            archive_check=lambda _k: False,
-            on_discovered=on_discovered,
-            on_file=lambda _p, _m: None,
-            cancel=Event(),
-        )
-        run_job(job, src, settings)
-    finally:
-        shutil.rmtree(job_dir, ignore_errors=True)
+    def collect(ev: dict[str, Any]) -> None:
+        if ev.get("level") == "error":
+            errors.append(str(ev.get("msg", "")))
+
+    configure(src, cred, settings, job_dir, incremental=False)
+    config.set(("extractor",), "download", False)
+    job = HoarderJob(
+        src.url,
+        archive_check=lambda _k: False,
+        on_discovered=on_discovered,
+        on_file=lambda _p, _m: None,
+        cancel=Event(),
+    )
+    with capture_logs(collect, "error", categories=(src.extractor,)):
+        status = run_job(job, src, settings)
+    if status != 0 and not items:
+        raise PreviewError(_summary(errors, status, cred))
     return items[:limit]
 
 
