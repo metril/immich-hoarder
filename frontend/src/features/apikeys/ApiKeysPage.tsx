@@ -63,7 +63,7 @@ export default function ApiKeysPage() {
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">API keys</h1>
+        <h1 className="text-xl font-semibold">API Keys</h1>
         <ApiKeyForm
           onKey={setSecret}
           trigger={<button type="button" className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring">New API key</button>}

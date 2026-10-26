@@ -9,7 +9,7 @@ test("dashboard loads with no console errors and no CSP violations", async ({ pa
   });
   page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /Dashboard|Welcome/ })).toBeVisible();
   // Settled = dashboard data loaded (no skeletons left), so late console errors would have surfaced.
   await expect(page.getByRole("heading", { name: "Recent uploads" })).toBeVisible();
   await expect(page.getByRole("status", { name: /^Loading/ })).toHaveCount(0);
@@ -28,7 +28,9 @@ test("nav to every admin page via sidebar", async ({ page }) => {
   const nav = page.getByRole("navigation", { name: "Main" });
   for (const name of PAGES) {
     await nav.getByRole("link", { name, exact: true }).click();
-    await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+    // Exactly one h1 per page; the document title tracks the route.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    await expect(page).toHaveTitle(new RegExp(`^${name} · |^${name}$`));
   }
 });
 

@@ -52,7 +52,7 @@ describe("auth gate", () => {
   it("admin can visit mixed-case /SETTINGS", async () => {
     renderWithProviders(null, { me: admin, route: "/SETTINGS" });
     await screen.findByRole("navigation", { name: "Main" });
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("Settings");
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Settings");
   });
 
   it("401 mid-session shows the login screen", async () => {
