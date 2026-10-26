@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.0](https://github.com/metril/immich-hoarder/compare/v0.2.1...v0.3.0) (2026-10-26)
+
+
+### Features
+
+* **ui:** darkroom tokens, fonts and ui primitives ([5d638a5](https://github.com/metril/immich-hoarder/commit/5d638a5467ca5d006d4f250354ea31d19cb8e3b2))
+* **ui:** live active-jobs badge in navigation ([f671045](https://github.com/metril/immich-hoarder/commit/f67104510b885277a994b09041fc166e1fba2446))
+* **ui:** redesign dashboard and jobs ([e29dd15](https://github.com/metril/immich-hoarder/commit/e29dd1551c6a9826073e9c00cac470b4d522e36c))
+* **ui:** redesign shell, navigation and login ([3755e6d](https://github.com/metril/immich-hoarder/commit/3755e6d9b1be4d799f95a9e5b2bd1d8c9ed058ce))
+* **ui:** redesign sources ([b4bb0d4](https://github.com/metril/immich-hoarder/commit/b4bb0d461af50d40a712c7305801710e3941c8c8))
+* **ui:** redesign targets, credentials, keys, users and settings ([99a3159](https://github.com/metril/immich-hoarder/commit/99a31593abf679de2fcf1cd79f6214f9dea47e25))
+
+
+### Bug Fixes
+
+* **ui:** accessible dropdown menus and review fixes ([2a207b2](https://github.com/metril/immich-hoarder/commit/2a207b29fbba0469ffcd6180deaf278fce8ed217))
+* **ui:** switch, table alignment and mobile polish ([b39e10c](https://github.com/metril/immich-hoarder/commit/b39e10c5d6d9a510b0354daefb01e18b3eee896a))
+* **ui:** visual polish and refreshed screenshots ([f5d83ca](https://github.com/metril/immich-hoarder/commit/f5d83caeab18d57673e825e63277d976eb8884e3))
+
 ## [0.2.1](https://github.com/metril/immich-hoarder/compare/v0.2.0...v0.2.1) (2026-10-26)
 
 
