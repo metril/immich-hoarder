@@ -48,7 +48,7 @@ dev = [
 ]
 
 [tool.hatch.version]
-path = "backend/app/__init__.py"
+path = "backend/app/_version.py"
 
 [build-system]
 requires = ["hatchling"]
@@ -59,6 +59,7 @@ packages = ["backend/app"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = ["pg: runs against Postgres when IH_TEST_PG_URL is set, otherwise skipped"]
 pythonpath = ["backend"]
 testpaths = ["backend/tests"]
 filterwarnings = [

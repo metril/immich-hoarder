@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from sqlalchemy import event, func, select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from tests.pgsupport import BACKENDS
 
 from app.db.engine import make_engine
 from app.db.models import (
@@ -28,11 +29,15 @@ from app.runtime.writer import IpcBridge, JobWriter, make_ipc_queue
 ASSET = str(uuid.uuid4())
 
 
-@pytest.fixture
+@pytest.fixture(params=BACKENDS)
 async def env(
-    tmp_path: Path,
+    request: pytest.FixtureRequest, tmp_path: Path
 ) -> AsyncIterator[tuple[AsyncEngine, async_sessionmaker[AsyncSession]]]:
-    eng = make_engine(f"sqlite+aiosqlite:///{tmp_path / 'w.db'}")
+    if request.param == "pg":
+        url = request.getfixturevalue("pg_url")
+    else:
+        url = f"sqlite+aiosqlite:///{tmp_path / 'w.db'}"
+    eng = make_engine(url)
     async with eng.begin() as c:
         await c.run_sync(Base.metadata.create_all)
     sf = async_sessionmaker(eng, expire_on_commit=False)

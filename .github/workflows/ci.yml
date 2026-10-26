@@ -36,7 +36,7 @@ jobs:
               - '**'
               - '!CHANGELOG.md'
               - '!.release-please-manifest.json'
-              - '!backend/app/__init__.py'
+              - '!backend/app/_version.py'
               - '!version.txt'
       - id: skip
         env:
@@ -84,6 +84,32 @@ jobs:
       - run: uv run mypy
       - run: uv run pytest -q
 
+  postgres:
+    needs: changes
+    if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: pg
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      IH_TEST_PG_URL: postgresql://postgres:pg@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: uv run pytest -m pg -q
+
   docker:
     needs: changes
     if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.docker == 'true'
@@ -99,9 +125,24 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  docker-arm64:
+    needs: changes
+    if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: false
+          cache-from: type=gha,scope=arm64
+          cache-to: type=gha,mode=max,scope=arm64
+
   ci-ok:
     if: always()
-    needs: [changes, backend, docker]
+    needs: [changes, backend, postgres, docker, docker-arm64]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no job failed or was cancelled

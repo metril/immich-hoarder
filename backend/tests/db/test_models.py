@@ -8,8 +8,10 @@ from alembic.migration import MigrationContext
 from sqlalchemy import create_engine, delete, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from tests.pgsupport import PG_URL
 
 from app.db import engine as eng
+from app.db.engine import make_sync_engine
 from app.db.migrate import alembic_config, upgrade_head_async
 from app.db.models import (
     AssetSeen,
@@ -114,3 +116,19 @@ async def test_fk_policies(session: AsyncSession) -> None:
     target_id, _ = await _seed(session)
     with pytest.raises(IntegrityError):
         await session.execute(text("DELETE FROM immich_targets WHERE id = :i"), {"i": target_id})
+
+
+@pytest.mark.pg
+@pytest.mark.skipif(not PG_URL, reason="IH_TEST_PG_URL not set")
+def test_pg_upgrade_matches_models_and_downgrades(pg_url: str) -> None:
+    cfg = alembic_config(pg_url)
+    command.upgrade(cfg, "head")
+    sync = make_sync_engine(pg_url)
+    try:
+        with sync.connect() as conn:
+            ctx = MigrationContext.configure(conn, opts={"compare_type": True})
+            assert compare_metadata(ctx, Base.metadata) == []
+        command.downgrade(cfg, "base")
+        assert set(inspect(sync).get_table_names()) <= {"alembic_version"}
+    finally:
+        sync.dispose()

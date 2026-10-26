@@ -1,1 +1,3 @@
-__version__ = "0.1.0"  # x-release-please-version
+from app._version import __version__
+
+__all__ = ["__version__"]

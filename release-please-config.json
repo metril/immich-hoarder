@@ -7,7 +7,7 @@
   "packages": {
     ".": {
       "extra-files": [
-        { "type": "generic", "path": "backend/app/__init__.py" }
+        { "type": "generic", "path": "backend/app/_version.py" }
       ]
     }
   }
