@@ -28,12 +28,17 @@ class ExtractorInfo(BaseModel):
 _HEXISH = frozenset("0123456789abcdefx.")
 
 
+_SITE_LOCAL = ipaddress.IPv6Network("fec0::/10")
+
+
 def _ip_private(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if isinstance(ip, ipaddress.IPv6Address):
         if ip.ipv4_mapped:
             ip = ip.ipv4_mapped
         elif ip.sixtofour:
             ip = ip.sixtofour
+    if isinstance(ip, ipaddress.IPv6Address) and ip in _SITE_LOCAL:
+        return True  # deprecated site-local (fec0::/10) is not flagged by is_global
     return not ip.is_global
 
 

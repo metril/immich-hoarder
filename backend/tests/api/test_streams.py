@@ -379,3 +379,33 @@ async def test_stream_cap_429(env: tuple[FastAPI, httpx.AsyncClient]) -> None:
             if line == "event: end":
                 break
     assert streams._active.get(uid, 0) == streams.MAX_STREAMS - 1
+
+
+@pytest.fixture(autouse=True)
+def _reset_active() -> Any:
+    streams._active.clear()
+    yield
+    streams._active.clear()
+
+
+async def test_slot_released_when_cancelled_before_stream_starts() -> None:
+    async def gen() -> Any:
+        yield {"event": "x", "data": "{}"}
+
+    release = streams._acquire(42)
+    assert streams._active == {42: 1}
+    resp = streams._stream_response(gen(), release)
+
+    async def receive() -> dict[str, Any]:
+        await asyncio.sleep(60)
+        return {}
+
+    async def send(_m: Any) -> None:
+        raise asyncio.CancelledError  # cancelled before the generator ever runs
+
+    scope = {"type": "http", "method": "GET", "headers": [], "asgi": {"spec_version": "2.3"}}
+    try:
+        await resp(scope, receive, send)
+    except asyncio.CancelledError:
+        pass
+    assert streams._active == {}

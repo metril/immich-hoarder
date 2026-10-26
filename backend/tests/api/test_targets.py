@@ -1,5 +1,6 @@
 import httpx
-from helpers import TARGET, actor
+import pytest
+from helpers import TARGET, actor, headers_for
 
 
 async def test_target_create_hides_key(client: httpx.AsyncClient) -> None:
@@ -49,3 +50,29 @@ async def test_in_use_delete_409(client: httpx.AsyncClient) -> None:
     assert d.status_code == 409 and d.json() == {"detail": "in use"}
     await client.delete(f"/api/v1/sources/{r.json()['id']}", headers=h)
     assert (await client.delete(f"/api/v1/targets/{tid}", headers=h)).status_code == 204
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "scopes", "body"),
+    [
+        ("GET", "/api/v1/targets", ["jobs:read"], None),
+        ("POST", "/api/v1/targets", ["targets:read"], TARGET),
+        ("GET", "/api/v1/targets/{id}", ["jobs:read"], None),
+        ("PATCH", "/api/v1/targets/{id}", ["targets:read"], {"name": "n"}),
+        ("DELETE", "/api/v1/targets/{id}", ["targets:read"], None),
+        ("POST", "/api/v1/targets/{id}/test", ["jobs:read"], None),
+        ("GET", "/api/v1/targets/{id}/albums", ["jobs:read"], None),
+    ],
+)
+async def test_target_scope_rejected(
+    client: httpx.AsyncClient,
+    method: str,
+    path: str,
+    scopes: list[str],
+    body: dict[str, str] | None,
+) -> None:
+    uid, h = await actor("a")
+    tid = (await client.post("/api/v1/targets", json=TARGET, headers=h)).json()["id"]
+    weak = await headers_for(uid, scopes)
+    r = await client.request(method, path.format(id=tid), json=body, headers=weak)
+    assert r.status_code == 403

@@ -139,6 +139,7 @@ def test_phash_query_uses_index(engine: Engine) -> None:
     plan = _plan(engine, store, to_signed64(PH), 3)
     for n in range(4):
         assert f"ix_assets_seen_target_ph{n} (target_id=? AND ph{n}=?)" in plan
+    assert "SCAN assets_seen" not in plan
 
 
 def test_phash_four_chunks_each_flipped_not_found(engine: Engine) -> None:

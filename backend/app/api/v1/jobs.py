@@ -41,11 +41,14 @@ async def _enqueue(
     session: AsyncSession, sup: JobSupervisor, source_id: int, p: Principal, level: str | None
 ) -> JobOut:
     await session.commit()  # release the write lock before the supervisor opens its own session
+    return await _out(session, await _submit(sup, source_id, p, level))
+
+
+async def _submit(sup: JobSupervisor, source_id: int, p: Principal, level: str | None) -> Job:
     try:
-        job = await sup.enqueue(source_id, p.user_id, level)
+        return await sup.enqueue(source_id, p.user_id, level)
     except JobConflict:
         raise HTTPException(409, "job already active") from None
-    return await _out(session, job)
 
 
 async def _visible_job(session: AsyncSession, p: Principal, job_id: int) -> Job:
@@ -89,12 +92,14 @@ async def adhoc_rip(
     )
     src = await build_source(session, p, payload, box)
     source_id = src.id
+    await session.commit()  # release the write lock before the supervisor opens its own session
     try:
-        return await _enqueue(session, sup, source_id, p, body.log_level)
-    except BaseException:
+        job = await _submit(sup, source_id, p, body.log_level)
+    except BaseException:  # only a failed enqueue orphans the source; a queued job owns it
         async with session_scope() as s:
             await s.execute(delete(Source).where(Source.id == source_id))
         raise
+    return await _out(session, job)
 
 
 @router.get("/jobs", response_model=Page[JobOut])

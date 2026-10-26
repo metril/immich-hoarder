@@ -406,3 +406,31 @@ def test_dotdot_directory_cannot_escape(tmp_path: Path, img_server: str) -> None
     assert r.files == []
     assert [p for p in tmp_path.rglob("*") if p.is_file()] == []
     assert any(e["level"] == "warning" for e in events)
+
+
+def test_user_rate_options_never_faster_than_admin(tmp_path: Path) -> None:
+    admin = RipSettings(rate_limits={"default": RateLimit(sleep_request=2, sleep=1, retries=3)})
+    cat = ("extractor", "directlink")
+    fast = src(gdl_options={"sleep-request": 0.1, "sleep": 0, "retries": 1})
+    configure(fast, None, admin, tmp_path, incremental=False)
+    assert config.get(cat, "sleep-request") == 2
+    assert config.get(cat, "sleep") == 1
+    assert config.get(cat, "retries") == 3
+    slow = src(gdl_options={"sleep-request": 9, "sleep": [3, 5], "retries": 8})
+    configure(slow, None, admin, tmp_path, incremental=False)
+    assert config.get(cat, "sleep-request") == 9
+    assert config.get(cat, "sleep") == [3, 5]
+    assert config.get(cat, "retries") == 8
+    odd = src(gdl_options={"sleep-request": "fast"})
+    configure(odd, None, admin, tmp_path, incremental=False)
+    assert config.get(cat, "sleep-request") == 2
+
+
+def test_ip_private_denies_site_local() -> None:
+    import ipaddress
+
+    from app.core.extractors import _ip_private
+
+    assert _ip_private(ipaddress.ip_address("fec0::1"))
+    assert _ip_private(ipaddress.ip_address("fec0:1:2::3"))
+    assert not _ip_private(ipaddress.ip_address("2606:4700::1111"))

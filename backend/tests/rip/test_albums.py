@@ -145,3 +145,9 @@ def test_fallback_sanitised_and_restripped() -> None:
     assert render_album("", {}, "  a\x00b / ") == "ab"
     assert render_album("{subreddit}", {"subreddit": "x" * 254 + " /y"}, "S") == "x" * 254
     assert render_album("{subreddit}", {"subreddit": "a​b\ud800c"}, "S") == "abc"
+
+
+def test_empty_template_and_name_fall_back() -> None:
+    assert render_album("", {}, "") == "immich-hoarder"
+    assert render_album("{subreddit}", {}, " / ") == "immich-hoarder"
+    assert render_album("{bogus}", {"x": 1}, "\x00") == "immich-hoarder"

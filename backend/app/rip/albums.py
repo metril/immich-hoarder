@@ -10,6 +10,7 @@ from app.immich.errors import ImmichError, ImmichUnavailable
 
 ALBUM_FIELDS = frozenset({"subreddit", "author", "user", "site", "category", "source", "date"})
 MAX_ALBUM_LEN = 255
+DEFAULT_ALBUM = "immich-hoarder"
 
 _WS = re.compile(r"\s+")
 
@@ -17,6 +18,10 @@ _WS = re.compile(r"\s+")
 def _clean(s: str) -> str:
     kept = "".join(c for c in s if c.isspace() or unicodedata.category(c) not in ("Cc", "Cf", "Cs"))
     return _WS.sub(" ", kept).strip().strip("/").strip()
+
+
+def _fallback(source_name: str) -> str:
+    return _clean(source_name)[:MAX_ALBUM_LEN].strip() or DEFAULT_ALBUM
 
 
 def _date(v: Any) -> str | None:
@@ -55,15 +60,15 @@ def render_album(template: str, meta: dict[str, Any], source_name: str) -> str:
             if field is None:
                 continue
             if spec or conv or field not in ALBUM_FIELDS:
-                return _clean(source_name)[:MAX_ALBUM_LEN]
+                return _fallback(source_name)
             val = _value(field, meta, source_name)
             if val is None:
-                return _clean(source_name)[:MAX_ALBUM_LEN]
+                return _fallback(source_name)
             parts.append(val)
     except ValueError:
-        return _clean(source_name)[:MAX_ALBUM_LEN]
+        return _fallback(source_name)
     out = _clean("".join(parts))[:MAX_ALBUM_LEN]
-    return _clean(out) or _clean(source_name)[:MAX_ALBUM_LEN]
+    return _clean(out) or _fallback(source_name)
 
 
 class AlbumResolver:

@@ -275,3 +275,21 @@ async def test_lists_are_newest_first(client: httpx.AsyncClient) -> None:
             f"/api/v1/jobs/{j2}/{kind}?limit=2&cursor={r.json()['next_cursor']}", headers=h
         )
         assert len(r.json()["items"]) == 1
+
+
+async def test_rip_keeps_source_when_failure_is_after_enqueue(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.api.v1 import jobs as jobs_api
+
+    async def boom(*a: Any) -> None:
+        raise RuntimeError("response building failed")
+
+    monkeypatch.setattr(jobs_api, "_out", boom)
+    _, h = await actor("a")
+    tid = (await client.post("/api/v1/targets", json=TARGET, headers=h)).json()["id"]
+    with pytest.raises(RuntimeError):
+        await client.post("/api/v1/rip", json={"url": SRC["url"], "target_id": tid}, headers=h)
+    async with session_scope() as s:
+        assert (await s.execute(select(Source))).first() is not None
+        assert (await s.execute(select(Job))).first() is not None

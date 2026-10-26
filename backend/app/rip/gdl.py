@@ -80,6 +80,16 @@ def _credential_options(cred: CredentialSnapshot, job_dir: Path) -> dict[str, An
     return out
 
 
+def _at_least(user: Any, admin: float) -> Any:
+    """A per-source value applies as max(user, admin); non-numeric values are ignored."""
+    if isinstance(user, list):
+        vals = [_at_least(v, admin) for v in user]
+        return vals if vals else admin
+    if isinstance(user, bool) or not isinstance(user, int | float):
+        return admin
+    return max(user, admin)
+
+
 def configure(
     src: SourceSnapshot,
     cred: CredentialSnapshot | None,
@@ -108,10 +118,14 @@ def configure(
     rl = settings.rate_limits.get(src.extractor) or settings.rate_limits.get("default")
     rl = rl or RateLimit()
     cat = ("extractor", src.extractor)
-    config.set(cat, "sleep-request", rl.sleep_request)
-    config.set(cat, "sleep", rl.sleep)
-    config.set(cat, "retries", rl.retries)
-    config.set(("downloader",), "retries", rl.retries)
+    opts = src.gdl_options
+    sleep_request = _at_least(opts.get("sleep-request"), rl.sleep_request)
+    sleep = _at_least(opts.get("sleep"), rl.sleep)
+    retries = _at_least(opts.get("retries"), rl.retries)
+    config.set(cat, "sleep-request", sleep_request)
+    config.set(cat, "sleep", sleep)
+    config.set(cat, "retries", retries)
+    config.set(("downloader",), "retries", retries)
     if cred is not None:
         for k, v in _credential_options(cred, job_dir).items():
             config.set(("extractor", cred.site), k, v)

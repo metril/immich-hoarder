@@ -10,7 +10,6 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
-from starlette.background import BackgroundTask
 
 from app.api.v1.jobs import _visible_job
 from app.auth.authz import require_scope, visible_to
@@ -212,6 +211,24 @@ async def _guarded(gen: AsyncIterator[Sse], release: Callable[[], None]) -> Asyn
         release()
 
 
+class _SlotResponse(EventSourceResponse):
+    """Releases the stream slot however the response ends, including cancellation before start."""
+
+    def __init__(self, gen: AsyncIterator[Sse], release: Callable[[], None]) -> None:
+        super().__init__(_guarded(gen, release), ping=PING_SECONDS)
+        self._release = release
+
+    async def __call__(self, scope: Any, receive: Any, send: Any) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._release()
+
+
+def _stream_response(gen: AsyncIterator[Sse], release: Callable[[], None]) -> EventSourceResponse:
+    return _SlotResponse(gen, release)
+
+
 @router.get("/jobs/stream")
 async def dashboard(
     request: Request, p: Principal = Depends(current_principal)
@@ -219,12 +236,14 @@ async def dashboard(
     require_scope(p, "jobs:read")
     bus = _bus(request)
     release = _acquire(p.user_id)
-    gen = dashboard_stream(
-        bus, lambda: visible_source_ids(p), job_source_id, request.is_disconnected
-    )
-    return EventSourceResponse(
-        _guarded(gen, release), ping=PING_SECONDS, background=BackgroundTask(release)
-    )
+    try:
+        gen = dashboard_stream(
+            bus, lambda: visible_source_ids(p), job_source_id, request.is_disconnected
+        )
+        return _stream_response(gen, release)
+    except BaseException:
+        release()
+        raise
 
 
 @router.get("/jobs/{job_id}/stream")
@@ -236,9 +255,11 @@ async def stream_job(
     async with session_scope() as s:
         job = await _visible_job(s, p, job_id)
     release = _acquire(p.user_id)
-    gen = job_stream(
-        bus, session_scope, job, request.is_disconnected, lambda: job_visible(p, job_id)
-    )
-    return EventSourceResponse(
-        _guarded(gen, release), ping=PING_SECONDS, background=BackgroundTask(release)
-    )
+    try:
+        gen = job_stream(
+            bus, session_scope, job, request.is_disconnected, lambda: job_visible(p, job_id)
+        )
+        return _stream_response(gen, release)
+    except BaseException:
+        release()
+        raise

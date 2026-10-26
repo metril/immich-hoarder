@@ -116,7 +116,8 @@ def _child(
     try:
         conn.send(("ok", fn(*args)))
     except BaseException as e:
-        conn.send(("err", scrub(f"{type(e).__name__}: {e}", fragments)))
+        msg = str(e) if isinstance(e, PreviewError) else f"{type(e).__name__}: {e}"
+        conn.send(("err", scrub(msg, fragments)))
     finally:
         conn.close()
 

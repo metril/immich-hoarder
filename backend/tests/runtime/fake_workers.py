@@ -52,6 +52,18 @@ def sigterm_proof_worker(spec: Any, q: Any, cancel: Any) -> None:
     time.sleep(60)
 
 
+def stuck_download_worker(spec: Any, q: Any, cancel: Any) -> None:
+    """Models a download stuck in a gallery-dl hook: ignores cancel and SIGTERM."""
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+    def hook() -> None:
+        _touch(spec)
+        while True:
+            time.sleep(0.05)  # never checks `cancel`
+
+    hook()
+
+
 def incremental_worker(spec: Any, q: Any, cancel: Any) -> None:
     q.put(
         (

@@ -124,6 +124,13 @@ async def wait_for(env: Env, job_id: int, status: JobStatus, timeout: float = 20
         await asyncio.sleep(0.05)
 
 
+async def wait_until(cond: Callable[[], bool], timeout: float = 20) -> None:
+    deadline = asyncio.get_running_loop().time() + timeout
+    while not cond():
+        assert asyncio.get_running_loop().time() < deadline, "condition not met"
+        await asyncio.sleep(0.02)
+
+
 async def test_job_succeeds_and_scratch_removed(env: Env) -> None:
     _, src = await env.seed()
     sup = env.make(fw.fast_worker)
@@ -368,7 +375,8 @@ async def test_access_revoked_fails_job(env: Env) -> None:
     job = await sup.enqueue(src, None, "info")
     done = await wait_for(env, job.id, JobStatus.failed)
     assert done.error == "access revoked"
-    assert sup.running == {}
+    # `running` is cleared after the status is committed: wait for it, don't assume
+    await wait_until(lambda: sup.running == {})
 
 
 async def test_incremental_computed_when_job_starts(env: Env) -> None:
@@ -563,3 +571,20 @@ async def test_private_source_credential_url_skipped(
     assert calls == []
     assert "skipped" in caplog.text
     assert "10.9.8.7" not in caplog.text and "secretpath" not in caplog.text
+
+
+async def test_worker_stuck_in_download_hook_killed_after_grace(env: Env) -> None:
+    _, src = await env.seed()
+    sup = env.make(fw.stuck_download_worker)
+    sup.grace_override_s = 0.3
+    await sup.start()
+    job = await sup.enqueue(src, None, "info")
+    marker = env.scratch / str(job.id) / "f"
+    await wait_until(marker.exists)
+    h = sup.running[job.id]
+    t0 = asyncio.get_running_loop().time()
+    await sup.cancel(job.id)
+    await wait_for(env, job.id, JobStatus.cancelled)
+    assert asyncio.get_running_loop().time() - t0 >= 0.3  # not before the grace period
+    assert h.exitcode == -9  # the hook ignores cancel and SIGTERM: only kill() ends it
+    assert not (env.scratch / str(job.id)).exists()

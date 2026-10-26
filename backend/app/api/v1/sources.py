@@ -2,6 +2,8 @@ import asyncio
 import logging
 import shutil
 
+import anyio
+import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
@@ -168,27 +170,31 @@ async def preview_source(
         raise HTTPException(429, "too many previews")
     await _PREVIEW_SEM.acquire()
     job_dir = None
-    try:
-        job_dir = make_job_dir(request.app.state.settings.scratch_dir)
-        items = await run_in_threadpool(
-            run_in_subprocess,
-            preview,
-            snap,
-            cred,
-            rip,
-            job_dir,
-            body.limit,
-            timeout=PREVIEW_TIMEOUT,
-            fragments=secret_fragments(cred),
-        )
-    except TimeoutError:
-        raise HTTPException(504, "preview timed out") from None
-    except PreviewError as e:
-        raise HTTPException(502, f"preview failed: {str(e)[:200]}") from None
-    finally:
-        if job_dir is not None:
-            shutil.rmtree(job_dir, ignore_errors=True)
-        _PREVIEW_SEM.release()
+    # shielded: a client disconnect must not free the slot or remove the dir under a live child
+    with anyio.CancelScope(shield=True):
+        try:
+            job_dir = make_job_dir(request.app.state.settings.scratch_dir)
+            items = await run_in_threadpool(
+                run_in_subprocess,
+                preview,
+                snap,
+                cred,
+                rip,
+                job_dir,
+                body.limit,
+                timeout=PREVIEW_TIMEOUT,
+                fragments=secret_fragments(cred),
+            )
+        except TimeoutError:
+            raise HTTPException(504, "preview timed out") from None
+        except PreviewError as e:
+            raise HTTPException(502, f"preview failed: {str(e)[:200]}") from None
+        finally:
+            try:
+                if job_dir is not None:
+                    await anyio.to_thread.run_sync(shutil.rmtree, job_dir, True)
+            finally:
+                _PREVIEW_SEM.release()
     return PreviewOut(items=items)
 
 
