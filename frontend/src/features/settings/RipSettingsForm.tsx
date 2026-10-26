@@ -1,7 +1,10 @@
 import { Controller } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { FormField, inputClass } from "../../components/common/FormField";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { FormField } from "../../components/common/FormField";
 import { useApiForm } from "../../components/common/useApiForm";
 import { SaveBar } from "./fields";
 import { num, str } from "./setValue";
@@ -38,20 +41,26 @@ export function RipSettingsForm({ value }: { value?: SettingsDoc["rip"] }) {
   });
   const e = form.formState.errors.rip;
   return (
-    <form onSubmit={form.submit} className="grid gap-3" noValidate>
+    <form onSubmit={form.submit} className="grid gap-5" noValidate>
       <FormField label="Upload concurrency" error={e?.upload_concurrency?.message}>
-        <input type="number" className={inputClass} {...form.register("rip.upload_concurrency", { valueAsNumber: true })} />
+        <Input type="number" {...form.register("rip.upload_concurrency", { valueAsNumber: true })} />
       </FormField>
       <FormField label="Job scratch max (bytes)" error={e?.job_scratch_max_bytes?.message} hint="Empty = unlimited">
-        <input type="number" className={inputClass} {...form.register("rip.job_scratch_max_bytes", num)} />
+        <Input type="number" {...form.register("rip.job_scratch_max_bytes", num)} />
       </FormField>
       <FormField label="Proxy" error={e?.proxy?.message} hint="e.g. socks5://host:1080. Empty = none">
-        <input className={inputClass} spellCheck={false} {...form.register("rip.proxy", str)} />
+        <Input spellCheck={false} {...form.register("rip.proxy", str)} />
       </FormField>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" {...form.register("rip.allow_private_hosts")} />
-        Allow private hosts
-      </label>
+      <Controller
+        control={form.control}
+        name="rip.allow_private_hosts"
+        render={({ field }) => (
+          <div className="flex items-center gap-3">
+            <Switch id="allow-private" checked={field.value} onCheckedChange={field.onChange} />
+            <Label htmlFor="allow-private">Allow private hosts</Label>
+          </div>
+        )}
+      />
       <Controller
         control={form.control}
         name="rip.rate_limits"
