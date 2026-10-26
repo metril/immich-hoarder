@@ -1,5 +1,6 @@
 import logging
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -9,10 +10,10 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.core.crypto import SecretBox
 from app.db.engine import make_engine
 from app.db.models import Base, ImmichTarget, Source, User
-from app.runtime import scheduler as sched_mod
-from app.runtime.scheduler import SourceScheduler
+from app.runtime.scheduler import CroniterTrigger, SourceScheduler
 from app.runtime.supervisor import JobConflict
 
+_NOW = datetime(2026, 10, 25, 12, 0, tzinfo=UTC)  # a Sunday
 KEY = "test-master-key-0123456789abcdef-xyz"
 
 
@@ -94,7 +95,8 @@ async def test_sync_on_patch_and_delete(sf: Any) -> None:
             src.schedule_cron = "0 4 * * *"
             await s.commit()
         await sch.sync_source(a)
-        assert "4" in str(sch._sched.get_job(f"source-{a}").trigger)
+        nxt = sch._sched.get_job(f"source-{a}").trigger.get_next_fire_time(None, _NOW)
+        assert nxt == datetime(2026, 10, 26, 4, 0, tzinfo=UTC)
         async with sf() as s:
             src = await s.get(Source, a)
             assert src
@@ -124,12 +126,55 @@ async def test_fire_conflict_skipped(sf: Any, caplog: pytest.LogCaptureFixture) 
     try:
         sup.exc = JobConflict()
         with caplog.at_level(logging.INFO):
-            await sched_mod._fire(7)
+            await sch._fire(7)
         assert sup.calls == [(7, None, None)]
         assert any(r.levelno == logging.INFO for r in caplog.records)
         sup.exc = RuntimeError("boom")
         with caplog.at_level(logging.INFO):
-            await sched_mod._fire(7)
+            await sch._fire(7)
         assert any(r.levelno == logging.ERROR and not r.exc_info for r in caplog.records)
+    finally:
+        sch.shutdown(wait=False)
+
+
+def test_croniter_trigger_sunday_zero() -> None:
+    nxt = CroniterTrigger("0 0 * * 0").get_next_fire_time(None, _NOW)
+    assert nxt == datetime(2026, 11, 1, 0, 0, tzinfo=UTC)
+    assert nxt.weekday() == 6
+
+
+def test_croniter_trigger_aliases() -> None:
+    assert CroniterTrigger("@daily").get_next_fire_time(None, _NOW) == datetime(
+        2026, 10, 26, 0, 0, tzinfo=UTC
+    )
+    nxt = CroniterTrigger("0 0 * * 7").get_next_fire_time(None, _NOW)
+    assert nxt is not None and nxt.weekday() == 6
+
+
+async def test_two_schedulers_keep_separate_supervisors(sf: Any) -> None:
+    s1, s2 = FakeSup(), FakeSup()
+    a = SourceScheduler(s1, sf)  # type: ignore[arg-type]
+    b = SourceScheduler(s2, sf)  # type: ignore[arg-type]
+    await a._fire(1)
+    await b._fire(2)
+    assert s1.calls == [(1, None, None)]
+    assert s2.calls == [(2, None, None)]
+
+
+async def test_invalid_stored_cron_removes_job(sf: Any, caplog: pytest.LogCaptureFixture) -> None:
+    a = await add(sf, schedule_cron="0 3 * * *")
+    sch = SourceScheduler(FakeSup(), sf)  # type: ignore[arg-type]
+    await sch.start()
+    try:
+        assert sch.job_ids() == {f"source-{a}"}
+        async with sf() as s:
+            src = await s.get(Source, a)
+            assert src
+            src.schedule_cron = "bad cron"
+            await s.commit()
+        with caplog.at_level(logging.ERROR):
+            await sch.sync_source(a)
+        assert sch.job_ids() == set()
+        assert any("bad cron" in r.getMessage() for r in caplog.records)
     finally:
         sch.shutdown(wait=False)

@@ -102,3 +102,39 @@ async def test_unsupported_album_template_syntax_422(client: httpx.AsyncClient, 
         "/api/v1/sources", json={**SRC, "target_id": tid, "album_template": tpl}, headers=h
     )
     assert r.status_code == 422
+
+
+class _FakeSched:
+    def __init__(self, fail: bool = False) -> None:
+        self.calls: list[int] = []
+        self.fail = fail
+
+    async def sync_source(self, source_id: int) -> None:
+        self.calls.append(source_id)
+        if self.fail:
+            raise RuntimeError("boom")
+
+
+async def test_source_writes_sync_scheduler(client: httpx.AsyncClient) -> None:
+    sched = _FakeSched()
+    client._transport.app.state.scheduler = sched  # type: ignore[attr-defined]
+    _, h = await actor("a")
+    tid = await _target(client, h)
+    r = await client.post("/api/v1/sources", json={**SRC, "target_id": tid}, headers=h)
+    sid = r.json()["id"]
+    assert sched.calls == [sid]
+    assert (
+        await client.patch(f"/api/v1/sources/{sid}", json={"name": "x"}, headers=h)
+    ).status_code == 200
+    assert sched.calls == [sid, sid]
+    assert (await client.delete(f"/api/v1/sources/{sid}", headers=h)).status_code == 204
+    assert sched.calls == [sid, sid, sid]
+
+
+async def test_scheduler_failure_does_not_500(client: httpx.AsyncClient) -> None:
+    client._transport.app.state.scheduler = _FakeSched(fail=True)  # type: ignore[attr-defined]
+    _, h = await actor("a")
+    tid = await _target(client, h)
+    r = await client.post("/api/v1/sources", json={**SRC, "target_id": tid}, headers=h)
+    assert r.status_code == 201
+    assert (await client.get(f"/api/v1/sources/{r.json()['id']}", headers=h)).status_code == 200

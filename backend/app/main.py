@@ -58,6 +58,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             if scheduler is not None:
                 scheduler.shutdown(wait=False)
+                _app.state.scheduler = None
             if supervisor is not None:
                 await supervisor.stop()
             if bridge is not None:

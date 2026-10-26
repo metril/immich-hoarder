@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import shutil
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -32,6 +33,8 @@ from app.rip.settings import load_rip_settings
 from app.rip.snapshot import SourceSnapshot
 from app.schemas.sources import SourceIn, SourceOut, SourcePatch
 
+log = logging.getLogger(__name__)
+
 PREVIEW_TIMEOUT = 60.0
 _PREVIEW_SEM = asyncio.Semaphore(2)
 
@@ -42,7 +45,10 @@ async def _sync(request: Request, session: AsyncSession, source_id: int) -> None
     if scheduler is None:
         return
     await session.commit()
-    await scheduler.sync_source(source_id)
+    try:
+        await scheduler.sync_source(source_id)
+    except Exception as e:  # write is already committed; never turn it into a 500
+        log.error("scheduler sync failed for source %s: %s", source_id, type(e).__name__)
 
 
 router = APIRouter(prefix="/sources", tags=["sources"])
