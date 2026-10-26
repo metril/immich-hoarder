@@ -27,6 +27,7 @@ dependencies = [
     "numpy>=2.5.4",
     "xxhash>=4.0.2",
     "psycopg[binary]>=3.3.6",
+    "apprise>=2.1.0",
 ]
 
 [dependency-groups]
@@ -56,6 +57,7 @@ pythonpath = ["backend"]
 testpaths = ["backend/tests"]
 filterwarnings = [
     "ignore:The httpx module is deprecated; please use httpx2 instead\\.:authlib.deprecate.AuthlibDeprecationWarning",
+    "ignore:'imghdr' is deprecated:DeprecationWarning",
 ]
 
 [tool.ruff]
