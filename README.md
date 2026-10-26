@@ -26,7 +26,7 @@ Image: `ghcr.io/metril/immich-hoarder`. You need Docker with Compose, an externa
 ```bash
 # 1. secrets (also paste your OIDC client secret into secrets/ih_oidc_client_secret)
 mkdir secrets && openssl rand -base64 48 > secrets/ih_master_key && openssl rand -base64 48 > secrets/ih_session_secret
-# 2. get the compose file, then set your hostname and OIDC issuer in it
+# 2. get the compose file, then set your hostname, OIDC issuer and OIDC client ID in it
 curl -fsSLO https://raw.githubusercontent.com/metril/immich-hoarder/main/compose.example.yml
 # 3. start
 docker compose -f compose.example.yml up -d
@@ -39,7 +39,6 @@ docker compose -f compose.example.yml up -d
 - [Documentation site](https://metril.github.io/immich-hoarder/)
 - API reference: `/api/docs` on your instance
 - [Contributing](CONTRIBUTING.md)
-- [Changelog](CHANGELOG.md)
 
 ## License
 

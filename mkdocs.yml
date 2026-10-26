@@ -35,7 +35,7 @@ validation:
     unrecognized_links: warn
 nav:
   - Home: index.md
-  - Install (Iris + Traefik): install.md
+  - Install (Docker + Traefik): install.md
   - Authentik OIDC: authentik.md
   - Using:
       - gui.md

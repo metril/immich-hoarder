@@ -1,4 +1,4 @@
-# Install (Iris + Traefik)
+# Install (Docker + Traefik)
 
 Deployment uses Docker Compose behind an existing Traefik. The app has no published host ports.
 
