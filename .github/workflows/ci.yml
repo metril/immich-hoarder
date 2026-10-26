@@ -75,6 +75,8 @@ jobs:
               - 'frontend/**'
               - 'pyproject.toml'
               - 'uv.lock'
+              - 'compose.example.yml'
+              - 'deploy/**'
               - '.github/workflows/ci.yml'
 
   backend-lint:
@@ -227,6 +229,8 @@ jobs:
       - name: Playwright smoke
         working-directory: frontend
         run: pnpm e2e
+      - name: Allow Chrome sandbox (ubuntu 24.04 AppArmor)
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: Lighthouse
         working-directory: frontend
         run: |
@@ -251,6 +255,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate compose files
+        run: |
+          mkdir -p secrets && for s in ih_master_key ih_session_secret ih_oidc_client_secret ih_db_url ih_pg_password; do echo x > secrets/$s; done
+          docker network create traefik
+          export VPN_SERVICE_PROVIDER=custom
+          docker compose -f compose.example.yml config -q
+          docker compose -f compose.example.yml -f deploy/compose.postgres.yml config -q
+          docker compose -f compose.example.yml -f deploy/compose.gluetun.yml config -q
+          docker compose -f compose.example.yml -f deploy/compose.postgres.yml -f deploy/compose.gluetun.yml config -q
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
@@ -279,9 +292,48 @@ jobs:
       - name: Smoke-run image
         run: docker run --rm immich-hoarder:ci-arm64 python -c "import app"
 
+  e2e-immich:
+    needs: changes
+    if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.docker == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: immich-hoarder:e2e
+          cache-from: type=gha
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - name: E2E against real Immich
+        env:
+          IH_E2E_IMMICH: "1"
+          IH_E2E_LOG_DIR: ${{ runner.temp }}/e2e
+        run: uv run pytest backend/tests/e2e_immich -n 0 -q
+      # The fixture tears down itself; this removes anything left by a killed run.
+      - name: Tear down leftover stacks
+        if: always()
+        run: |
+          for p in $(docker ps -a --filter label=com.docker.compose.project --format '{{.Label "com.docker.compose.project"}}' | grep '^ih-e2e-' | sort -u); do
+            docker compose -p "$p" down -v --remove-orphans || true
+          done
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: e2e-immich-logs
+          path: ${{ runner.temp }}/e2e
+          if-no-files-found: ignore
+
   ci-ok:
     if: always()
-    needs: [changes, backend-lint, backend, postgres, frontend, frontend-test, api-client, frontend-e2e, docker, docker-arm64]
+    needs: [changes, backend-lint, backend, postgres, frontend, frontend-test, api-client, frontend-e2e, docker, docker-arm64, e2e-immich]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no job failed or was cancelled

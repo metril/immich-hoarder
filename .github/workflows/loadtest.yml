@@ -1,0 +1,26 @@
+name: Load test
+
+on:
+  workflow_dispatch:
+    inputs:
+      rows:
+        description: assets_seen rows to seed
+        type: number
+        default: 5000000
+
+permissions:
+  contents: read
+
+jobs:
+  dedupe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ROWS: ${{ inputs.rows }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      - run: cd backend && uv run python -m loadtest.dedupe --rows "$ROWS" --db "$RUNNER_TEMP/lt.db"
