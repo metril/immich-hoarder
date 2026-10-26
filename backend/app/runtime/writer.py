@@ -55,6 +55,10 @@ class JobWriter:
         self._done_listeners: list[DoneListener] = []
         self._observers: list[Callable[[Msg], None]] = []
 
+    @property
+    def alive(self) -> bool:
+        return self._task is not None and not self._task.done()
+
     def add_observer(self, fn: Callable[[Msg], None]) -> None:
         """Call ``fn(msg)`` for every message after its batch commits (lossless, sync)."""
         self._observers.append(fn)
@@ -298,6 +302,10 @@ class IpcBridge:
         self._loop = loop
         self._halt = threading.Event()
         self._thread = threading.Thread(target=self._run, name="ipc-bridge", daemon=True)
+
+    @property
+    def alive(self) -> bool:
+        return self._thread.is_alive()
 
     def start(self) -> None:
         self._thread.start()

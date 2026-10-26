@@ -6,6 +6,8 @@ import logging
 import socket
 import threading
 from collections.abc import Iterable, Iterator, Sequence
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from typing import Any
 
 import apprise
@@ -17,7 +19,28 @@ from app.rip.scrub import scrub
 log = logging.getLogger(__name__)
 
 TIMEOUT_S = 15.0
+SOCKET_TIMEOUT_S = TIMEOUT_S / 3
 _MIN_URL_LEN = 4
+
+_executor: ThreadPoolExecutor | None = None
+_executor_lock = threading.Lock()
+
+
+def _get_executor() -> ThreadPoolExecutor:
+    global _executor
+    with _executor_lock:
+        if _executor is None:
+            _executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="notify")
+        return _executor
+
+
+def shutdown_executor() -> None:
+    """Drop the notify pool without waiting for threads still in a send."""
+    global _executor
+    with _executor_lock:
+        ex, _executor = _executor, None
+    if ex is not None:
+        ex.shutdown(wait=False, cancel_futures=True)
 
 
 def _literal_private(host: str) -> bool:
@@ -101,6 +124,8 @@ def _send(urls: list[str], title: str, body: str, *, block_private: bool = False
         ap.add(u, asset=asset)
     if not len(ap):
         return False
+    for svc in ap:  # bound each socket phase so the worker thread ends with the wait_for
+        svc.socket_connect_timeout = svc.socket_read_timeout = SOCKET_TIMEOUT_S
     with gated(block_private):
         return all(bool(svc.notify(body=body, title=title)) for svc in ap)
 
@@ -127,7 +152,10 @@ async def notify_job(
         title = scrub(f"immich-hoarder: {source_name} {status}", secrets)
         body = scrub("\n".join(lines) or status, secrets)
         ok = await asyncio.wait_for(
-            asyncio.to_thread(_send, urls, title, body, block_private=block_private), TIMEOUT_S
+            asyncio.get_running_loop().run_in_executor(
+                _get_executor(), partial(_send, urls, title, body, block_private=block_private)
+            ),
+            TIMEOUT_S,
         )
         if not ok:
             log.warning("job %s: notification not delivered", job_id)

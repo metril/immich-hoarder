@@ -328,3 +328,16 @@ async def test_rip_disconnect_after_commit_keeps_live_source(
     async with session_scope() as s:
         assert (await s.execute(select(Source))).first() is not None
         assert (await s.execute(select(Job))).first() is not None
+
+
+async def test_delete_source_blocked_by_active_job(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    sid = await _src(client, h)
+    r = await client.post(f"/api/v1/sources/{sid}/run", headers=h)
+    jid = r.json()["id"]
+    d = await client.delete(f"/api/v1/sources/{sid}", headers=h)
+    assert d.status_code == 409 and d.json() == {"detail": "source has an active job"}
+    await _finish(jid, JobStatus.running)
+    assert (await client.delete(f"/api/v1/sources/{sid}", headers=h)).status_code == 409
+    await _finish(jid)
+    assert (await client.delete(f"/api/v1/sources/{sid}", headers=h)).status_code == 204

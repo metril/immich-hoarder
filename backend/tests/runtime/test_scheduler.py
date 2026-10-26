@@ -232,3 +232,43 @@ async def test_backup_keep_zero_registers_no_backup_job(
         assert "maintenance-prune" in ids and "maintenance-backup" not in ids
     finally:
         sched.shutdown()
+
+
+async def test_stop_waits_for_inflight_maintenance(
+    sf: async_sessionmaker[AsyncSession],
+) -> None:
+    import asyncio
+
+    sched = SourceScheduler(FakeSup(), sf)  # type: ignore[arg-type]
+    await sched.start()
+    finished = asyncio.Event()
+
+    async def slow() -> None:
+        sched._track()
+        await asyncio.sleep(0.3)
+        finished.set()
+
+    task = asyncio.create_task(slow())
+    await asyncio.sleep(0.05)
+    await sched.stop(timeout=5)
+    await asyncio.sleep(0.05)
+    assert finished.is_set() and not sched.running
+    await task
+
+
+async def test_stop_is_bounded(sf: async_sessionmaker[AsyncSession]) -> None:
+    import asyncio
+
+    sched = SourceScheduler(FakeSup(), sf)  # type: ignore[arg-type]
+    await sched.start()
+
+    async def hang() -> None:
+        sched._track()
+        await asyncio.sleep(60)
+
+    task = asyncio.create_task(hang())
+    await asyncio.sleep(0.05)
+    await sched.stop(timeout=0.2)
+    await asyncio.sleep(0.05)
+    assert not sched.running
+    task.cancel()

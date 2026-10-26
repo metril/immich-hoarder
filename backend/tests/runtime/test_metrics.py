@@ -107,12 +107,19 @@ async def test_readyz_reports_components(
 ) -> None:
     r = await client.get("/readyz")
     assert r.status_code == 503
-    assert set(r.json()["failing"]) == {"scheduler", "supervisor"}
+    assert set(r.json()["failing"]) == {"scheduler", "supervisor", "writer", "bridge"}
     app.state.scheduler = SimpleNamespace(running=True)
     app.state.supervisor = SimpleNamespace(alive=True)
+    app.state.job_writer = SimpleNamespace(alive=True)
+    app.state.bridge = SimpleNamespace(alive=True)
     r = await client.get("/readyz")
     assert r.status_code == 200 and r.json()["status"] == "ok"
     app.state.supervisor = SimpleNamespace(alive=False)
     r = await client.get("/readyz")
     assert r.status_code == 503 and r.json()["failing"] == ["supervisor"]
+    app.state.supervisor = SimpleNamespace(alive=True)
+    app.state.job_writer = SimpleNamespace(alive=False)
+    app.state.bridge = SimpleNamespace(alive=False)
+    r = await client.get("/readyz")
+    assert r.json()["failing"] == ["writer", "bridge"]
     assert (await client.get("/healthz")).json() == {"status": "ok"}

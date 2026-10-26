@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
+from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.base import BaseTrigger
@@ -50,6 +51,13 @@ class SourceScheduler:
         self._sup = supervisor
         self._sf = session_factory
         self._sched = AsyncIOScheduler(timezone=UTC)
+        self._inflight: set[asyncio.Task[Any]] = set()
+
+    def _track(self) -> None:
+        task = asyncio.current_task()
+        if task is not None:
+            self._inflight.add(task)
+            task.add_done_callback(self._inflight.discard)
 
     async def _fire(self, source_id: int) -> None:
         try:
@@ -67,6 +75,7 @@ class SourceScheduler:
         return {j.id for j in self._sched.get_jobs() if j.id.startswith("source-")}
 
     async def _prune(self) -> None:
+        self._track()
         try:
             async with self._sf() as s:
                 rt = await load_runtime_settings(s)
@@ -78,6 +87,7 @@ class SourceScheduler:
             log.error("prune failed: %s", type(e).__name__)
 
     async def _backup(self) -> None:
+        self._track()
         if self._settings is None:
             return
         try:
@@ -165,6 +175,17 @@ class SourceScheduler:
             coalesce=True,
             max_instances=1,
         )
+
+    async def stop(self, timeout: float = 30.0) -> None:
+        """Stop firing, wait (bounded) for in-flight maintenance, then shut down."""
+        if self._sched.running:
+            self._sched.pause()
+        pending = {t for t in self._inflight if not t.done()}
+        if pending:
+            _, still = await asyncio.wait(pending, timeout=timeout)
+            if still:
+                log.warning("%d maintenance task(s) still running at shutdown", len(still))
+        self.shutdown(wait=False)
 
     def shutdown(self, wait: bool = False) -> None:
         if self._sched.running:

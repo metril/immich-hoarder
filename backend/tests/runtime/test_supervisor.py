@@ -588,3 +588,39 @@ async def test_worker_stuck_in_download_hook_killed_after_grace(env: Env) -> Non
     assert asyncio.get_running_loop().time() - t0 >= 0.3  # not before the grace period
     assert h.exitcode == -9  # the hook ignores cancel and SIGTERM: only kill() ends it
     assert not (env.scratch / str(job.id)).exists()
+
+
+async def test_stop_finalizes_stuck_job_as_interrupted_with_metrics(env: Env) -> None:
+    from app.runtime.metrics import Metrics
+
+    m = Metrics()
+    m.attach(env.writer)
+    _, src = await env.seed()
+    sup = env.make(fw.stuck_download_worker)
+    sup.grace_override_s = 0.2
+    sup.kill_delay_s = 0.2
+    sup.stop_join_s = 0.3
+    await sup.start()
+    job = await sup.enqueue(src, None, "info")
+    await wait_until((env.scratch / str(job.id) / "f").exists)
+    h = sup.running[job.id]
+    await sup.stop()
+    assert h.escalation is None or h.escalation.done()
+    done = await wait_for(env, job.id, JobStatus.failed)
+    assert done.error == "interrupted by restart"
+    assert m.jobs_total.labels("failed")._value.get() == 1
+
+
+async def test_startup_recovery_counted_in_metrics(env: Env) -> None:
+    from app.runtime.metrics import Metrics
+
+    m = Metrics()
+    m.attach(env.writer)
+    _, s1 = await env.seed()
+    async with env.sf() as s:
+        r = Job(source_id=s1, status=JobStatus.running)
+        s.add(r)
+        await s.commit()
+    sup = env.make(fw.fast_worker)
+    await sup.start()
+    assert m.jobs_total.labels("failed")._value.get() == 1

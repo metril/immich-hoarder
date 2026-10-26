@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -20,7 +20,7 @@ from app.db.models import AssetSeen, Job, JobStatus, Source
 from app.rip.build import build_snapshots, check_notify_refs, credential_snapshot
 from app.rip.pipeline import sweep_scratch
 from app.rip.settings import load_rip_settings
-from app.runtime.notify import notify_job
+from app.runtime.notify import notify_job, shutdown_executor
 from app.runtime.settings import load_notify_settings, load_runtime_settings
 from app.runtime.worker import WorkerSpec, worker_main
 from app.runtime.writer import JobWriter
@@ -28,6 +28,7 @@ from app.runtime.writer import JobWriter
 log = logging.getLogger(__name__)
 
 SWEEP_INTERVAL_S = 600.0
+RESTART_ERROR = "interrupted by restart"
 
 
 class JobConflict(Exception):
@@ -51,6 +52,7 @@ class RunHandle:
     task: asyncio.Task[None] | None = None
     escalation: asyncio.Task[None] | None = None
     exitcode: int | None = None
+    finalized: bool = False
 
 
 def _now() -> datetime:
@@ -93,16 +95,25 @@ class JobSupervisor:
         return self._loop_task is not None and not self._loop_task.done()
 
     async def start(self) -> None:
-        async with self._sf() as s, s.begin():
-            await s.execute(
-                update(Job)
-                .where(Job.status == JobStatus.running)
-                .values(
-                    status=JobStatus.failed,
-                    error="interrupted by restart",
-                    finished_at=_now(),
+        async with self._sf() as s:
+            stale = (
+                await s.execute(
+                    select(Job.id, Job.source_id).where(Job.status == JobStatus.running)
                 )
-            )
+            ).all()
+        for job_id, source_id in stale:  # via the writer so metrics and notifications see them
+            self._finish(job_id, "failed", RESTART_ERROR, source_id=source_id)
+        deadline = time.monotonic() + 10
+        while stale and time.monotonic() < deadline:
+            async with self._sf() as s:
+                left = await s.scalar(
+                    select(Job.id)
+                    .where(Job.id.in_([j for j, _ in stale]), Job.status == JobStatus.running)
+                    .limit(1)
+                )
+            if left is None:
+                break
+            await asyncio.sleep(0.05)
         await asyncio.to_thread(sweep_scratch, self._settings.scratch_dir, set())
         self._stop = False
         self._loop_task = asyncio.create_task(self._loop())
@@ -135,6 +146,12 @@ class JobSupervisor:
             await asyncio.gather(*pending, return_exceptions=True)
             for job_id in handles:
                 shutil.rmtree(self._settings.scratch_dir / str(job_id), ignore_errors=True)
+        for job_id, h in handles.items():
+            if h.escalation is not None:
+                h.escalation.cancel()
+            if not h.finalized:
+                self._finish(job_id, "failed", RESTART_ERROR, source_id=h.source_id)
+        shutdown_executor()
         pending_notify = list(self._notify_tasks)
         for nt in pending_notify:
             nt.cancel()
@@ -324,6 +341,9 @@ class JobSupervisor:
         counters: Any = None,
         source_id: int | None = None,
     ) -> None:
+        h = self.running.get(job_id)
+        if h is not None:
+            h.finalized = True
         fields: dict[str, Any] = {"error": error, "finished_at": _now()}
         if counters is not None:
             fields["counters"] = counters

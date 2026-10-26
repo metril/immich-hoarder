@@ -38,6 +38,14 @@ jobs:
               - '!.release-please-manifest.json'
               - '!backend/app/_version.py'
               - '!version.txt'
+      - uses: actions/checkout@v4
+      - name: Verify version file is release-only
+        run: |
+          if [[ "$(grep -cv '^\s*$' backend/app/_version.py)" != "1" ]] \
+            || ! grep -qxE '__version__ = "[^"]+"  # x-release-please-version' backend/app/_version.py; then
+            echo "backend/app/_version.py must contain only the __version__ line"
+            exit 1
+          fi
       - id: skip
         env:
           SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
@@ -137,8 +145,12 @@ jobs:
           context: .
           platforms: linux/arm64
           push: false
+          load: true
+          tags: immich-hoarder:ci-arm64
           cache-from: type=gha,scope=arm64
           cache-to: type=gha,mode=max,scope=arm64
+      - name: Smoke-run image
+        run: docker run --rm immich-hoarder:ci-arm64 python -c "import app"
 
   ci-ok:
     if: always()

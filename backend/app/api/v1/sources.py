@@ -19,7 +19,7 @@ from app.auth.principal import Principal
 from app.core.crypto import SecretBox
 from app.core.extractors import UnsupportedURL, validate_proxy, validate_url
 from app.db.engine import get_session
-from app.db.models import BackfillMode, Perm, Source
+from app.db.models import BackfillMode, Job, JobStatus, Perm, Source
 from app.rip.build import check_notify_refs, check_refs, credential_snapshot
 from app.rip.filters import FilterSpec, validate_backfill
 from app.rip.preview import (
@@ -268,6 +268,13 @@ async def delete_source(
     require_scope(p, "sources:write")
     s: Source = await get_obj(session, Source, obj_id, p)
     await require_owner_or_admin(session, s, p)
+    active = await session.scalar(
+        select(Job.id)
+        .where(Job.source_id == obj_id, Job.status.in_((JobStatus.queued, JobStatus.running)))
+        .limit(1)
+    )
+    if active is not None:
+        raise HTTPException(409, "source has an active job")
     await delete_shares(session, Source.share_type, obj_id)
     await session.delete(s)
     await session.flush()

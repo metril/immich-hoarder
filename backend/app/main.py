@@ -62,11 +62,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 _app.state.scheduler = scheduler
                 _app.state.bus = bus
                 _app.state.job_writer = writer
+                _app.state.bridge = bridge
                 _app.state.supervisor = supervisor
             yield
         finally:
             if scheduler is not None:
-                scheduler.shutdown(wait=False)
+                await scheduler.stop()
                 _app.state.scheduler = None
             if supervisor is not None:
                 await supervisor.stop()
@@ -130,6 +131,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         sup = getattr(app.state, "supervisor", None)
         if sup is None or not sup.alive:
             failing.append("supervisor")
+        wr = getattr(app.state, "job_writer", None)
+        if wr is None or not wr.alive:
+            failing.append("writer")
+        br = getattr(app.state, "bridge", None)
+        if br is None or not br.alive:
+            failing.append("bridge")
         if failing:
             return JSONResponse(
                 status_code=503, content={"status": "unavailable", "failing": failing}

@@ -143,3 +143,30 @@ def test_connect_guard_lifted_by_allow_private(conn: list[Any]) -> None:
 
     _send(["json://rebind.example.com/"], "t", "b", block_private=False)
     assert conn
+
+
+def test_send_bounds_socket_timeouts(monkeypatch: pytest.MonkeyPatch) -> None:
+
+    from app.runtime import notify
+
+    seen: list[tuple[float, float]] = []
+
+    def fake(self: Any, *a: Any, **k: Any) -> bool:
+        seen.append((self.socket_connect_timeout, self.socket_read_timeout))
+        return True
+
+    from apprise.plugins.custom_json import NotifyJSON
+
+    monkeypatch.setattr(NotifyJSON, "send", fake)
+    assert notify._send(["json://example.com/"], "t", "b")
+    assert seen and all(c <= notify.TIMEOUT_S and r <= notify.TIMEOUT_S for c, r in seen)
+
+
+async def test_executor_shutdown_and_recreate() -> None:
+    from app.runtime import notify
+
+    first = notify._get_executor()
+    notify.shutdown_executor()
+    assert notify._executor is None
+    assert notify._get_executor() is not first
+    notify.shutdown_executor()
