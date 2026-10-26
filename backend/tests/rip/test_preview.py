@@ -465,3 +465,40 @@ async def test_preview_disconnect_keeps_slot_and_dir_until_child_done(
     await asyncio.wait_for(task, 15)
     assert not sem.locked()
     assert list(settings.scratch_dir.glob("preview-*")) == []
+
+
+async def test_preview_cancel_during_cleanup_still_releases(
+    client: httpx.AsyncClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import anyio
+
+    in_cleanup = threading.Event()
+    real = shutil.rmtree
+
+    def slow_rmtree(path: object, *a: object, **k: object) -> None:
+        in_cleanup.set()
+        time.sleep(0.3)
+        real(path, *a, **k)  # type: ignore[arg-type]
+
+    sem = asyncio.Semaphore(1)
+    monkeypatch.setattr(sources_api, "run_in_subprocess", lambda *a, **k: [])
+    monkeypatch.setattr(sources_api.shutil, "rmtree", slow_rmtree)
+    monkeypatch.setattr(sources_api, "_PREVIEW_SEM", sem)
+    _, h = await actor("a")
+    tid = await _mk_target(h, client)
+    scope = anyio.CancelScope()
+
+    async def post() -> None:
+        with scope:
+            await client.post(
+                "/api/v1/sources/preview",
+                json={"name": "p", "url": "https://www.reddit.com/r/pics/", "target_id": tid},
+                headers=h,
+            )
+
+    task = asyncio.create_task(post())
+    assert await asyncio.to_thread(in_cleanup.wait, 15)
+    scope.cancel()  # disconnect while cleanup is running
+    await asyncio.wait_for(task, 15)
+    assert not sem.locked()
+    assert list(settings.scratch_dir.glob("preview-*")) == []

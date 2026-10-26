@@ -434,3 +434,17 @@ def test_ip_private_denies_site_local() -> None:
     assert _ip_private(ipaddress.ip_address("fec0::1"))
     assert _ip_private(ipaddress.ip_address("fec0:1:2::3"))
     assert not _ip_private(ipaddress.ip_address("2606:4700::1111"))
+
+
+def test_user_rate_options_reject_non_finite_and_non_int_retries(tmp_path: Path) -> None:
+    admin = RipSettings(rate_limits={"default": RateLimit(sleep_request=2, sleep=1, retries=3)})
+    cat = ("extractor", "directlink")
+    for bad in (float("nan"), float("inf")):
+        configure(
+            src(gdl_options={"sleep-request": bad, "sleep": bad}), None, admin, tmp_path, False
+        )
+        assert config.get(cat, "sleep-request") == 2
+        assert config.get(cat, "sleep") == 1
+    configure(src(gdl_options={"retries": 3.5}), None, admin, tmp_path, incremental=False)
+    assert config.get(cat, "retries") == 3
+    assert config.get(("downloader",), "retries") == 3

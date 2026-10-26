@@ -1,3 +1,4 @@
+import anyio
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -94,10 +95,13 @@ async def adhoc_rip(
     source_id = src.id
     await session.commit()  # release the write lock before the supervisor opens its own session
     try:
-        job = await _submit(sup, source_id, p, body.log_level)
-    except BaseException:  # only a failed enqueue orphans the source; a queued job owns it
-        async with session_scope() as s:
-            await s.execute(delete(Source).where(Source.id == source_id))
+        # shielded: a disconnect after the job row commits must not delete the live source
+        with anyio.CancelScope(shield=True):
+            job = await _submit(sup, source_id, p, body.log_level)
+    except Exception:  # only a failed enqueue orphans the source; a queued job owns it
+        with anyio.CancelScope(shield=True):
+            async with session_scope() as s:
+                await s.execute(delete(Source).where(Source.id == source_id))
         raise
     return await _out(session, job)
 

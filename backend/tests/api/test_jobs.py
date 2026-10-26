@@ -293,3 +293,38 @@ async def test_rip_keeps_source_when_failure_is_after_enqueue(
     async with session_scope() as s:
         assert (await s.execute(select(Source))).first() is not None
         assert (await s.execute(select(Job))).first() is not None
+
+
+async def test_rip_disconnect_after_commit_keeps_live_source(
+    client: httpx.AsyncClient,
+) -> None:
+    import asyncio
+
+    import anyio
+
+    app = client._transport.app  # type: ignore[attr-defined]
+    real = app.state.supervisor
+    scope = anyio.CancelScope()
+    started = asyncio.Event()
+
+    class Slow:
+        async def enqueue(self, *a: Any) -> Any:
+            started.set()
+            await asyncio.sleep(0.3)  # the client disconnects meanwhile
+            return await real.enqueue(*a)
+
+    app.state.supervisor = Slow()
+    _, h = await actor("a")
+    tid = (await client.post("/api/v1/targets", json=TARGET, headers=h)).json()["id"]
+
+    async def post() -> None:
+        with scope:
+            await client.post("/api/v1/rip", json={"url": SRC["url"], "target_id": tid}, headers=h)
+
+    task = asyncio.create_task(post())
+    await asyncio.wait_for(started.wait(), 10)
+    scope.cancel()
+    await asyncio.wait_for(task, 10)
+    async with session_scope() as s:
+        assert (await s.execute(select(Source))).first() is not None
+        assert (await s.execute(select(Job))).first() is not None

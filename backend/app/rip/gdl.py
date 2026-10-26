@@ -5,6 +5,7 @@ import contextlib
 import ipaddress
 import json
 import logging
+import math
 import os
 import socket
 import threading
@@ -85,7 +86,13 @@ def _at_least(user: Any, admin: float) -> Any:
     if isinstance(user, list):
         vals = [_at_least(v, admin) for v in user]
         return vals if vals else admin
-    if isinstance(user, bool) or not isinstance(user, int | float):
+    if isinstance(user, bool) or not isinstance(user, int | float) or not math.isfinite(user):
+        return admin
+    return max(user, admin)
+
+
+def _retries(user: Any, admin: int) -> int:
+    if isinstance(user, bool) or not isinstance(user, int):
         return admin
     return max(user, admin)
 
@@ -121,7 +128,7 @@ def configure(
     opts = src.gdl_options
     sleep_request = _at_least(opts.get("sleep-request"), rl.sleep_request)
     sleep = _at_least(opts.get("sleep"), rl.sleep)
-    retries = _at_least(opts.get("retries"), rl.retries)
+    retries = _retries(opts.get("retries"), rl.retries)
     config.set(cat, "sleep-request", sleep_request)
     config.set(cat, "sleep", sleep)
     config.set(cat, "retries", retries)
