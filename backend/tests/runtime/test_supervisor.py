@@ -500,3 +500,62 @@ async def test_global_notify_sent_after_final_status(
             break
         await asyncio.sleep(0.05)
     assert calls == ["immich-hoarder: s succeeded"]
+
+
+async def _src_cred_env(
+    env: Env, url: str, monkeypatch: pytest.MonkeyPatch
+) -> tuple[int, list[str]]:
+    import apprise
+
+    from app.db.models import Credential, CredentialKind
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        apprise.Apprise, "notify", lambda self, body="", title="", **k: calls.append(title) or True
+    )
+    _, src = await env.seed()
+    async with env.sf() as s:
+        c = Credential(
+            owner_id=env.owner_id,
+            name="n",
+            site="n",
+            kind=CredentialKind.apprise,
+            secret_enc=SecretBox(KEY).encrypt(url.encode()),
+        )
+        s.add(c)
+        await s.flush()
+        row = await s.get(Source, src)
+        assert row is not None
+        row.notify = {"credential_ids": [c.id], "on": ["success"]}
+        await s.commit()
+    return src, calls
+
+
+async def test_source_credential_url_notifies(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    src, calls = await _src_cred_env(env, "json://example.com/", monkeypatch)
+    sup = env.make(fw.fast_worker)
+    await sup.start()
+    job = await sup.enqueue(src, None, "info")
+    await wait_for(env, job.id, JobStatus.succeeded)
+    for _ in range(100):
+        if calls:
+            break
+        await asyncio.sleep(0.05)
+    assert calls == ["immich-hoarder: s succeeded"]
+
+
+async def test_private_source_credential_url_skipped(
+    env: Env, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    src, calls = await _src_cred_env(env, "json://10.9.8.7/secretpath", monkeypatch)
+    sup = env.make(fw.fast_worker)
+    await sup.start()
+    job = await sup.enqueue(src, None, "info")
+    await wait_for(env, job.id, JobStatus.succeeded)
+    for _ in range(100):
+        if "skipped" in caplog.text:
+            break
+        await asyncio.sleep(0.05)
+    assert calls == []
+    assert "skipped" in caplog.text
+    assert "10.9.8.7" not in caplog.text and "secretpath" not in caplog.text

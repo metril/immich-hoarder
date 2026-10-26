@@ -6,14 +6,29 @@ from collections.abc import Iterable, Sequence
 from typing import Any
 
 import apprise
+from apprise.url import URLBase
 
+from app.core.extractors import _is_private_host
 from app.rip.scrub import scrub
-from app.runtime.settings import _Quiet
 
 log = logging.getLogger(__name__)
 
 TIMEOUT_S = 15.0
 _MIN_URL_LEN = 4
+
+
+def check_notify_url(url: str, *, allow_private: bool) -> None:
+    """Raise ValueError (never echoing the URL) for unparseable or private-host URLs."""
+    host: str | None = None
+    try:
+        parsed = URLBase.parse_url(url, verify_host=False) if "://" in url else None  # type: ignore[no-untyped-call]
+        host = parsed.get("host") if parsed else None
+    except Exception:
+        host = None
+    if not host or any(c.isspace() for c in host):
+        raise ValueError("invalid notification url")
+    if not allow_private and _is_private_host(host):
+        raise ValueError("private notification host not allowed")
 
 
 def should_notify(status: str, counters: dict[str, Any], on: Sequence[str]) -> bool:
@@ -26,14 +41,10 @@ def should_notify(status: str, counters: dict[str, Any], on: Sequence[str]) -> b
 
 
 def _send(urls: list[str], title: str, body: str) -> bool:
-    _Quiet.local.active = True  # apprise echoes URLs in its logs
-    try:
-        ap = apprise.Apprise()
-        for u in urls:
-            ap.add(u)
-        return bool(ap.notify(body=body, title=title))
-    finally:
-        _Quiet.local.active = False
+    ap = apprise.Apprise()
+    for u in urls:
+        ap.add(u)
+    return bool(ap.notify(body=body, title=title))
 
 
 async def notify_job(

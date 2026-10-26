@@ -131,6 +131,10 @@ class JobSupervisor:
             await asyncio.gather(*pending, return_exceptions=True)
             for job_id in handles:
                 shutil.rmtree(self._settings.scratch_dir / str(job_id), ignore_errors=True)
+        pending_notify = list(self._notify_tasks)
+        for nt in pending_notify:
+            nt.cancel()
+        await asyncio.gather(*pending_notify, return_exceptions=True)
 
     async def enqueue(self, source_id: int, triggered_by: int | None, log_level: str | None) -> Job:
         async with self._sf() as s, s.begin():
@@ -349,12 +353,13 @@ class JobSupervisor:
                 src_urls: list[str] = []
                 for cid in cfg.get("credential_ids") or []:
                     try:
-                        await check_notify_refs(s, src.owner_id, {"credential_ids": [cid]})
+                        # re-checks use, kind and SSRF (host may have turned private)
+                        await check_notify_refs(s, src.owner_id, {"credential_ids": [cid]}, box)
                         src_urls.append(
                             (await credential_snapshot(s, cid, box)).secret.get_secret_value()
                         )
                     except HTTPException:
-                        continue
+                        log.warning("job %s: notification credential %s skipped", job_id, cid)
             if src_urls:
                 await notify_job(
                     job_id, name, counters, status, error, src_urls, cfg.get("on") or ["failure"]

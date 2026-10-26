@@ -88,10 +88,12 @@ async def list_sources(
     return Page(items=[SourceOut.of(r) for r in rows], next_cursor=nxt)
 
 
-async def build_source(session: AsyncSession, p: Principal, body: SourceIn) -> Source:
+async def build_source(
+    session: AsyncSession, p: Principal, body: SourceIn, box: SecretBox
+) -> Source:
     """Validate a create payload and add the resulting Source (flushed) owned by `p`."""
     await check_refs(session, p.user_id, body.target_id, body.credential_id)
-    await check_notify_refs(session, p.user_id, body.notify)
+    await check_notify_refs(session, p.user_id, body.notify, box)
     extractor = await _extractor_for(session, body.url)
     await _check_proxy(session, body.proxy)
     s = Source(
@@ -110,9 +112,10 @@ async def create_source(
     request: Request,
     p: Principal = Depends(current_principal),
     session: AsyncSession = Depends(get_session),
+    box: SecretBox = Depends(secret_box),
 ) -> SourceOut:
     require_scope(p, "sources:write")
-    s = await build_source(session, p, body)
+    s = await build_source(session, p, body, box)
     out = SourceOut.of(s)
     await _sync(request, session, s.id)
     return out
@@ -206,6 +209,7 @@ async def patch_source(
     request: Request,
     p: Principal = Depends(current_principal),
     session: AsyncSession = Depends(get_session),
+    box: SecretBox = Depends(secret_box),
 ) -> SourceOut:
     require_scope(p, "sources:write")
     s: Source = await get_obj(session, Source, obj_id, p, Perm.edit)
@@ -241,7 +245,7 @@ async def patch_source(
     if "url" in data:
         s.extractor = await _extractor_for(session, s.url)
     await check_refs(session, s.owner_id, s.target_id, s.credential_id)
-    await check_notify_refs(session, s.owner_id, s.notify)
+    await check_notify_refs(session, s.owner_id, s.notify, box)
     await session.flush()
     out = SourceOut.of(s)
     await _sync(request, session, obj_id)

@@ -14,7 +14,6 @@ from app.db.engine import session_scope
 from app.db.migrate import upgrade_head_async
 from app.db.models import Role, Setting, User
 from app.rip.settings import RipSettings, load_rip_settings
-from app.runtime import settings as rt_settings
 from app.runtime.settings import (
     NotifySettings,
     RuntimeSettings,
@@ -143,7 +142,7 @@ async def test_body_validation_error_hides_input(client: httpx.AsyncClient) -> N
     assert "ctx" not in r.json()["detail"][0]
 
 
-def test_apprise_log_filter_is_thread_local(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_apprise_logger_always_quiet() -> None:
     lg = logging.getLogger("apprise")
     seen: list[str] = []
 
@@ -153,33 +152,15 @@ def test_apprise_log_filter_is_thread_local(monkeypatch: pytest.MonkeyPatch) -> 
 
     h = H()
     lg.addHandler(h)
-    old = lg.level
-    lg.setLevel(logging.DEBUG)
-
-    class Fake:
-        raises = False
-
-        def add(self, url: str) -> bool:
-            lg.error("mine-%s", url)
-            t = threading.Thread(target=lambda: lg.error("other"))
-            t.start()
-            t.join()
-            if Fake.raises:
-                raise RuntimeError("boom")
-            return True
-
-    monkeypatch.setattr(rt_settings.apprise, "Apprise", Fake)
+    root_h = H()
+    logging.getLogger().addHandler(root_h)
     try:
-        assert rt_settings._apprise_ok("json://x")
-        assert seen == ["other"]
-        assert not lg.disabled
-        seen.clear()
-        Fake.raises = True
-        with pytest.raises(RuntimeError):
-            rt_settings._apprise_ok("json://x")
-        seen.clear()
-        lg.error("after")
-        assert seen == ["after"]
+        lg.error("main")
+        t = threading.Thread(target=lambda: lg.error("other-thread"))
+        t.start()
+        t.join()
+        assert seen == []
+        assert not lg.propagate
     finally:
         lg.removeHandler(h)
-        lg.setLevel(old)
+        logging.getLogger().removeHandler(root_h)

@@ -11,7 +11,9 @@ from app.auth.principal import Principal
 from app.core.crypto import SecretBox
 from app.db.models import Credential, CredentialKind, ImmichTarget, Perm, Source, User
 from app.rip.filters import FilterSpec
+from app.rip.settings import load_rip_settings
 from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot
+from app.runtime.notify import check_notify_url
 
 
 async def check_refs(
@@ -80,11 +82,18 @@ async def build_snapshots(
     return snap, tsnap, cred
 
 
-async def check_notify_refs(session: AsyncSession, owner_id: int, notify: dict[str, Any]) -> None:
+async def check_notify_refs(
+    session: AsyncSession, owner_id: int, notify: dict[str, Any], box: SecretBox
+) -> None:
     """Every notify credential must be of kind apprise and usable by the source owner."""
     ids = list(notify.get("credential_ids") or [])
+    allow_private = (await load_rip_settings(session)).allow_private_hosts if ids else False
     for cid in ids:
         await check_refs(session, owner_id, None, cid)
         cred = await session.get(Credential, cid)
         if cred is None or cred.kind != CredentialKind.apprise:
             raise HTTPException(422, "notify credentials must be of kind apprise")
+        try:
+            check_notify_url(box.decrypt(cred.secret_enc).decode(), allow_private=allow_private)
+        except ValueError as e:
+            raise HTTPException(422, str(e)) from None

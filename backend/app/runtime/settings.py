@@ -1,7 +1,6 @@
 """Admin-configurable runtime and notify settings (keys "runtime", "notify")."""
 
 import logging
-import threading
 from typing import Literal
 
 import apprise
@@ -42,25 +41,20 @@ class RuntimeSettings(BaseModel, extra="forbid"):
         return v
 
 
-class _Quiet(logging.Filter):
-    """Drop apprise records emitted by the thread currently validating a URL."""
-
-    local = threading.local()
-
+# apprise echoes URLs in its logs, and async sends log from its own thread pool,
+# so the whole logger is silenced rather than filtered per thread.
+class _Silence(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        return not getattr(self.local, "active", False)
+        return False
 
 
-logging.getLogger("apprise").addFilter(_Quiet())
+_apprise_logger = logging.getLogger("apprise")
+_apprise_logger.addFilter(_Silence())
+_apprise_logger.propagate = False
 
 
 def _apprise_ok(url: str) -> bool:
-    # apprise logs the offending URL on failure; keep it out of our logs.
-    _Quiet.local.active = True
-    try:
-        return bool(apprise.Apprise().add(url))
-    finally:
-        _Quiet.local.active = False
+    return bool(apprise.Apprise().add(url))
 
 
 class NotifySettings(BaseModel, extra="forbid"):

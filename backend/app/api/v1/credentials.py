@@ -10,10 +10,23 @@ from app.auth.deps import current_principal
 from app.auth.principal import Principal
 from app.core.crypto import SecretBox
 from app.db.engine import get_session
-from app.db.models import Credential, Perm, Source
+from app.db.models import Credential, CredentialKind, Perm, Source
+from app.rip.settings import load_rip_settings
+from app.runtime.notify import check_notify_url
+from app.runtime.settings import _apprise_ok
 from app.schemas.credentials import CredentialIn, CredentialOut, CredentialPatch
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
+
+
+async def _check_apprise(session: AsyncSession, url: str) -> None:
+    """Reject invalid or SSRF-prone apprise URLs without echoing them."""
+    try:
+        check_notify_url(url, allow_private=(await load_rip_settings(session)).allow_private_hosts)
+        if not _apprise_ok(url):
+            raise ValueError("invalid notification url")
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
 
 
 @router.get("", response_model=Page[CredentialOut])
@@ -38,6 +51,8 @@ async def create_credential(
     session: AsyncSession = Depends(get_session),
 ) -> CredentialOut:
     require_scope(p, "credentials:write")
+    if body.kind == CredentialKind.apprise:
+        await _check_apprise(session, body.secret)
     c = Credential(
         name=body.name,
         site=body.site,
@@ -72,6 +87,8 @@ async def patch_credential(
     require_scope(p, "credentials:write")
     c: Credential = await get_obj(session, Credential, obj_id, p, Perm.edit)
     data = body.model_dump(exclude_unset=True, exclude_none=True)
+    if data.get("kind", c.kind) == CredentialKind.apprise and ("secret" in data or "kind" in data):
+        await _check_apprise(session, data.get("secret") or box.decrypt(c.secret_enc).decode())
     if "secret" in data:
         c.secret_enc = box.encrypt(data.pop("secret").encode())
     for k, v in data.items():

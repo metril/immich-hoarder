@@ -4,9 +4,9 @@ from typing import Any
 import apprise
 import pytest
 
-from app.runtime.notify import notify_job
+from app.runtime.notify import check_notify_url, notify_job
 
-URL = "json://localhost/"
+URL = "json://example.com/"
 
 
 @pytest.fixture
@@ -51,3 +51,26 @@ async def test_notify_failure_is_logged_not_raised(
     with caplog.at_level(logging.WARNING):
         await notify_job(1, "s", {}, "failed", "x", [URL], ["failure"])
     assert "notification failed" in caplog.text
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "json://10.0.0.1/",
+        "json://169.254.169.254",
+        "json://localhost",
+        "json://[::1]/",
+        "json://2130706433/",
+        "json://127.1/",
+    ],
+)
+def test_check_notify_url_rejects_private(url: str) -> None:
+    with pytest.raises(ValueError):
+        check_notify_url(url, allow_private=False)
+    check_notify_url(url, allow_private=True)
+
+
+def test_check_notify_url_allows_public_rejects_garbage() -> None:
+    check_notify_url("json://example.com/", allow_private=False)
+    with pytest.raises(ValueError):
+        check_notify_url("not a url", allow_private=True)

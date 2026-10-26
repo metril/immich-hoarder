@@ -2,12 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.common import get_obj
+from app.api.common import get_obj, secret_box
 from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
 from app.api.v1.sources import build_source
 from app.auth.authz import require_scope
 from app.auth.deps import current_principal
 from app.auth.principal import Principal
+from app.core.crypto import SecretBox
 from app.db.engine import get_session, session_scope
 from app.db.models import Job, JobEvent, JobItem, JobStatus, Source, Visibility
 from app.runtime.supervisor import JobConflict, JobNotActive, JobSupervisor
@@ -74,6 +75,7 @@ async def adhoc_rip(
     request: Request,
     p: Principal = Depends(current_principal),
     session: AsyncSession = Depends(get_session),
+    box: SecretBox = Depends(secret_box),
 ) -> JobOut:
     require_scope(p, "sources:run")
     sup = _supervisor(request)
@@ -85,7 +87,7 @@ async def adhoc_rip(
             "name": f"ad-hoc: {body.url[:80]}",
         }
     )
-    src = await build_source(session, p, payload)
+    src = await build_source(session, p, payload, box)
     source_id = src.id
     try:
         return await _enqueue(session, sup, source_id, p, body.log_level)
