@@ -93,8 +93,8 @@ def build_description(meta: dict[str, Any]) -> str:
     if link:
         link = str(link)
         parts.append("https://www.reddit.com" + link if link.startswith("/") else link)
-    elif meta.get("url"):
-        parts.append(str(meta["url"]))
+    elif meta.get("url") or meta.get("_file_url"):
+        parts.append(str(meta.get("url") or meta["_file_url"]))
     if meta.get("author"):
         parts.append(f"by {meta['author']}")
     return "\n".join(parts)[:_DESC_MAX]
@@ -173,7 +173,7 @@ class _Rip:
 
     @staticmethod
     def _url(meta: dict[str, Any], path: Path | None) -> str:
-        v = meta.get("url") or meta.get("_url") or meta.get("permalink")
+        v = meta.get("url") or meta.get("_url") or meta.get("_file_url") or meta.get("permalink")
         if v:
             return str(v)
         if path is not None:

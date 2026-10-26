@@ -215,6 +215,11 @@ class HoarderJob(job.DownloadJob):  # type: ignore[misc]
             self.hooks: Any = collections.defaultdict(list)
         self.register_hooks({"prepare": self._prepare, "after": self._after}, None)
 
+    def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
+        # extractors like directlink carry the file URL only here, not in metadata
+        kwdict.setdefault("_file_url", url)
+        super().handle_url(url, kwdict)
+
     def _inside(self, pathfmt: Any) -> bool:
         if self._root is None:
             return True

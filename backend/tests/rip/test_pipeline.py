@@ -390,6 +390,11 @@ def test_build_description() -> None:
     assert len(build_description({"title": "x" * 5000})) == 2000
 
 
+def test_description_falls_back_to_file_url() -> None:
+    assert build_description({"_file_url": "http://site/a.jpg"}) == "http://site/a.jpg"
+    assert build_description({"url": "http://u", "_file_url": "http://f"}) == "http://u"
+
+
 def test_gdl_error_and_all_uploads_failing_is_failed(env: Env) -> None:
     env.router.post(f"{BASE}/assets").mock(return_value=httpx.Response(400, json={}))
     r = env.run("/page/bad", extractor="recursive")
