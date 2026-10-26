@@ -77,7 +77,7 @@ jobs:
               - 'uv.lock'
               - '.github/workflows/ci.yml'
 
-  backend:
+  backend-lint:
     needs: changes
     if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
@@ -90,7 +90,23 @@ jobs:
       - run: uv run ruff check .
       - run: uv run ruff format --check .
       - run: uv run mypy
-      - run: uv run pytest -q
+
+  backend:
+    needs: changes
+    if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.backend == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --frozen
+      # -n auto comes from addopts; pytest-split divides tests across shards.
+      - run: uv run pytest -q --splits 4 --group ${{ matrix.shard }}
 
   postgres:
     needs: changes
@@ -135,7 +151,30 @@ jobs:
           node-version: 24.21.0
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm budget
+      - run: pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck && pnpm build && pnpm budget
+
+  frontend-test:
+    needs: changes
+    if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile && pnpm test --shard=${{ matrix.shard }}/2
 
   api-client:
     needs: changes
@@ -242,7 +281,7 @@ jobs:
 
   ci-ok:
     if: always()
-    needs: [changes, backend, postgres, frontend, api-client, frontend-e2e, docker, docker-arm64]
+    needs: [changes, backend-lint, backend, postgres, frontend, frontend-test, api-client, frontend-e2e, docker, docker-arm64]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no job failed or was cancelled
