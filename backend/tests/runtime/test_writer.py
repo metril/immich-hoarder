@@ -520,3 +520,21 @@ async def test_log_levels_normalised(env: Any) -> None:
     async with sf() as s:
         got = (await s.execute(select(JobEvent.level).order_by(JobEvent.id))).scalars().all()
     assert list(got) == ["warn", "error", "error", "info", "debug"]
+
+
+async def test_observer_sees_committed_messages_and_cannot_break_writer(env: Any) -> None:
+    _, sf = env
+    w = JobWriter(sf, EventBus())
+    seen: list[Any] = []
+
+    def boom(_m: Any) -> None:
+        raise RuntimeError("x")
+
+    w.add_observer(boom)
+    w.add_observer(seen.append)
+    w.start()
+    for i in range(1500):
+        w.submit(("event", 1, {"type": "item.uploaded", "url": f"http://x/{i}"}))
+    await w.stop()
+    assert len(seen) == 1500
+    assert await _count(sf, JobItem) == 1500

@@ -1,6 +1,6 @@
-import asyncio
 import secrets
 from collections.abc import AsyncIterator
+from datetime import datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -13,7 +13,6 @@ from app.core.config import Settings
 from app.db.engine import session_scope
 from app.db.models import Role, User
 from app.main import create_app
-from app.runtime.bus import EventBus
 
 
 @pytest.fixture
@@ -57,27 +56,50 @@ async def test_metrics_requires_scope(client: httpx.AsyncClient) -> None:
 
 
 async def test_metrics_counts_items_and_jobs(app: FastAPI, client: httpx.AsyncClient) -> None:
-    bus = EventBus()
-    app.state.metrics.start(bus)
-    try:
-        bus.publish(1, {"type": "status", "job_id": 1, "status": "running"})
-        bus.publish(1, {"type": "item.saved", "url": "u"})
-        bus.publish(1, {"type": "item.saved", "url": "v"})
-        bus.publish(1, {"type": "item.failed", "url": "w"})
-        bus.publish(1, {"type": "status", "job_id": 1, "status": "succeeded"})
-        bus.publish(1, {"type": "status", "job_id": 1, "status": "succeeded"})  # dup
-        for _ in range(50):
-            await asyncio.sleep(0.01)
-            if bus.subscriber_count(None) and app.state.metrics.idle():
-                break
-        key = await _key(["metrics:read"])
-        text = (await client.get("/metrics", headers={"X-API-Key": key})).text
-    finally:
-        await app.state.metrics.stop()
-    assert 'ih_items_total{outcome="saved"} 2.0' in text
+    m = app.state.metrics
+    t0 = datetime(2026, 1, 1, 0, 0, 0)
+    m.observe(("status", 1, "running", {"started_at": t0}))
+    for i in range(1500):  # lossless beyond the bus queue size
+        m.observe(("event", 1, {"type": "item.uploaded", "url": str(i)}))
+    m.observe(("event", 1, {"type": "item.failed", "url": "w"}))
+    m.observe(("event", 1, {"type": "item.weird", "url": "w"}))
+    fin = ("status", 1, "succeeded", {"finished_at": t0 + timedelta(seconds=30)})
+    m.observe(fin)
+    m.observe(fin)  # dup
+    key = await _key(["metrics:read"])
+    text = (await client.get("/metrics", headers={"X-API-Key": key})).text
+    assert 'ih_items_total{outcome="uploaded"} 1500.0' in text
     assert 'ih_items_total{outcome="failed"} 1.0' in text
+    assert 'ih_items_total{outcome="other"} 1.0' in text
     assert 'ih_jobs_total{status="succeeded"} 1.0' in text
     assert "ih_job_duration_seconds_count 1.0" in text
+    assert "ih_job_duration_seconds_sum 30.0" in text
+
+
+async def test_metrics_forbidden_for_non_admin_session(
+    app: FastAPI, client: httpx.AsyncClient
+) -> None:
+    async with session_scope() as s:
+        u = User(sub="plain", role=Role.user, groups=["hoarder-users"])
+        s.add(u)
+        await s.flush()
+        uid = u.id
+    from starlette.middleware.sessions import SessionMiddleware  # noqa: F401
+
+    app.add_route("/_t/login", _login(uid), methods=["GET"])
+    app.middleware_stack = None
+    await client.get("/_t/login")
+    assert (await client.get("/metrics")).status_code == 403
+
+
+def _login(uid: int):  # type: ignore[no-untyped-def]
+    from starlette.responses import PlainTextResponse
+
+    async def h(request):  # type: ignore[no-untyped-def]
+        request.session["user_id"] = uid
+        return PlainTextResponse("ok")
+
+    return h
 
 
 async def test_readyz_reports_components(

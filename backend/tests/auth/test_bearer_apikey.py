@@ -12,3 +12,21 @@ async def test_bearer_ih_token_is_api_key(client: httpx.AsyncClient) -> None:
     assert r.status_code == 401
     r = await client.post("/_t/echo", headers={"Authorization": "Bearer ih_garbage"})
     assert r.status_code == 401
+
+
+async def test_bearer_revoked_or_expired_key_401(client: httpx.AsyncClient) -> None:
+    from datetime import UTC, datetime, timedelta
+
+    from app.db.engine import session_scope
+    from app.db.models import ApiKey
+
+    uid = await make_user("b")
+    _, expired = await make_key(uid, [], datetime.now(UTC) - timedelta(minutes=1))
+    kid, revoked = await make_key(uid, [])
+    async with session_scope() as s:
+        k = await s.get(ApiKey, kid)
+        assert k
+        k.revoked = True
+    for raw in (expired, revoked):
+        r = await client.post("/_t/echo", headers={"Authorization": f"Bearer {raw}"})
+        assert r.status_code == 401

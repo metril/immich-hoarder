@@ -1,20 +1,20 @@
 """Prometheus metrics fed by the event bus (one dedicated registry, no globals)."""
 
-import asyncio
-import logging
 import shutil
-import time
 from collections import deque
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 
-from app.runtime.bus import EventBus, Subscription
-
-log = logging.getLogger(__name__)
+from app.runtime.writer import JobWriter
 
 _TERMINAL = {"succeeded", "failed", "cancelled"}
 _SEEN_MAX = 4096
+OUTCOMES = frozenset(
+    {"discovered", "downloaded", "filtered", "linked", "uploaded", "failed", "deleted_in_immich"}
+)
 
 
 class Metrics:
@@ -37,53 +37,35 @@ class Metrics:
         self.scratch_bytes = Gauge(
             "ih_scratch_bytes", "Scratch dir used bytes", registry=self.registry
         )
-        self._started: dict[int, float] = {}
+        self._started: dict[int, datetime] = {}
         self._finished: deque[int] = deque(maxlen=_SEEN_MAX)
         self._finished_set: set[int] = set()
-        self._sub: Subscription | None = None
-        self._task: asyncio.Task[None] | None = None
 
-    def start(self, bus: EventBus) -> None:
-        self._sub = bus.subscribe(None)
-        self._task = asyncio.create_task(self._run(self._sub))
+    def attach(self, writer: JobWriter) -> None:
+        writer.add_observer(self.observe)
 
-    async def stop(self) -> None:
-        if self._sub is not None:
-            self._sub.close()
-            self._sub = None
-        if self._task is not None:
-            self._task.cancel()
-            await asyncio.gather(self._task, return_exceptions=True)
-            self._task = None
-
-    def idle(self) -> bool:
-        return self._sub is None or self._sub.empty()
-
-    async def _run(self, sub: Subscription) -> None:
-        async for ev in sub:
-            try:
-                self.observe(ev)
-            except Exception:
-                log.exception("metrics: event handling failed")
-
-    def observe(self, ev: dict[str, object]) -> None:
-        typ = str(ev.get("type", ""))
-        job_id = ev.get("job_id")
-        if typ.startswith("item."):
-            self.items_total.labels(typ.removeprefix("item.")).inc()
-        elif typ == "status" and isinstance(job_id, int):
-            status = str(ev.get("status"))
+    def observe(self, msg: Any) -> None:
+        kind = msg[0]
+        if kind == "event":
+            typ = str(msg[2].get("type", ""))
+            if typ.startswith("item."):
+                outcome = typ.removeprefix("item.")
+                self.items_total.labels(outcome if outcome in OUTCOMES else "other").inc()
+        elif kind == "status":
+            _, job_id, status, fields = msg
             if status == "running":
-                self._started.setdefault(job_id, time.monotonic())
+                if fields.get("started_at") is not None:
+                    self._started[job_id] = fields["started_at"]
             elif status in _TERMINAL and job_id not in self._finished_set:
                 if len(self._finished) == _SEEN_MAX:
                     self._finished_set.discard(self._finished[0])
                 self._finished.append(job_id)
                 self._finished_set.add(job_id)
                 self.jobs_total.labels(status).inc()
-                t0 = self._started.pop(job_id, None)
-                if t0 is not None:
-                    self.duration.observe(time.monotonic() - t0)
+                t0 = self._started.pop(job_id, None) or fields.get("started_at")
+                t1 = fields.get("finished_at")
+                if t0 is not None and t1 is not None:
+                    self.duration.observe(max(0.0, (t1 - t0).total_seconds()))
 
     def set_scratch(self, scratch_dir: Path) -> None:
         try:

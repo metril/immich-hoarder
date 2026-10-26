@@ -53,6 +53,11 @@ class JobWriter:
         self._hook: Callable[[], None] | None = None  # test fault-injection point
         self._respawn_timer: asyncio.TimerHandle | None = None
         self._done_listeners: list[DoneListener] = []
+        self._observers: list[Callable[[Msg], None]] = []
+
+    def add_observer(self, fn: Callable[[Msg], None]) -> None:
+        """Call ``fn(msg)`` for every message after its batch commits (lossless, sync)."""
+        self._observers.append(fn)
 
     def add_done_listener(self, cb: DoneListener) -> None:
         """Call ``cb(job_id, result)`` after the batch carrying a "done" message commits."""
@@ -171,6 +176,11 @@ class JobWriter:
                 except Exception:
                     log.exception("writer: message dropped (%s)", msg[0])
         for msg in ok:
+            for obs in tuple(self._observers):
+                try:
+                    obs(msg)
+                except Exception:
+                    log.exception("writer: observer failed")
             try:
                 if msg[0] == "event":
                     self._bus.publish(msg[1], msg[2])

@@ -49,8 +49,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 ctx = multiprocessing.get_context("spawn")
                 ipc_q = make_ipc_queue(ctx)
                 bus = EventBus()
-                _app.state.metrics.start(bus)
                 writer = JobWriter(sf, bus)
+                _app.state.metrics.attach(writer)
                 writer.start()
                 bridge = IpcBridge(ipc_q, writer, asyncio.get_running_loop())
                 bridge.start()
@@ -64,7 +64,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 _app.state.supervisor = supervisor
             yield
         finally:
-            await _app.state.metrics.stop()
             if scheduler is not None:
                 scheduler.shutdown(wait=False)
                 _app.state.scheduler = None
@@ -144,11 +143,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         m: Metrics = app.state.metrics
         sup = getattr(app.state, "supervisor", None)
         m.jobs_running.set(len(sup.running) if sup is not None else 0)
-        async with session_scope() as s:
-            queued = await s.scalar(
-                select(func.count()).select_from(Job).where(Job.status == JobStatus.queued)
-            )
-        m.jobs_queued.set(queued or 0)
+
+        async def _queued() -> int:
+            async with session_scope() as s:
+                n = await s.scalar(
+                    select(func.count()).select_from(Job).where(Job.status == JobStatus.queued)
+                )
+            return n or 0
+
+        try:
+            m.jobs_queued.set(await asyncio.wait_for(_queued(), 2.0))
+        except Exception:
+            pass  # keep the last value
         m.set_scratch(settings.scratch_dir)
         return Response(generate_latest(m.registry), media_type=CONTENT_TYPE_LATEST)
 
