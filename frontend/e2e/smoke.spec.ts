@@ -45,7 +45,7 @@ test("assets served brotli immutable", async ({ page, request }) => {
   await page.goto("/");
   const src = await page.locator("script[type=module][src]").first().getAttribute("src");
   expect(src).toMatch(/^\/assets\//);
-  const res = await request.get(src, { headers: { "accept-encoding": "br" } });
+  const res = await request.get(src ?? "", { headers: { "accept-encoding": "br" } });
   expect(res.status()).toBe(200);
   expect(res.headers()["content-encoding"]).toBe("br");
   expect(res.headers()["cache-control"]).toContain("immutable");
