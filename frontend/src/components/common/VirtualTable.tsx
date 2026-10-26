@@ -75,7 +75,7 @@ export function VirtualTable<T>({
   };
 
   return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
+    <div className={cn("overflow-x-auto", !mobile && "rounded-xl border bg-card")}>
       <div role="table" aria-label={label} aria-rowcount={mobile ? rows.length : rows.length + 1} className={cn("flex min-h-0 flex-col", !mobile && "min-w-[44rem]")}>
         {!mobile && (
           <div role="rowgroup" className="sticky top-0 z-10 border-b bg-muted">
