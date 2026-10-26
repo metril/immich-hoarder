@@ -91,3 +91,19 @@ def test_api_key_regex_requires_exactly_32() -> None:
     assert _RAW_RE.match("ih_abcd1234_" + "A" * 32)
     assert _RAW_RE.match("ih_abcd1234_" + "A" * 33) is None
     assert _RAW_RE.match("ih_abcd1234_" + "A" * 31) is None
+
+
+async def test_csrf_cookie_renewed_with_session(
+    client: httpx.AsyncClient, idp: fake_idp.FakeIdp
+) -> None:
+    await do_login(client, idp, "gina", ["hoarder-users"])
+    tok = client.cookies["ih_csrf"]
+    r = await client.get("/api/v1/auth/me")
+    sc = [h for h in r.headers.get_list("set-cookie") if h.startswith("ih_csrf=")]
+    assert len(sc) == 1 and f"ih_csrf={tok}" in sc[0] and "Max-Age=28800" in sc[0]
+    # a browser whose CSRF cookie was refreshed keeps working past the original 8h
+    assert (await client.post("/_t/echo", headers={"X-CSRF-Token": tok})).status_code == 200
+    # a missing cookie is never papered over
+    client.cookies.delete("ih_csrf")
+    assert (await client.post("/_t/echo", headers={"X-CSRF-Token": tok})).status_code == 403
+    assert "ih_csrf" not in client.cookies

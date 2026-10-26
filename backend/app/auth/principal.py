@@ -87,11 +87,11 @@ async def _fetch_or_create(
     if user is not None:
         return user
     user = User(sub=sub, role=role or Role.user, groups=groups)
-    session.add(user)
     try:
-        await session.flush()
+        async with session.begin_nested():  # savepoint: caller's pending work survives
+            session.add(user)
+            await session.flush()
     except IntegrityError:
         # Concurrent first login: another request created the row; re-select once.
-        await session.rollback()
         return (await session.execute(select(User).where(User.sub == sub))).scalar_one()
     return user

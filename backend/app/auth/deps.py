@@ -13,6 +13,7 @@ from app.db.models import Role, User
 UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 CSRF_COOKIE = "ih_csrf"
 CSRF_HEADER = "X-CSRF-Token"
+SESSION_MAX_AGE = 8 * 3600
 
 
 def _unauth(detail: str = "unauthorized") -> HTTPException:

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import CSRF_COOKIE, check_csrf, current_principal
+from app.auth.deps import CSRF_COOKIE, SESSION_MAX_AGE, check_csrf, current_principal
 from app.auth.principal import Principal, resolve_role, upsert_user
 from app.core.config import Settings
 from app.db.engine import get_session
@@ -56,7 +56,7 @@ async def callback(
     resp.set_cookie(
         CSRF_COOKIE,
         secrets.token_urlsafe(32),
-        max_age=8 * 3600,
+        max_age=SESSION_MAX_AGE,
         httponly=False,
         samesite="lax",
         secure=settings.public_url.startswith("https"),

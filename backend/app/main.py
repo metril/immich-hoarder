@@ -16,7 +16,8 @@ from app import __version__
 from app.api.v1 import api_router
 from app.api.v1 import auth as auth_api
 from app.auth.authz import require_scope
-from app.auth.deps import current_principal
+from app.auth.csrf_cookie import CsrfCookieRenewal
+from app.auth.deps import SESSION_MAX_AGE, current_principal
 from app.auth.oidc import BearerVerifier, build_oauth
 from app.auth.principal import Principal
 from app.core.config import Settings, get_settings
@@ -89,10 +90,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.immich_transport = None
     app.state.oauth = build_oauth(settings)
     app.state.verifier = BearerVerifier(settings)
+    secure = settings.public_url.startswith("https")
+    app.add_middleware(CsrfCookieRenewal, secure=secure)  # inside SessionMiddleware
     app.add_middleware(
         SessionMiddleware,
         secret_key=settings.session_secret.get_secret_value(),
-        max_age=8 * 3600,
+        max_age=SESSION_MAX_AGE,
         same_site="lax",
         https_only=settings.public_url.startswith("https"),
     )

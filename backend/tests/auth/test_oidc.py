@@ -182,3 +182,40 @@ async def test_logout_requires_csrf_when_logged_in(
         await client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": tok})
     ).status_code == 204
     assert (await client.get("/api/v1/auth/me")).status_code == 401
+
+
+async def test_upsert_race_keeps_callers_pending_work(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.auth.principal import upsert_user
+    from app.core.config import Settings
+
+    settings: Settings = client._transport.app.state.settings  # type: ignore[attr-defined]
+    async with session_scope() as winner:
+        winner.add(User(sub="racer2", groups=["hoarder-users"]))
+    real = AsyncSession.execute
+    raced = False
+
+    class _Empty:
+        def scalar_one_or_none(self) -> None:
+            return None
+
+    async def blind_first_select(self: AsyncSession, *a: object, **k: object) -> object:
+        nonlocal raced
+        if not raced:
+            raced = True  # the first lookup misses the row the other request just created
+            return _Empty()
+        return await real(self, *a, **k)  # type: ignore[arg-type]
+
+    async with session_scope() as s:
+        s.add(User(sub="pending", groups=["hoarder-users"]))
+        await s.flush()
+        monkeypatch.setattr(AsyncSession, "execute", blind_first_select)
+        user = await upsert_user(s, {"sub": "racer2", "groups": ["hoarder-users"]}, settings)
+        monkeypatch.undo()
+        assert user.sub == "racer2"
+    async with session_scope() as s:
+        subs = set((await s.execute(select(User.sub))).scalars())
+    assert {"pending", "racer2"} <= subs
