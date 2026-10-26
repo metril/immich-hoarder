@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.4.0](https://github.com/metril/immich-hoarder/compare/v0.3.0...v0.4.0) (2026-10-26)
+
+
+### Features
+
+* **sources:** friendly schedule builder with local-time and next runs ([ee75179](https://github.com/metril/immich-hoarder/commit/ee7517983fd5bd37349f638282a59715a39f4e32))
+* **ui:** immich blue colour scheme and clearer concurrency hints ([5ac6aa4](https://github.com/metril/immich-hoarder/commit/5ac6aa44f0e1ff72f520cb311e8f6268bc99da90))
+
+
+### Bug Fixes
+
+* **sources:** timezone-correct hourly/monthly schedules and stricter cron validation ([ee14a43](https://github.com/metril/immich-hoarder/commit/ee14a43770ee23979e939338a39043dbd2ef201e))
+
 ## [0.3.0](https://github.com/metril/immich-hoarder/compare/v0.2.1...v0.3.0) (2026-10-26)
 
 
