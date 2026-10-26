@@ -150,14 +150,6 @@ export function defaultValues(s?: SourceOut): SourceFormValues {
   };
 }
 
-export const CRON_PRESETS: { label: string; value: string | null }[] = [
-  { label: "Off", value: null },
-  { label: "Hourly", value: "0 * * * *" },
-  { label: "Every 6 h", value: "0 */6 * * *" },
-  { label: "Daily 03:00", value: "0 3 * * *" },
-  { label: "Weekly Sun", value: "0 3 * * 0" },
-];
-
 export function fmtBytes(n: number | null | undefined): string {
   if (n == null) return "";
   const r = (x: number) => String(Math.round(x * 100) / 100);
