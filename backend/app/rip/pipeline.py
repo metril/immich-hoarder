@@ -21,6 +21,7 @@ from app.rip.events import Emit
 from app.rip.filters import check
 from app.rip.gdl import HoarderJob, capture_logs, configure, run_job
 from app.rip.media import MediaInfo, NotAnImage, analyze
+from app.rip.scrub import secret_fragments
 from app.rip.settings import RipSettings
 from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot
 
@@ -406,10 +407,6 @@ class _Rip:
     def run(self) -> RipResult:
         ctx = self.ctx
         self.emit({"type": "phase", "name": "starting"})
-        self.job_dir.mkdir(parents=True, exist_ok=True)
-        self.client = ctx.client_factory(ctx.target)
-        self.albums = AlbumResolver(self.client)
-        self.pool = ThreadPoolExecutor(ctx.settings.upload_concurrency)
         stop_tick = threading.Event()
 
         def tick() -> None:
@@ -424,6 +421,10 @@ class _Rip:
         gdl_status = 0
         error: str | None = None
         try:
+            self.job_dir.mkdir(parents=True, exist_ok=True)
+            self.client = ctx.client_factory(ctx.target)
+            self.albums = AlbumResolver(self.client)
+            self.pool = ThreadPoolExecutor(ctx.settings.upload_concurrency)
             configure(self.src, ctx.credential, ctx.settings, self.job_dir, ctx.incremental)
             job = HoarderJob(
                 self.src.url,
@@ -433,20 +434,27 @@ class _Rip:
                 cancel=self.cancel,
             )
             self.emit({"type": "phase", "name": "extracting"})
-            with capture_logs(self.emit, self.src.log_level, categories=(self.src.extractor,)):
+            with capture_logs(
+                self.emit,
+                self.src.log_level,
+                categories=(self.src.extractor,),
+                fragments=secret_fragments(ctx.credential),
+            ):
                 gdl_status = run_job(job, self.src, ctx.settings)
         except Exception as e:
             self.log_error(f"extraction crashed: {type(e).__name__}: {e}")
             error = "internal error"
         finally:
             self.emit({"type": "phase", "name": "draining"})
-            self.pool.shutdown(wait=True)
+            if hasattr(self, "pool"):
+                self.pool.shutdown(wait=True)
             stop_tick.set()
             ticker.join()
             self.progress()
             shutil.rmtree(self.job_dir, ignore_errors=True)
-            with contextlib.suppress(Exception):
-                self.client.close()
+            if hasattr(self, "client"):
+                with contextlib.suppress(Exception):
+                    self.client.close()
         if self.fatal:
             status: Literal["succeeded", "failed", "cancelled"] = "failed"
             error = self.fatal

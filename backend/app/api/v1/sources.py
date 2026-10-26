@@ -27,6 +27,7 @@ from app.rip.preview import (
     preview,
     run_in_subprocess,
 )
+from app.rip.scrub import secret_fragments
 from app.rip.settings import load_rip_settings
 from app.rip.snapshot import SourceSnapshot
 from app.schemas.sources import SourceIn, SourceOut, SourcePatch
@@ -149,6 +150,7 @@ async def preview_source(
             job_dir,
             body.limit,
             timeout=PREVIEW_TIMEOUT,
+            fragments=secret_fragments(cred),
         )
     except TimeoutError:
         raise HTTPException(504, "preview timed out") from None

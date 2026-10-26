@@ -20,6 +20,7 @@ from app.core.extractors import _ip_private, validate_gdl_options
 from app.db.models import CredentialKind
 from app.rip.dedupe import url_key
 from app.rip.filters import gdl_filter_options
+from app.rip.scrub import scrub, scrub_data
 from app.rip.settings import RateLimit, RipSettings
 from app.rip.snapshot import CredentialSnapshot, SourceSnapshot
 
@@ -235,28 +236,42 @@ _LEVELS = {
 
 
 class _EmitHandler(logging.Handler):
-    def __init__(self, emit_fn: Callable[[dict[str, Any]], None], level: int) -> None:
+    def __init__(
+        self,
+        emit_fn: Callable[[dict[str, Any]], None],
+        level: int,
+        fragments: frozenset[str] = frozenset(),
+    ) -> None:
         super().__init__(level)
         self._emit = emit_fn
+        self._fragments = fragments
 
     def emit(self, record: logging.LogRecord) -> None:
         self._emit(
             {
                 "type": "log",
                 "level": record.levelname.lower(),
-                "msg": record.getMessage(),
+                "msg": scrub(record.getMessage(), self._fragments),
                 "logger": record.name,
+                **(
+                    {"data": scrub_data(record.__dict__["data"], self._fragments)}
+                    if "data" in record.__dict__
+                    else {}
+                ),
             }
         )
 
 
 @contextlib.contextmanager
 def capture_logs(
-    emit: Callable[[dict[str, Any]], None], level: str, categories: Iterable[str] = ()
+    emit: Callable[[dict[str, Any]], None],
+    level: str,
+    categories: Iterable[str] = (),
+    fragments: frozenset[str] = frozenset(),
 ) -> Iterator[None]:
     lvl = _LEVELS.get(level, logging.INFO)
     names = ["gallery-dl", "download", "downloader", "postprocessor", *categories]
-    handler = _EmitHandler(emit, lvl)
+    handler = _EmitHandler(emit, lvl, fragments)
     saved: list[tuple[logging.Logger, int]] = []
     for n in names:
         lg = logging.getLogger(n)

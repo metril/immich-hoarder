@@ -2,9 +2,10 @@
 
 import logging
 
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.extractors import UnsupportedURL, validate_proxy
 from app.db.models import Setting
 
 log = logging.getLogger(__name__)
@@ -22,6 +23,16 @@ class RipSettings(BaseModel, extra="forbid"):
     upload_concurrency: int = Field(default=4, ge=1, le=16)
     job_scratch_max_bytes: int | None = Field(default=None, ge=1)
     allow_private_hosts: bool = False
+
+    @field_validator("proxy")
+    @classmethod
+    def _check_proxy(cls, v: str | None) -> str | None:
+        if v is None:
+            return None
+        try:
+            return validate_proxy(v, allow_private=True)
+        except UnsupportedURL as e:
+            raise ValueError(str(e)) from None
 
 
 async def load_rip_settings(session: AsyncSession) -> RipSettings:

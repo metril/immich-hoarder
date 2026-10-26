@@ -179,3 +179,11 @@ def test_load_rip_settings_invalid_row_defaults_and_warns(
         r = asyncio.run(load_rip_settings(session))
     assert r == RipSettings()
     assert any(rec.levelno == logging.WARNING for rec in caplog.records)
+
+
+def test_rip_settings_proxy_validated() -> None:
+    assert RipSettings(proxy="http://10.0.0.5:3128").proxy == "http://10.0.0.5:3128"
+    with pytest.raises(ValidationError):
+        RipSettings(proxy="socks5://h:1")
+    with pytest.raises(ValidationError):
+        RipSettings(proxy="not a proxy")

@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from app.db.models import BackfillMode
 from app.rip.filters import check_meta
 from app.rip.gdl import HoarderJob, capture_logs, configure, run_job
+from app.rip.scrub import scrub, secret_fragments
 from app.rip.settings import RipSettings
 from app.rip.snapshot import CredentialSnapshot, SourceSnapshot
 
@@ -60,11 +61,7 @@ def _item(kw: dict[str, Any], src: SourceSnapshot) -> PreviewItem:
 
 def _summary(errors: list[str], status: int, cred: CredentialSnapshot | None) -> str:
     msg = "; ".join(errors) or f"gallery-dl exited with status {status}"
-    if cred is not None:
-        secret = cred.secret.get_secret_value()
-        if secret:
-            msg = msg.replace(secret, "***")
-    return msg[:200]
+    return scrub(msg, secret_fragments(cred))[:200]
 
 
 def preview(
@@ -101,27 +98,39 @@ def preview(
         on_file=lambda _p, _m: None,
         cancel=Event(),
     )
-    with capture_logs(collect, "error", categories=(src.extractor,)):
+    with capture_logs(
+        collect, "error", categories=(src.extractor,), fragments=secret_fragments(cred)
+    ):
         status = run_job(job, src, settings)
     if status != 0 and not items:
         raise PreviewError(_summary(errors, status, cred))
     return items[:limit]
 
 
-def _child(conn: Connection, fn: Callable[..., Any], args: tuple[Any, ...]) -> None:
+def _child(
+    conn: Connection,
+    fn: Callable[..., Any],
+    args: tuple[Any, ...],
+    fragments: frozenset[str] = frozenset(),
+) -> None:
     try:
         conn.send(("ok", fn(*args)))
     except BaseException as e:
-        conn.send(("err", f"{type(e).__name__}: {e}"))
+        conn.send(("err", scrub(f"{type(e).__name__}: {e}", fragments)))
     finally:
         conn.close()
 
 
-def run_in_subprocess[T](fn: Callable[..., T], *args: Any, timeout: float) -> T:
+def run_in_subprocess[T](
+    fn: Callable[..., T],
+    *args: Any,
+    timeout: float,
+    fragments: frozenset[str] = frozenset(),
+) -> T:
     """Run `fn(*args)` in a spawned process; kill it on timeout (TimeoutError)."""
     ctx = multiprocessing.get_context("spawn")
     parent, child_conn = ctx.Pipe(duplex=False)
-    proc = ctx.Process(target=_child, args=(child_conn, fn, args), daemon=True)
+    proc = ctx.Process(target=_child, args=(child_conn, fn, args, fragments), daemon=True)
     proc.start()
     child_conn.close()
     try:

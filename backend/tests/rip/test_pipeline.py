@@ -124,6 +124,7 @@ class Env:
         concurrency: int = 4,
         cap: int = 10**9,
         incremental: bool = False,
+        client_factory: Callable[[TargetSnapshot], ImmichClient] | None = None,
     ) -> RipResult:
         url = f"{self.base}{path}"
         if extractor == "recursive":
@@ -159,9 +160,8 @@ class Env:
             incremental=incremental,
             store=self.store,
             recorder=self.store,
-            client_factory=lambda t: ImmichClient(
-                t.url, t.api_key.get_secret_value(), sleep=lambda s: None
-            ),
+            client_factory=client_factory
+            or (lambda t: ImmichClient(t.url, t.api_key.get_secret_value(), sleep=lambda s: None)),
         )
         return run_rip(ctx, self.emit, self.cancel)
 
@@ -423,3 +423,12 @@ def test_scratch_empty_when_gallery_dl_raises(env: Env, monkeypatch: pytest.Monk
     monkeypatch.setattr("app.rip.pipeline.run_job", boom)
     r = env.run("/img/a.jpg")
     assert r.status == "failed" and not any(env.scratch.iterdir())
+
+
+def test_client_factory_failure_cleans_job_dir_and_fails(env: Env) -> None:
+    def boom(_t: TargetSnapshot) -> ImmichClient:
+        raise RuntimeError("no client")
+
+    r = env.run("/page/two", extractor="recursive", client_factory=boom)
+    assert r.status == "failed"
+    assert not any(env.scratch.iterdir())
