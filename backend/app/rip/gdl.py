@@ -21,7 +21,7 @@ from app.core.extractors import _ip_private, validate_gdl_options
 from app.db.models import CredentialKind
 from app.rip.dedupe import url_key
 from app.rip.filters import gdl_filter_options
-from app.rip.scrub import scrub, scrub_data
+from app.rip.scrub import safe_url, scrub, scrub_data
 from app.rip.settings import RateLimit, RipSettings
 from app.rip.snapshot import CredentialSnapshot, SourceSnapshot
 
@@ -217,7 +217,7 @@ class HoarderJob(job.DownloadJob):  # type: ignore[misc]
 
     def handle_url(self, url: str, kwdict: dict[str, Any]) -> None:
         # extractors like directlink carry the file URL only here, not in metadata
-        kwdict.setdefault("_file_url", url)
+        kwdict["_file_url"] = safe_url(url)
         super().handle_url(url, kwdict)
 
     def _inside(self, pathfmt: Any) -> bool:

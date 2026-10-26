@@ -29,7 +29,7 @@ from app.immich.client import ImmichClient
 from app.rip.dedupe import DedupeStore
 from app.rip.filters import FilterSpec
 from app.rip.media import analyze
-from app.rip.pipeline import RipContext, RipResult, build_description, run_rip, sweep_scratch
+from app.rip.pipeline import RipContext, RipResult, _Rip, build_description, run_rip, sweep_scratch
 from app.rip.settings import RateLimit, RipSettings
 from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot
 
@@ -393,6 +393,22 @@ def test_build_description() -> None:
 def test_description_falls_back_to_file_url() -> None:
     assert build_description({"_file_url": "http://site/a.jpg"}) == "http://site/a.jpg"
     assert build_description({"url": "http://u", "_file_url": "http://f"}) == "http://u"
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "http://site/a.jpg?X-Amz-Signature=abc&X-Amz-Credential=k",
+        "http://site/a.jpg?token=secret",
+        "http://user:pw@site/a.jpg",
+        "http://site/a.jpg#frag",
+    ],
+)
+def test_file_url_is_scrubbed(raw: str) -> None:
+    d = build_description({"_file_url": raw})
+    assert d == "http://site/a.jpg"
+    assert _Rip._url({"_file_url": raw}, None) == "http://site/a.jpg"
+    assert build_description({"_file_url": "http://h:81/p/a.jpg?x=1"}) == "http://h:81/p/a.jpg"
 
 
 def test_gdl_error_and_all_uploads_failing_is_failed(env: Env) -> None:

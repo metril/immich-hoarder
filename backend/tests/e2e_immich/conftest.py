@@ -23,7 +23,7 @@ def pytest_collection_modifyitems(config, items):
         return
     skip = pytest.mark.skip(reason="set IH_E2E_IMMICH=1 to run (needs Docker)")
     for item in items:
-        if "e2e_immich" in str(item.fspath):
+        if HERE in item.path.parents:
             item.add_marker(skip)
 
 
@@ -87,6 +87,7 @@ def _port(project: str, site: Path, service: str, port: int) -> int:
 def stack(tmp_path_factory):
     site = _fixtures(tmp_path_factory.mktemp("e2e"))
     project = f"ih-e2e-{uuid.uuid4().hex[:8]}"
+    hoarder = immich = None
     try:
         up = _dc(project, site, "up", "-d", "--wait", "--wait-timeout", "300")
         if up.returncode:
@@ -137,6 +138,10 @@ def stack(tmp_path_factory):
         s = Stack(hoarder=hoarder, immich=immich, target_id=r.json()["id"])
         yield s
     finally:
+        if hoarder is not None:
+            hoarder.close()
+        if immich is not None:
+            immich.http.close()
         log_dir = os.environ.get("IH_E2E_LOG_DIR")
         if log_dir:
             Path(log_dir).mkdir(parents=True, exist_ok=True)

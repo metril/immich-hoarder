@@ -21,7 +21,7 @@ from app.rip.events import Emit
 from app.rip.filters import check
 from app.rip.gdl import HoarderJob, capture_logs, configure, run_job
 from app.rip.media import MediaInfo, NotAnImage, analyze
-from app.rip.scrub import scrub_data, secret_fragments
+from app.rip.scrub import safe_url, scrub_data, secret_fragments
 from app.rip.settings import RipSettings
 from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot
 
@@ -93,8 +93,10 @@ def build_description(meta: dict[str, Any]) -> str:
     if link:
         link = str(link)
         parts.append("https://www.reddit.com" + link if link.startswith("/") else link)
-    elif meta.get("url") or meta.get("_file_url"):
-        parts.append(str(meta.get("url") or meta["_file_url"]))
+    elif meta.get("url"):
+        parts.append(str(meta["url"]))
+    elif meta.get("_file_url"):
+        parts.append(safe_url(str(meta["_file_url"])))
     if meta.get("author"):
         parts.append(f"by {meta['author']}")
     return "\n".join(parts)[:_DESC_MAX]
@@ -173,7 +175,9 @@ class _Rip:
 
     @staticmethod
     def _url(meta: dict[str, Any], path: Path | None) -> str:
-        v = meta.get("url") or meta.get("_url") or meta.get("_file_url") or meta.get("permalink")
+        v = meta.get("url") or meta.get("_url") or meta.get("permalink")
+        if not v and meta.get("_file_url"):
+            v = safe_url(str(meta["_file_url"]))
         if v:
             return str(v)
         if path is not None:
