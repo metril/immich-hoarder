@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -35,6 +35,7 @@ async def get_settings(
 @router.put("")
 async def put_settings(
     body: dict[str, Any],
+    request: Request,
     _p: Principal = Depends(require_admin),
     session: AsyncSession = Depends(get_session),
 ) -> dict[str, Any]:
@@ -55,4 +56,8 @@ async def put_settings(
         else:
             row.value = v
     await session.flush()
+    await session.commit()
+    sched = getattr(request.app.state, "scheduler", None)
+    if sched is not None and "runtime" in body:
+        await sched.sync_maintenance()
     return await _all(session)

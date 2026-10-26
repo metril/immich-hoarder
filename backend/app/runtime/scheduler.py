@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from datetime import UTC, datetime
 
@@ -7,7 +8,10 @@ from croniter import croniter
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from app.core.config import Settings
 from app.db.models import Source
+from app.runtime.maintenance import backup_sqlite, prune_ephemeral_sources, prune_jobs
+from app.runtime.settings import load_runtime_settings
 from app.runtime.supervisor import JobConflict, JobSupervisor
 
 log = logging.getLogger(__name__)
@@ -37,8 +41,12 @@ def _job_id(source_id: int) -> str:
 
 class SourceScheduler:
     def __init__(
-        self, supervisor: JobSupervisor, session_factory: async_sessionmaker[AsyncSession]
+        self,
+        supervisor: JobSupervisor,
+        session_factory: async_sessionmaker[AsyncSession],
+        settings: Settings | None = None,
     ) -> None:
+        self._settings = settings
         self._sup = supervisor
         self._sf = session_factory
         self._sched = AsyncIOScheduler(timezone=UTC)
@@ -56,10 +64,61 @@ class SourceScheduler:
         return bool(self._sched.running)
 
     def job_ids(self) -> set[str]:
-        return {j.id for j in self._sched.get_jobs()}
+        return {j.id for j in self._sched.get_jobs() if j.id.startswith("source-")}
+
+    async def _prune(self) -> None:
+        try:
+            async with self._sf() as s:
+                rt = await load_runtime_settings(s)
+                jobs = await prune_jobs(s, rt.retention_days)
+                eph = await prune_ephemeral_sources(s)
+                await s.commit()
+            log.info("pruned %s jobs, %s ephemeral sources", jobs, eph)
+        except Exception as e:
+            log.error("prune failed: %s", type(e).__name__)
+
+    async def _backup(self) -> None:
+        if self._settings is None:
+            return
+        try:
+            async with self._sf() as s:
+                keep = (await load_runtime_settings(s)).backup_keep
+            if keep == 0:
+                return
+            await asyncio.to_thread(
+                backup_sqlite, self._settings.database_url, self._settings.backup_dir, keep
+            )
+        except Exception as e:
+            log.error("backup failed: %s", type(e).__name__)
+
+    async def sync_maintenance(self) -> None:
+        """(Re)register the daily prune and the backup on the configured cron."""
+        self._sched.add_job(
+            self._prune,
+            CroniterTrigger("0 4 * * *"),
+            id="maintenance-prune",
+            replace_existing=True,
+            misfire_grace_time=3600,
+            coalesce=True,
+            max_instances=1,
+        )
+        if self._settings is None:
+            return
+        async with self._sf() as s:
+            cron = (await load_runtime_settings(s)).backup_cron
+        self._sched.add_job(
+            self._backup,
+            CroniterTrigger(cron),
+            id="maintenance-backup",
+            replace_existing=True,
+            misfire_grace_time=3600,
+            coalesce=True,
+            max_instances=1,
+        )
 
     async def start(self) -> None:
         self._sched.start()
+        await self.sync_maintenance()
         async with self._sf() as s:
             ids = (
                 await s.scalars(

@@ -17,6 +17,7 @@ def settings(tmp_path: Path) -> Settings:
         master_key=SecretStr("test-master-key-0123456789abcdef-xyz"),
         session_secret=SecretStr("test-session-secret-0123456789abcdef"),
         public_url="http://testserver",
+        backup_dir=tmp_path / "backups",
     )
 
 

@@ -178,3 +178,31 @@ async def test_invalid_stored_cron_removes_job(sf: Any, caplog: pytest.LogCaptur
         assert any("bad cron" in r.getMessage() for r in caplog.records)
     finally:
         sch.shutdown(wait=False)
+
+
+async def test_maintenance_jobs_registered(
+    sf: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    from pydantic import SecretStr
+
+    from app.core.config import Settings
+    from app.db.models import Setting
+
+    async with sf() as s:
+        s.add(Setting(key="runtime", value={"backup_cron": "30 2 * * *"}))
+        await s.commit()
+    cfg = Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 's.db'}",
+        master_key=SecretStr(KEY),
+        session_secret=SecretStr("test-session-secret-0123456789abcdef"),
+        public_url="http://t",
+    )
+    sched = SourceScheduler(FakeSup(), sf, cfg)  # type: ignore[arg-type]
+    await sched.start()
+    try:
+        got = {j.id: str(j.trigger) for j in sched._sched.get_jobs()}
+        assert {"maintenance-prune", "maintenance-backup"} <= got.keys()
+        assert got["maintenance-prune"] == "croniter[0 4 * * *]"
+        assert got["maintenance-backup"] == "croniter[30 2 * * *]"
+    finally:
+        sched.shutdown()

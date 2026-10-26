@@ -48,7 +48,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 bridge.start()
                 supervisor = JobSupervisor(sf, writer, settings, mp_ctx=ctx, ipc_queue=ipc_q)
                 await supervisor.start()
-                scheduler = SourceScheduler(supervisor, sf)
+                scheduler = SourceScheduler(supervisor, sf, settings)
                 await scheduler.start()
                 _app.state.scheduler = scheduler
                 _app.state.bus = bus
