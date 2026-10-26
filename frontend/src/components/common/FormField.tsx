@@ -1,5 +1,7 @@
 import { useId, type ReactElement, type ReactNode } from "react";
 import { cloneElement } from "react";
+import { Label } from "@/components/ui/label";
+import { controlClass } from "@/components/ui/input";
 
 /** Label + control + error. Control gets id, aria-invalid, aria-describedby. */
 export function FormField({
@@ -17,9 +19,7 @@ export function FormField({
   const descId = `${id}-d`;
   return (
     <div className="grid gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium">
-        {label}
-      </label>
+      <Label htmlFor={id}>{label}</Label>
       {cloneElement(children, {
         id,
         "aria-invalid": error ? true : undefined,
@@ -47,5 +47,5 @@ export function FormRootError({ message }: { message?: string }) {
   );
 }
 
-export const inputClass =
-  "h-9 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring aria-[invalid=true]:border-destructive";
+// eslint-disable-next-line react-refresh/only-export-components
+export const inputClass = controlClass;
