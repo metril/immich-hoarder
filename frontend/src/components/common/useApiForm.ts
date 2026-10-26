@@ -4,13 +4,15 @@ import { toast } from "sonner";
 import type { z } from "zod";
 import { ApiError } from "../../api/errors";
 
+/** True when `dotted` is registered, or lies under a registered object-valued field (e.g. a Controller on `filters`). */
 function isRegistered(fields: unknown, dotted: string): boolean {
   let cur: unknown = fields;
   for (const part of dotted.split(".")) {
     if (typeof cur !== "object" || cur === null || !(part in cur)) return false;
     cur = (cur as Record<string, unknown>)[part];
+    if (typeof cur === "object" && cur !== null && "_f" in cur) return true;
   }
-  return typeof cur === "object" && cur !== null && "_f" in cur;
+  return false;
 }
 
 /**
