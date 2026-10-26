@@ -8,7 +8,7 @@ from app.api.v1.shares import delete_shares, shares_router
 from app.auth.authz import require_owner_or_admin, require_scope, visible_to
 from app.auth.deps import current_principal
 from app.auth.principal import Principal
-from app.core.extractors import UnsupportedURL, validate_url
+from app.core.extractors import UnsupportedURL, validate_proxy, validate_url
 from app.db.engine import get_session
 from app.db.models import BackfillMode, Credential, ImmichTarget, Perm, Source, User
 from app.rip.filters import validate_backfill
@@ -38,6 +38,16 @@ async def _check_refs(
         stmt = visible_to(select(model.id).where(model.id == ref), model, op, Perm.use)
         if (await session.execute(stmt)).first() is None:
             raise HTTPException(403, f"no access to {model.share_type}")
+
+
+async def _check_proxy(session: AsyncSession, proxy: str | None) -> None:
+    if proxy is None:
+        return
+    rip = await load_rip_settings(session)
+    try:
+        validate_proxy(proxy, allow_private=rip.allow_private_hosts)
+    except UnsupportedURL as e:
+        raise HTTPException(422, str(e)) from None
 
 
 async def _extractor_for(session: AsyncSession, url: str) -> str:
@@ -73,6 +83,7 @@ async def create_source(
     require_scope(p, "sources:write")
     await _check_refs(session, p.user_id, body.target_id, body.credential_id)
     extractor = await _extractor_for(session, body.url)
+    await _check_proxy(session, body.proxy)
     s = Source(
         **body.model_dump(),
         extractor=extractor,
@@ -129,6 +140,8 @@ async def patch_source(
     for k, v in data.items():
         setattr(s, k, v)
     s.backfill_value = value
+    if "proxy" in data:
+        await _check_proxy(session, data["proxy"])
     if "url" in data:
         s.extractor = await _extractor_for(session, s.url)
     await _check_refs(session, s.owner_id, s.target_id, s.credential_id)

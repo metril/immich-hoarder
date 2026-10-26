@@ -14,7 +14,7 @@ from pydantic import SecretStr
 
 from app.db.models import BackfillMode, CredentialKind
 from app.rip.filters import FilterSpec
-from app.rip.gdl import HoarderJob, capture_logs, configure, ssrf_guard
+from app.rip.gdl import HoarderJob, capture_logs, configure, run_job, ssrf_guard
 from app.rip.settings import RateLimit, RipSettings
 from app.rip.snapshot import CredentialSnapshot, SourceSnapshot
 
@@ -48,7 +48,9 @@ class Run:
         self.cancel = threading.Event()
         self.archive: Callable[[bytes], bool] = lambda k: False
 
-    def go(self, url: str, *, allow_private: bool = True, exempt: set[str] | None = None) -> int:
+    def go(
+        self, url: str, *, allow_private: bool = True, exempt: set[tuple[str, int]] | None = None
+    ) -> int:
         job = HoarderJob(
             url,
             archive_check=lambda k: self.archive(k),
@@ -156,11 +158,30 @@ def test_userpass_and_token_credentials(tmp_path: Path) -> None:
     )
     configure(src(), tok, FAST, tmp_path, incremental=False)
     assert config.get(("extractor", "reddit"), "refresh-token") == "r"
+    assert config.get(("extractor", "reddit"), "follow") is None
     assert config.get(("extractor", "reddit"), "username") is None
 
 
 @pytest.mark.parametrize(
-    "key", ["postprocessors", "exec", "file-filter", "image-filter", "Bad", "a", "directory"]
+    "key",
+    [
+        "postprocessors",
+        "exec",
+        "file-filter",
+        "image-filter",
+        "Bad",
+        "a",
+        "directory",
+        "follow",
+        "path-restrict",
+        "write-pages",
+        "netrc",
+        "verify",
+        "proxy-env",
+        "source-address",
+        "whitelist",
+        "blacklist",
+    ],
 )
 def test_credential_keys_rejected_for_postprocessors(tmp_path: Path, key: str) -> None:
     cred = CredentialSnapshot(
@@ -231,7 +252,7 @@ def test_ssrf_blocks_redirect_to_private(
     port = img_server.rsplit(":", 1)[1]
     to = f"http://evil.example:{port}/img/a.jpg"
     url = f"http://pub.example:{port}/redir/a.jpg?to={to}"
-    assert run.go(url, allow_private=False, exempt={"pub.example"}) != 0
+    assert run.go(url, allow_private=False, exempt={("pub.example", int(port))}) != 0
     assert run.files == []
 
 
@@ -279,3 +300,109 @@ def test_nothing_written_outside_job_dir(
     r = Run(d)
     assert r.go(f"{img_server}/img/a.jpg") == 0
     assert list(home.rglob("*")) == []
+
+
+def test_hardened_defaults_hold(tmp_path: Path) -> None:
+    configure(src(gdl_options={}), None, FAST, tmp_path, incremental=False)
+    ext = ("extractor",)
+    assert config.get(ext, "path-restrict") == "auto"
+    assert config.get(ext, "netrc") is False
+    assert config.get(ext, "verify") is True
+    assert config.get(ext, "proxy-env") is False
+    assert config.get(ext, "write-pages") is False
+
+
+def test_ytdl_unavailable() -> None:
+    from gallery_dl import downloader, extractor
+
+    assert extractor.find("ytdl:https://example.com/v") is None
+    assert downloader.find("ytdl") is None
+
+
+def test_ssrf_guard_does_not_nest() -> None:
+    with ssrf_guard(False, set()), pytest.raises(RuntimeError), ssrf_guard(True, set()):
+        pass
+    with ssrf_guard(True, set()):
+        pass  # released after the failed nesting
+
+
+def test_private_src_proxy_is_blocked(tmp_path: Path, img_server: str) -> None:
+    port = int(img_server.rsplit(":", 1)[1])
+    s = src(proxy=img_server)  # private proxy chosen by a source owner
+    d = tmp_path / "j"
+    d.mkdir()
+    configure(s, None, FAST, d, incremental=False)
+    files: list[Any] = []
+    j = HoarderJob(
+        "http://pub.example/img/a.jpg",
+        archive_check=lambda k: False,
+        on_discovered=lambda m: None,
+        on_file=lambda p, m: files.append(p),
+        cancel=threading.Event(),
+    )
+    # settings.proxy is a different (admin) proxy; src.proxy gets no exemption
+    settings = FAST.model_copy(update={"proxy": f"http://127.0.0.1:{port + 1}"})
+    assert run_job(j, s, settings) != 0
+    assert files == []
+
+
+def test_admin_proxy_pair_is_exempt(tmp_path: Path, img_server: str) -> None:
+    port = int(img_server.rsplit(":", 1)[1])
+    d = tmp_path / "j"
+    d.mkdir()
+    settings = FAST.model_copy(update={"proxy": img_server})
+    configure(src(), None, settings, d, incremental=False)
+    j = HoarderJob(
+        "http://pub.example/img/a.jpg",
+        archive_check=lambda k: False,
+        on_discovered=lambda m: None,
+        on_file=lambda p, m: None,
+        cancel=threading.Event(),
+    )
+    # connection to the admin proxy (host, port) must not be rejected by the guard
+    import urllib3.util.connection as uc
+
+    seen: list[Any] = []
+    real = uc.create_connection
+
+    def spy(addr: Any, *a: Any, **k: Any) -> Any:
+        seen.append(addr)
+        return real(addr, *a, **k)
+
+    uc.create_connection = spy
+    try:
+        run_job(j, src(), settings)
+    finally:
+        uc.create_connection = real
+    assert ("127.0.0.1", port) in seen
+
+
+def test_child_job_inherits_callbacks(
+    run: Run, img_server: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    orig = directlink.DirectlinkExtractor.items
+    child_url = f"{img_server}/img/b.png"
+
+    def items(self: Any) -> Iterator[tuple[Any, ...]]:
+        if self.url.endswith("a.jpg"):
+            yield Message.Queue, child_url, {"_extractor": directlink.DirectlinkExtractor}
+        else:
+            yield from orig(self)
+
+    monkeypatch.setattr(directlink.DirectlinkExtractor, "items", items)
+    assert run.go(f"{img_server}/img/a.jpg") == 0
+    assert [p.suffix for p, _ in run.files] == [".png"]
+
+
+def test_dotdot_directory_cannot_escape(tmp_path: Path, img_server: str) -> None:
+    jd = tmp_path / "a" / "b" / "job"
+    jd.mkdir(parents=True)
+    configure(src(), None, FAST, jd, incremental=False)
+    config.set(("extractor",), "directory", ["..", "..", "escaped"])
+    r = Run(jd)
+    events: list[dict[str, Any]] = []
+    with capture_logs(events.append, "warn", categories=["directlink"]):
+        r.go(f"{img_server}/img/a.jpg")
+    assert r.files == []
+    assert [p for p in tmp_path.rglob("*") if p.is_file()] == []
+    assert any(e["level"] == "warning" for e in events)

@@ -84,3 +84,20 @@ async def test_extractors_endpoint_lists_reddit(client: httpx.AsyncClient) -> No
     r = await client.get("/api/v1/extractors", headers=h)
     assert r.status_code == 200
     assert "reddit" in {i["category"] for i in r.json()["items"]}
+
+
+async def test_source_private_proxy_422(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    tid = await _target(client, h)
+    base = {"name": "s", "url": REDDIT, "target_id": tid}
+    for bad in ("http://127.0.0.1:3128", "socks5://1.2.3.4:1", "http://10.0.0.1"):
+        r = await client.post("/api/v1/sources", json={**base, "proxy": bad}, headers=h)
+        assert r.status_code == 422, bad
+    ok = await client.post(
+        "/api/v1/sources", json={**base, "proxy": "http://8.8.8.8:3128"}, headers=h
+    )
+    assert ok.status_code == 201
+    r = await client.patch(
+        f"/api/v1/sources/{ok.json()['id']}", json={"proxy": "http://localhost:1"}, headers=h
+    )
+    assert r.status_code == 422

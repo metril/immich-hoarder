@@ -84,6 +84,23 @@ def validate_url(url: str, *, allow_private: bool = False) -> str:
     return str(ex.category)
 
 
+def validate_proxy(proxy: str, *, allow_private: bool = False) -> str:
+    """Accept only http(s) proxies whose host passes the private-host rules."""
+    proxy = proxy.strip()
+    if any(c == "\\" or c.isspace() or not 32 < ord(c) < 127 for c in proxy):
+        raise UnsupportedURL("invalid proxy")
+    try:
+        scheme = urlsplit(proxy).scheme
+    except ValueError:
+        raise UnsupportedURL("invalid proxy") from None
+    host = _real_host(proxy)
+    if scheme not in ("http", "https") or not host:
+        raise UnsupportedURL("invalid proxy")
+    if not allow_private and _is_private_host(host):
+        raise UnsupportedURL("private proxy host not allowed")
+    return proxy
+
+
 @cache
 def list_extractors() -> tuple[ExtractorInfo, ...]:
     subs: dict[str, set[str]] = {}
