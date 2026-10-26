@@ -1,5 +1,6 @@
 import { Suspense, lazy, useState } from "react";
-import { Dialog } from "radix-ui";
+import { Sheet, SheetBody, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "../../components/ui/sheet";
+import { Truncate } from "../../components/ui/truncate";
 import { PreviewPanel } from "./PreviewPanel";
 import { useSource, type SourceIn, type SourceOut } from "./hooks";
 
@@ -14,26 +15,25 @@ export function SourceSheet({ edit, isNew, rows, onClose }: { edit?: number; isN
   const source = cached ?? fetched.data;
   const title = edit !== undefined ? `Edit ${source?.name ?? `source #${edit}`}` : "New source";
   return (
-    <Dialog.Root open={open} onOpenChange={(o) => !o && onClose()}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl overflow-auto border-l bg-popover p-4 text-popover-foreground shadow-xl">
-          <Dialog.Title className="text-base font-semibold">{title}</Dialog.Title>
-          <Dialog.Description className="sr-only">Source settings</Dialog.Description>
-          <div className="mt-4">
-            {edit !== undefined && !source ? (
-              fetched.isError ? (
-                <p role="alert" className="text-destructive">{fetched.error.message}</p>
-              ) : (
-                <p role="status">Loading…</p>
-              )
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent className="max-w-2xl">
+        <SheetHeader>
+          <SheetTitle className="min-w-0"><Truncate>{title}</Truncate></SheetTitle>
+          <SheetDescription className="sr-only">Source settings</SheetDescription>
+        </SheetHeader>
+        {edit !== undefined && !source ? (
+          <SheetBody>
+            {fetched.isError ? (
+              <p role="alert" className="text-destructive">{fetched.error.message}</p>
             ) : (
-              <EditorWithPreview source={source} onClose={onClose} />
+              <p role="status">Loading…</p>
             )}
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+          </SheetBody>
+        ) : (
+          <EditorWithPreview source={source} onClose={onClose} />
+        )}
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -41,14 +41,19 @@ export function SourceSheet({ edit, isNew, rows, onClose }: { edit?: number; isN
 function EditorWithPreview({ source, onClose }: { source?: SourceOut; onClose: () => void }) {
   const [draft, setDraft] = useState<SourceIn | null>(null);
   return (
-    <>
-      <Suspense fallback={<p role="status">Loading editor…</p>}>
-        <SourceForm initial={source} onSaved={onClose} onCancel={onClose} onDraft={setDraft} />
-      </Suspense>
-      <section aria-label="Dry run" className="mt-6 border-t pt-4">
-        <h3 className="mb-2 text-sm font-medium">Dry run (unsaved values)</h3>
-        {draft ? <PreviewPanel draft={draft} /> : <p className="text-sm text-muted-foreground">Fix the form errors to dry-run this draft.</p>}
-      </section>
-    </>
+    <Suspense fallback={<SheetBody><p role="status">Loading editor…</p></SheetBody>}>
+      <SourceForm
+        initial={source}
+        onSaved={onClose}
+        onCancel={onClose}
+        onDraft={setDraft}
+        extra={
+          <section aria-label="Dry run" className="grid gap-4 rounded-xl border bg-card p-5">
+            <h3 className="font-display text-base font-semibold">Dry run (unsaved values)</h3>
+            {draft ? <PreviewPanel draft={draft} /> : <p className="text-sm text-muted-foreground">Fix the form errors to dry-run this draft.</p>}
+          </section>
+        }
+      />
+    </Suspense>
   );
 }

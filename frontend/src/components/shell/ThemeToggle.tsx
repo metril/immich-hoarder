@@ -1,3 +1,4 @@
+import { DropdownMenu } from "radix-ui";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { Menu, menuItemCls } from "./Menu";
 import { useTheme, type Theme } from "./theme";
@@ -12,25 +13,15 @@ export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const Icon = OPTS.find((o) => o.v === theme)?.icon ?? Monitor;
   return (
-    <Menu label="Theme" trigger={<Icon className="size-4" aria-hidden />}>
-      {(close) =>
-        OPTS.map(({ v, label, icon: I }) => (
-          <button
-            key={v}
-            type="button"
-            role="menuitemradio"
-            aria-checked={theme === v}
-            className={menuItemCls}
-            onClick={() => {
-              setTheme(v);
-              close();
-            }}
-          >
+    <Menu label="Theme" trigger={<Icon className="size-[18px]" aria-hidden />}>
+      <DropdownMenu.RadioGroup value={theme} onValueChange={(v) => setTheme(v as Theme)}>
+        {OPTS.map(({ v, label, icon: I }) => (
+          <DropdownMenu.RadioItem key={v} value={v} className={menuItemCls}>
             <I className="size-4" aria-hidden />
             {label}
-          </button>
-        ))
-      }
+          </DropdownMenu.RadioItem>
+        ))}
+      </DropdownMenu.RadioGroup>
     </Menu>
   );
 }

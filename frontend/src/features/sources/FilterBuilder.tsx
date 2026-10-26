@@ -70,34 +70,34 @@ export function FilterBuilder({ value, onChange, errors = {}, error }: { value: 
   const v = { ...emptyFilters(), ...value } as FilterSpec;
   const set = <K extends keyof FilterSpec>(k: K, x: FilterSpec[K]) => onChange({ ...v, [k]: x });
   return (
-    <fieldset className="grid gap-4 rounded-md border p-3">
-      <legend className="px-1 text-sm font-medium">Filters</legend>
-      <section aria-label="Size" className="grid gap-2">
-        <h4 className="text-xs font-semibold uppercase text-muted-foreground">Size</h4>
-        <div className="grid gap-3 sm:grid-cols-2">
+    <fieldset className="grid gap-5">
+      <legend className="sr-only">Filters</legend>
+      <section aria-label="Size" className="grid gap-3">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Size</h4>
+        <div className="grid gap-4 sm:grid-cols-2">
           <NumberInput label="Min width (px)" value={v.min_width} onChange={(x) => set("min_width", x)} error={errors.min_width} />
           <NumberInput label="Min height (px)" value={v.min_height} onChange={(x) => set("min_height", x)} error={errors.min_height} />
           <BytesInput label="Min size" value={v.min_bytes} onChange={(x) => set("min_bytes", x)} error={errors.min_bytes} />
           <BytesInput label="Max size" value={v.max_bytes} onChange={(x) => set("max_bytes", x)} error={errors.max_bytes} />
         </div>
       </section>
-      <section aria-label="Aspect" className="grid gap-2">
-        <h4 className="text-xs font-semibold uppercase text-muted-foreground">Aspect (width / height)</h4>
-        <div className="grid gap-3 sm:grid-cols-2">
+      <section aria-label="Aspect" className="grid gap-3">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Aspect (width / height)</h4>
+        <div className="grid gap-4 sm:grid-cols-2">
           <NumberInput label="Min aspect" step="any" value={v.aspect_min} onChange={(x) => set("aspect_min", x)} error={errors.aspect_min} />
           <NumberInput label="Max aspect" step="any" value={v.aspect_max} onChange={(x) => set("aspect_max", x)} error={errors.aspect_max} />
         </div>
       </section>
-      <section aria-label="Title" className="grid gap-2">
-        <h4 className="text-xs font-semibold uppercase text-muted-foreground">Title regex</h4>
-        <div className="grid gap-3 sm:grid-cols-2">
+      <section aria-label="Title" className="grid gap-3">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Title regex</h4>
+        <div className="grid gap-4 sm:grid-cols-2">
           <RegexInput label="Title include" value={v.title_include} onChange={(x) => set("title_include", x)} error={errors.title_include} />
           <RegexInput label="Title exclude" value={v.title_exclude} onChange={(x) => set("title_exclude", x)} error={errors.title_exclude} />
         </div>
       </section>
-      <section aria-label="Date" className="grid gap-2">
-        <h4 className="text-xs font-semibold uppercase text-muted-foreground">Date</h4>
-        <div className="grid gap-3 sm:grid-cols-2">
+      <section aria-label="Date" className="grid gap-3">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Date</h4>
+        <div className="grid gap-4 sm:grid-cols-2">
           <FormField label="Date from" error={errors.date_from}>
             <input type="date" className={inputClass} value={v.date_from ?? ""} onChange={(e) => set("date_from", e.target.value || null)} />
           </FormField>
@@ -106,7 +106,7 @@ export function FilterBuilder({ value, onChange, errors = {}, error }: { value: 
           </FormField>
         </div>
       </section>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2">
         <NumberInput label="Max items" value={v.max_items} onChange={(x) => set("max_items", x)} error={errors.max_items} />
         <FormField label={`pHash distance: ${v.phash_distance ?? 3}`} error={errors.phash_distance} hint="0 = exact duplicates only, 3 = most tolerant">
           <input type="range" min={0} max={3} step={1} value={v.phash_distance ?? 3} onChange={(e) => set("phash_distance", Number(e.target.value))} />

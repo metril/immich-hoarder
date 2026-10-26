@@ -16,13 +16,13 @@ export function AlbumTemplateField({ value, onChange, error }: { value: string; 
       <FormField label="Album template" error={error} hint="Empty = no album">
         <input ref={ref} className={`${inputClass} font-mono`} value={value} onChange={(e) => onChange(e.target.value)} placeholder="{subreddit}" />
       </FormField>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Insert album field">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Insert album field">
         {ALBUM_FIELDS.map((f) => (
           <button
             key={f}
             type="button"
             onClick={() => insert(f)}
-            className="rounded-full border px-2.5 py-1 font-mono text-xs hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+            className="rounded-full border px-3 py-1 font-mono text-xs transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
           >
             {`{${f}}`}
           </button>

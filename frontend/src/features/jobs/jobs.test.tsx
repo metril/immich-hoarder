@@ -61,8 +61,8 @@ describe("job detail", () => {
     await screen.findByRole("heading", { name: "Job #1" });
     await waitFor(() => expect(streamFor("/jobs/1/stream")).toBeTruthy());
     act(() => streamFor("/jobs/1/stream").emit("progress", { job_id: 1, counters: { linked: 5 }, rate_bps: 2048 }));
-    const tile = await screen.findByText("linked", { selector: "dt" });
-    await waitFor(() => expect(tile.nextElementSibling).toHaveTextContent("5"));
+    const tile = await screen.findByText("Linked", { selector: "[aria-label=\"Job counters\"] div" });
+    await waitFor(() => expect(tile.previousElementSibling).toHaveTextContent("5"));
     expect(screen.getByText("2.0 KB/s")).toBeInTheDocument();
   });
 

@@ -1,7 +1,10 @@
 import { useState, type ReactNode } from "react";
-import { Dialog } from "radix-ui";
+import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
 import { z } from "zod";
-import { FormField, FormRootError, inputClass } from "../../components/common/FormField";
+import { FormField, FormRootError } from "../../components/common/FormField";
 import { SecretInput } from "../../components/common/SecretInput";
 import { omitEmpty } from "../../components/common/omitEmpty";
 import { useApiForm } from "../../components/common/useApiForm";
@@ -26,24 +29,27 @@ function CreateFields({ onDone }: { onDone: () => void }) {
   });
   const e = form.formState.errors;
   return (
-    <form onSubmit={form.submit} className="mt-3 grid gap-3" noValidate>
+    <form onSubmit={form.submit} className="flex min-h-0 flex-1 flex-col" noValidate>
+      <DialogBody className="grid gap-4">
       <FormField label="Name" error={e.name?.message}>
-        <input className={inputClass} {...form.register("name")} />
+        <Input {...form.register("name")} />
       </FormField>
       <FormField label="URL" error={e.url?.message}>
-        <input className={inputClass} inputMode="url" {...form.register("url")} />
+        <Input inputMode="url" {...form.register("url")} />
       </FormField>
       <FormField label="API key" error={e.api_key?.message}>
         <SecretInput saved={false} {...form.register("api_key")} />
       </FormField>
       <FormField label="Visibility" error={e.visibility?.message} hint="Change later via Share.">
-        <select className={inputClass} {...form.register("visibility")}>
+        <Select {...form.register("visibility")}>
           <option value="private">Private</option>
           <option value="everyone">Everyone</option>
           <option value="restricted">Restricted</option>
-        </select>
+        </Select>
       </FormField>
-      <Actions root={form.rootError} busy={form.formState.isSubmitting} />
+      <FormRootError message={form.rootError} />
+      </DialogBody>
+      <Actions busy={form.formState.isSubmitting} />
     </form>
   );
 }
@@ -59,34 +65,34 @@ function EditFields({ target, onDone }: { target: TargetOut; onDone: () => void 
   });
   const e = form.formState.errors;
   return (
-    <form onSubmit={form.submit} className="mt-3 grid gap-3" noValidate>
+    <form onSubmit={form.submit} className="flex min-h-0 flex-1 flex-col" noValidate>
+      <DialogBody className="grid gap-4">
       <FormField label="Name" error={e.name?.message}>
-        <input className={inputClass} {...form.register("name")} />
+        <Input {...form.register("name")} />
       </FormField>
       <FormField label="URL" error={e.url?.message}>
-        <input className={inputClass} inputMode="url" {...form.register("url")} />
+        <Input inputMode="url" {...form.register("url")} />
       </FormField>
       <FormField label="API key" error={e.api_key?.message}>
         <SecretInput saved={target.has_api_key} {...form.register("api_key")} />
       </FormField>
-      <Actions root={form.rootError} busy={form.formState.isSubmitting} />
+      <FormRootError message={form.rootError} />
+      </DialogBody>
+      <Actions busy={form.formState.isSubmitting} />
     </form>
   );
 }
 
-function Actions({ root, busy }: { root?: string; busy: boolean }) {
+function Actions({ busy }: { busy: boolean }) {
   return (
-    <>
-      <FormRootError message={root} />
-      <div className="flex justify-end gap-2">
-        <Dialog.Close type="button" className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring">
-          Cancel
-        </Dialog.Close>
-        <button type="submit" disabled={busy} className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50">
-          Save
-        </button>
-      </div>
-    </>
+    <DialogFooter>
+      <DialogClose asChild>
+        <Button variant="outline">Cancel</Button>
+      </DialogClose>
+      <Button type="submit" loading={busy}>
+        Save
+      </Button>
+    </DialogFooter>
   );
 }
 
@@ -107,16 +113,15 @@ export function TargetForm({
   const setOpen = onOpenChange ?? setOwn;
   const done = () => setOpen(false);
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-lg border bg-popover p-4 text-popover-foreground shadow-xl">
-          <Dialog.Title className="text-base font-semibold">{target ? `Edit ${target.name}` : "Add target"}</Dialog.Title>
-          <Dialog.Description className="sr-only">Immich target settings</Dialog.Description>
-          {target ? <EditFields target={target} onDone={done} /> : <CreateFields onDone={done} />}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{target ? `Edit ${target.name}` : "Add target"}</DialogTitle>
+          <DialogDescription>Immich target settings</DialogDescription>
+        </DialogHeader>
+        {target ? <EditFields target={target} onDone={done} /> : <CreateFields onDone={done} />}
+      </DialogContent>
+    </Dialog>
   );
 }

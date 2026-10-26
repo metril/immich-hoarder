@@ -1,8 +1,10 @@
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { EmptyState } from "../../components/common/EmptyState";
-import { inputClass } from "../../components/common/FormField";
 import { RelativeTime } from "../../components/common/RelativeTime";
 import { VirtualTable, type Column } from "../../components/common/VirtualTable";
+import { Button } from "../../components/ui/button";
+import { PageHeader } from "../../components/ui/page";
+import { Select } from "../../components/ui/select";
 import { useSources } from "../sources/hooks";
 import { StatusBadge } from "./StatusBadge";
 import { count, formatDuration, useJobs, type JobOut } from "./hooks";
@@ -12,7 +14,7 @@ const route = getRouteApi("/_app/jobs/");
 
 const num = (k: string) => (j: JobOut) => <span className="tabular-nums">{count(j.counters, k)}</span>;
 const columns: Column<JobOut>[] = [
-  { id: "id", header: "Job", width: "64px", cell: (j) => `#${j.id}` },
+  { id: "id", header: "Job", width: "72px", cell: (j) => `#${j.id}` },
   { id: "status", header: "Status", width: "110px", cell: (j) => <StatusBadge status={j.status} /> },
   { id: "source", header: "Source", cell: (j) => j.source_name ?? `Source ${j.source_id}` },
   { id: "phase", header: "Phase", hideBelow: "md", width: "100px", cell: (j) => j.phase ?? "" },
@@ -25,8 +27,6 @@ const columns: Column<JobOut>[] = [
   { id: "duration", header: "Duration", hideBelow: "md", width: "90px", cell: (j) => formatDuration(j.started_at, j.finished_at) },
 ];
 
-const chip = "rounded-full border px-3 py-1 text-sm focus-visible:outline-2 focus-visible:outline-ring";
-
 export default function JobsPage() {
   const search = route.useSearch();
   const navigate = useNavigate();
@@ -35,29 +35,30 @@ export default function JobsPage() {
   const sources = useSources();
 
   return (
-    <div className="grid gap-3">
-      <h1 className="sr-only">Jobs</h1>
-      <div className="flex flex-wrap items-center gap-2">
-        <div role="group" aria-label="Status filter" className="flex flex-wrap gap-1">
+    <div className="space-y-8">
+      <PageHeader title="Jobs" description="Every run, newest first." />
+      <div className="flex flex-wrap items-center gap-3">
+        <div role="group" aria-label="Status filter" className="flex flex-wrap gap-2">
           {(["all", ...JOB_STATUSES] as const).map((s) => {
             const active = (search.status ?? "all") === s;
             return (
-              <button
+              <Button
                 key={s}
-                type="button"
+                size="sm"
+                variant={active ? "primary" : "outline"}
                 aria-pressed={active}
-                className={`${chip} ${active ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
+                className="rounded-full px-4 capitalize"
                 onClick={() => set({ ...search, status: s === "all" ? undefined : s })}
               >
                 {s}
-              </button>
+              </Button>
             );
           })}
         </div>
         <label htmlFor="jobs-source" className="sr-only">Source</label>
-        <select
+        <Select
           id="jobs-source"
-          className={`${inputClass} w-auto`}
+          className="w-full sm:ml-auto sm:w-56"
           value={search.source_id ?? ""}
           onChange={(e) => set({ ...search, source_id: e.target.value ? Number(e.target.value) : undefined })}
         >
@@ -65,12 +66,12 @@ export default function JobsPage() {
           {sources.rows.map((s) => (
             <option key={s.id} value={s.id}>{s.name}</option>
           ))}
-        </select>
+        </Select>
       </div>
       {jobs.isError ? (
-        <p role="alert" className="text-destructive">{jobs.error.message}</p>
+        <p role="alert" className="text-danger">{jobs.error.message}</p>
       ) : jobs.isPending ? (
-        <p role="status">Loading jobs…</p>
+        <p role="status" className="text-sm text-muted-foreground">Loading jobs…</p>
       ) : (
         <VirtualTable
           label="Jobs"

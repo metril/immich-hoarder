@@ -1,15 +1,21 @@
-import { useMemo, useState } from "react";
-import { Dialog } from "radix-ui";
+import { useEffect, useMemo, useState } from "react";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import cronstrue from "cronstrue";
+import { MoreHorizontal, Search } from "lucide-react";
 import { isAdmin, useMe } from "../../api/me";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { EmptyState } from "../../components/common/EmptyState";
-import { inputClass } from "../../components/common/FormField";
 import { SharingDialog } from "../../components/common/SharingDialog";
 import { useMediaQuery } from "../../components/common/useMediaQuery";
 import { VirtualTable, type Column } from "../../components/common/VirtualTable";
 import { VisibilityBadge } from "../../components/common/VisibilityBadge";
+import { Menu, MenuItem } from "../../components/shell/Menu";
+import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
+import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { Input } from "../../components/ui/input";
+import { PageHeader } from "../../components/ui/page";
+import { Switch } from "../../components/ui/switch";
+import { Truncate } from "../../components/ui/truncate";
 import { useTargets } from "../targets/hooks";
 import { PreviewPanel } from "./PreviewPanel";
 import { RipDialog } from "./RipDialog";
@@ -18,16 +24,30 @@ import { SourceSheet } from "./SourceSheet";
 import { useDeleteSource, useSources, useToggleSource, type SourceIn, type SourceOut } from "./hooks";
 
 const route = getRouteApi("/_app/sources");
-const btn = "rounded-md border px-2 py-1 text-xs hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring";
-const primary = "rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring";
 
-function schedule(cron: string | null): string {
-  if (!cron) return "Manual";
-  try {
-    return cronstrue.toString(cron, { use24HourTimeFormat: true, verbose: false });
-  } catch {
-    return cron;
+type Cronstrue = typeof import("cronstrue").default;
+let cronLib: Cronstrue | null = null;
+
+/** Human cron text; cronstrue is loaded lazily (raw cron shown until it arrives). */
+function Schedule({ cron }: { cron: string | null }) {
+  const [lib, setLib] = useState<{ c: Cronstrue } | null>(cronLib ? { c: cronLib } : null);
+  useEffect(() => {
+    if (!cron || lib) return;
+    let live = true;
+    void import("cronstrue").then((m) => {
+      cronLib = m.default;
+      if (live) setLib({ c: m.default });
+    });
+    return () => { live = false; };
+  }, [cron, lib]);
+  if (!cron) return <Truncate>Manual</Truncate>;
+  let text = cron;
+  if (lib) {
+    try {
+      text = lib.c.toString(cron, { use24HourTimeFormat: true, verbose: false });
+    } catch { /* keep raw */ }
   }
+  return <Truncate title={cron}>{text}</Truncate>;
 }
 
 function draftOf(s: SourceOut): SourceIn {
@@ -39,37 +59,36 @@ function draftOf(s: SourceOut): SourceIn {
   };
 }
 
-function PreviewButton({ s }: { s: SourceOut }) {
+function PreviewDialog({ s, open, onOpenChange }: { s: SourceOut; open: boolean; onOpenChange: (o: boolean) => void }) {
   return (
-    <Dialog.Root>
-      <Dialog.Trigger className={btn} aria-label={`Preview ${s.name}`}>Preview</Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-lg border bg-popover p-4 text-popover-foreground shadow-xl">
-          <Dialog.Title className="text-base font-semibold">Dry run · {s.name}</Dialog.Title>
-          <Dialog.Description className="mb-3 text-sm text-muted-foreground">Lists what the source would fetch, without downloading anything.</Dialog.Description>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle className="min-w-0"><Truncate>Dry run · {s.name}</Truncate></DialogTitle>
+          <DialogDescription>Lists what the source would fetch, without downloading anything.</DialogDescription>
+        </DialogHeader>
+        <DialogBody>
           <PreviewPanel draft={draftOf(s)} />
-          <Dialog.Close className={`${btn} mt-4`}>Close</Dialog.Close>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        </DialogBody>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Close</Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
 function EnabledSwitch({ s }: { s: SourceOut }) {
   const toggle = useToggleSource();
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={s.enabled}
+    <Switch
       aria-label={`Enabled ${s.name}`}
+      checked={s.enabled}
       disabled={!s.can_edit}
-      onClick={() => toggle.mutate({ id: s.id, enabled: !s.enabled })}
-      className={`relative h-5 w-9 rounded-full border transition-colors focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50 ${s.enabled ? "bg-primary" : "bg-muted"}`}
-    >
-      <span className={`absolute top-0.5 size-3.5 rounded-full bg-background shadow transition-all ${s.enabled ? "left-4.5" : "left-0.5"}`} />
-    </button>
+      onCheckedChange={(v) => toggle.mutate({ id: s.id, enabled: v })}
+    />
   );
 }
 
@@ -77,25 +96,32 @@ function Actions({ s }: { s: SourceOut }) {
   const del = useDeleteSource();
   const me = useMe().data;
   const navigate = useNavigate();
+  const [preview, setPreview] = useState(false);
+  const [share, setShare] = useState(false);
+  const [confirm, setConfirm] = useState(false);
   const owns = me != null && (me.id === s.owner_id || isAdmin(me));
   return (
-    <div className="flex flex-wrap gap-1">
+    <div className="flex items-center gap-2">
       {s.can_use && <RunDialog sourceId={s.id} name={s.name} />}
-      <PreviewButton s={s} />
-      {owns && <SharingDialog resource="sources" id={s.id} ownerId={s.owner_id} />}
-      {s.can_edit && (
-        <button type="button" aria-label={`Edit ${s.name}`} className={btn} onClick={() => void navigate({ to: "/sources", search: (p) => ({ ...p, edit: s.id }) })}>
-          Edit
-        </button>
-      )}
+      <Menu label={`More actions for ${s.name}`} trigger={<MoreHorizontal className="size-4" aria-hidden />}>
+        <MenuItem aria-label={`Preview ${s.name}`} onAction={() => setPreview(true)}>Preview</MenuItem>
+        {owns && <MenuItem aria-label={`Share ${s.name}`} onAction={() => setShare(true)}>Share</MenuItem>}
+        {s.can_edit && (
+          <MenuItem aria-label={`Edit ${s.name}`} onAction={() => void navigate({ to: "/sources", search: (p) => ({ ...p, edit: s.id }) })}>Edit</MenuItem>
+        )}
+        {owns && <MenuItem aria-label={`Delete ${s.name}`} className="text-destructive" onAction={() => setConfirm(true)}>Delete</MenuItem>}
+      </Menu>
+      <PreviewDialog s={s} open={preview} onOpenChange={setPreview} />
+      {owns && <SharingDialog resource="sources" id={s.id} ownerId={s.owner_id} name={s.name} open={share} onOpenChange={setShare} hideTrigger />}
       {owns && (
         <ConfirmDialog
+          open={confirm}
+          onOpenChange={setConfirm}
           title={`Delete ${s.name}?`}
           body="Its schedule is removed. A source with an active job cannot be deleted."
           confirmLabel="Delete"
           destructive
           onConfirm={() => del.mutateAsync(s.id).then(() => undefined)}
-          trigger={<button type="button" aria-label={`Delete ${s.name}`} className={btn}>Delete</button>}
         />
       )}
     </div>
@@ -118,36 +144,41 @@ export default function SourcesPage() {
   }, [q.rows, filter]);
 
   const columns: Column<SourceOut>[] = [
-    { id: "name", header: "Name", cell: (s) => <span className="block truncate" title={s.name}>{s.name}</span>, width: "minmax(0,1.2fr)" },
-    { id: "ext", header: "Extractor", cell: (s) => <span className="rounded-full border px-2 py-0.5 text-xs">{s.extractor}</span>, width: "8rem" },
-    { id: "target", header: "Target", cell: (s) => targetName.get(s.target_id) ?? `Target #${s.target_id}`, width: "minmax(0,1fr)", hideBelow: "md" },
-    { id: "sched", header: "Schedule", cell: (s) => <span title={s.schedule_cron ?? undefined}>{schedule(s.schedule_cron)}</span>, width: "minmax(0,1fr)" },
+    { id: "name", header: "Name", cell: (s) => <Truncate className="font-medium">{s.name}</Truncate>, width: "minmax(16rem,2fr)" },
+    { id: "ext", header: "Extractor", cell: (s) => <Badge className="font-mono">{s.extractor}</Badge>, width: "7rem" },
+    { id: "target", header: "Target", cell: (s) => <Truncate>{targetName.get(s.target_id) ?? `Target #${s.target_id}`}</Truncate>, width: "minmax(0,1fr)", hideBelow: "md" },
+    { id: "sched", header: "Schedule", cell: (s) => <Schedule cron={s.schedule_cron} />, width: "minmax(0,1fr)" },
     { id: "enabled", header: "Enabled", cell: (s) => <EnabledSwitch s={s} />, width: "6rem" },
-    { id: "vis", header: "Visibility", cell: (s) => <VisibilityBadge visibility={s.visibility} />, width: "8rem" },
-    { id: "actions", header: "Actions", cell: (s) => <Actions s={s} />, width: "20rem" },
+    { id: "vis", header: "Visibility", cell: (s) => <VisibilityBadge visibility={s.visibility} />, width: "7rem" },
+    { id: "actions", header: "Actions", cell: (s) => <Actions s={s} />, width: "8rem" },
   ];
 
   return (
-    <div className="space-y-4 p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold">Sources</h1>
-        <div className="flex gap-2">
-          <button type="button" className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring" onClick={() => setRip(true)}>
-            Ad-hoc rip
-          </button>
-          <button type="button" data-new-action className={primary} onClick={() => void navigate({ to: "/sources", search: (p) => ({ ...p, new: true }) })}>
-            New source
-          </button>
-        </div>
-      </div>
-      <input
-        data-page-search
-        type="search"
-        aria-label="Search sources"
-        placeholder="Search loaded sources…"
-        className={inputClass}
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
+    <div className="space-y-8">
+      <PageHeader
+        title="Sources"
+        actions={
+          <>
+            <div className="relative w-full sm:w-auto">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+              <Input
+                data-page-search
+                type="search"
+                aria-label="Search sources"
+                placeholder="Search loaded sources…"
+                className="w-full min-w-0 pl-9 sm:w-64"
+                value={filter}
+                onChange={(e) => setFilter(e.target.value)}
+              />
+            </div>
+            <Button variant="outline" onClick={() => setRip(true)}>
+              Ad-hoc rip
+            </Button>
+            <Button data-new-action onClick={() => void navigate({ to: "/sources", search: (p) => ({ ...p, new: true }) })}>
+              New source
+            </Button>
+          </>
+        }
       />
       {q.isPending ? (
         <p role="status">Loading…</p>
@@ -156,6 +187,7 @@ export default function SourcesPage() {
       ) : (
         <VirtualTable
           label="Sources"
+          minWidth="min-w-[60rem]"
           rows={rows}
           columns={columns}
           rowHeight={mobile ? 340 : 56}

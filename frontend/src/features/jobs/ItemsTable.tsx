@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
-import { inputClass } from "../../components/common/FormField";
 import { VirtualTable, type Column } from "../../components/common/VirtualTable";
+import { Select } from "../../components/ui/select";
+import { Truncate } from "../../components/ui/truncate";
 import type { Item } from "../../live/types";
 import { OutcomeBadge } from "./StatusBadge";
 import { OUTCOMES, thumbUrl, useJobItems, type ItemOut } from "./hooks";
@@ -39,10 +40,10 @@ export function ItemsTable({ jobId, hostTargetId, live }: { jobId: number; hostT
             alt=""
             src={thumbUrl(hostTargetId, r.immich_asset_id)}
             onError={() => setBroken((b) => new Set(b).add(r.id))}
-            className="h-9 w-9 rounded object-cover"
+            className="size-9 rounded-md object-cover"
           />
         ) : (
-          <span aria-hidden className="inline-block h-9 w-9 rounded bg-muted" />
+          <span aria-hidden className="inline-block size-9 rounded-md bg-muted" />
         ),
     },
     {
@@ -50,25 +51,25 @@ export function ItemsTable({ jobId, hostTargetId, live }: { jobId: number; hostT
       header: "URL",
       width: "minmax(0,2fr)",
       cell: (r) => (
-        <a href={r.url} target="_blank" rel="noreferrer" title={r.url} className="underline">
-          {r.url}
+        <a href={r.url} target="_blank" rel="noreferrer" title={r.url} className="block min-w-0 underline-offset-4 hover:underline">
+          <Truncate>{r.url}</Truncate>
         </a>
       ),
     },
     { id: "outcome", header: "Outcome", width: "140px", cell: (r) => <OutcomeBadge outcome={r.outcome} /> },
-    { id: "reason", header: "Reason", hideBelow: "md", cell: (r) => r.reason ?? "" },
+    { id: "reason", header: "Reason", hideBelow: "md", cell: (r) => <Truncate>{r.reason ?? ""}</Truncate> },
   ];
 
   return (
-    <section className="grid gap-2" aria-label="Items">
-      <div className="flex items-center gap-2">
+    <section className="grid gap-4" aria-label="Items">
+      <div className="flex items-center gap-3">
         <label htmlFor="items-outcome" className="text-sm font-medium">Outcome</label>
-        <select id="items-outcome" className={`${inputClass} w-auto`} value={outcome} onChange={(e) => setOutcome(e.target.value)}>
+        <Select id="items-outcome" className="w-auto" value={outcome} onChange={(e) => setOutcome(e.target.value)}>
           <option value="">All</option>
           {OUTCOMES.map((o) => (
             <option key={o} value={o}>{o.replaceAll("_", " ")}</option>
           ))}
-        </select>
+        </Select>
       </div>
       <VirtualTable
         label="Items"
@@ -79,7 +80,7 @@ export function ItemsTable({ jobId, hostTargetId, live }: { jobId: number; hostT
         onEndReached={() => {
           if (q.hasNextPage && !q.isFetchingNextPage) void q.fetchNextPage();
         }}
-        empty={<p className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">No items yet.</p>}
+        empty={<p className="rounded-xl border bg-muted/40 p-5 text-center text-sm text-muted-foreground">No items yet.</p>}
       />
     </section>
   );

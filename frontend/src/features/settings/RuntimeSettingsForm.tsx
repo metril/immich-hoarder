@@ -1,7 +1,8 @@
 import { Controller } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { FormField, inputClass } from "../../components/common/FormField";
+import { Input } from "@/components/ui/input";
+import { FormField } from "../../components/common/FormField";
 import { useApiForm } from "../../components/common/useApiForm";
 import { CronField } from "../sources/CronField";
 import { SaveBar } from "./fields";
@@ -38,9 +39,9 @@ export function RuntimeSettingsForm({ value }: { value?: SettingsDoc["runtime"] 
   });
   const e = form.formState.errors.runtime;
   return (
-    <form onSubmit={form.submit} className="grid gap-3" noValidate>
+    <form onSubmit={form.submit} className="grid gap-5" noValidate>
       <FormField label="Retention (days)" error={e?.retention_days?.message} hint="Finished jobs older than this are pruned">
-        <input type="number" className={inputClass} {...form.register("runtime.retention_days", { valueAsNumber: true })} />
+        <Input type="number" {...form.register("runtime.retention_days", { valueAsNumber: true })} />
       </FormField>
       <Controller
         control={form.control}
@@ -50,13 +51,13 @@ export function RuntimeSettingsForm({ value }: { value?: SettingsDoc["runtime"] 
         )}
       />
       <FormField label="Backups to keep" error={e?.backup_keep?.message} hint="0 keeps none">
-        <input type="number" className={inputClass} {...form.register("runtime.backup_keep", { valueAsNumber: true })} />
+        <Input type="number" {...form.register("runtime.backup_keep", { valueAsNumber: true })} />
       </FormField>
       <FormField label="Max concurrent jobs" error={e?.max_concurrent_jobs?.message} hint="Empty = server default">
-        <input type="number" className={inputClass} {...form.register("runtime.max_concurrent_jobs", num)} />
+        <Input type="number" {...form.register("runtime.max_concurrent_jobs", num)} />
       </FormField>
       <FormField label="Cancel grace (seconds)" error={e?.cancel_grace_s?.message}>
-        <input type="number" className={inputClass} {...form.register("runtime.cancel_grace_s", { valueAsNumber: true })} />
+        <Input type="number" {...form.register("runtime.cancel_grace_s", { valueAsNumber: true })} />
       </FormField>
       <SaveBar root={form.rootError} busy={form.formState.isSubmitting} />
     </form>

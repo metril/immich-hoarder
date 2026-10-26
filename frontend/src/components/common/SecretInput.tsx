@@ -1,6 +1,7 @@
 import { forwardRef, useId, useState, type InputHTMLAttributes } from "react";
 import { Eye, EyeOff } from "lucide-react";
-import { inputClass } from "./FormField";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 
 type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "type" | "value" | "defaultValue"> & { saved: boolean };
 
@@ -14,29 +15,30 @@ export const SecretInput = forwardRef<HTMLInputElement, Props>(function SecretIn
   const hintId = useId();
   return (
     <div className="relative">
-      <input
+      <Input
         {...rest}
         ref={ref}
         type={show ? "text" : "password"}
         autoComplete="off"
         aria-describedby={saved ? hintId : rest["aria-describedby"]}
         placeholder={saved ? "Saved — enter a new value to replace" : rest.placeholder}
-        className={`${inputClass} pr-10 ${className ?? ""}`}
+        className={`pr-10 ${className ?? ""}`}
       />
       {saved && (
         <span id={hintId} className="sr-only">
           Saved — enter a new value to replace
         </span>
       )}
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="icon"
         aria-label={show ? "Hide value" : "Show value"}
         aria-pressed={show}
         onClick={() => setShow((s) => !s)}
-        className="absolute right-1 top-1 inline-flex size-7 items-center justify-center rounded-md hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
+        className="absolute right-0.5 top-0.5 size-8"
       >
-        {show ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
-      </button>
+        {show ? <EyeOff aria-hidden /> : <Eye aria-hidden />}
+      </Button>
     </div>
   );
 });

@@ -3,7 +3,8 @@ import { useState } from "react";
 import { Controller } from "react-hook-form";
 import { toast } from "sonner";
 import { z } from "zod";
-import { inputClass } from "../../components/common/FormField";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useApiForm } from "../../components/common/useApiForm";
 import { SaveBar } from "./fields";
 import { useSaveSettings, type SettingsDoc } from "./hooks";
@@ -26,7 +27,7 @@ function UrlRow({ index, value, error, onChange, onRemove }: { index: number; va
   return (
     <div className="grid gap-1">
       <div className="flex items-center gap-2">
-        <input
+        <Input
           type={show ? "text" : "password"}
           autoComplete="off"
           spellCheck={false}
@@ -34,25 +35,20 @@ function UrlRow({ index, value, error, onChange, onRemove }: { index: number; va
           aria-invalid={error ? true : undefined}
           value={value}
           onChange={(ev) => onChange(ev.target.value)}
-          className={`${inputClass} font-mono`}
+          className="min-w-0 flex-1 font-mono"
         />
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon"
           aria-label={show ? "Hide value" : "Show value"}
           aria-pressed={show}
           onClick={() => setShow((s) => !s)}
-          className="inline-flex size-9 shrink-0 items-center justify-center rounded-md hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
         >
-          {show ? <EyeOff className="size-4" aria-hidden /> : <Eye className="size-4" aria-hidden />}
-        </button>
-        <button
-          type="button"
-          aria-label={`Remove URL ${index + 1}`}
-          onClick={onRemove}
-          className="inline-flex size-9 shrink-0 items-center justify-center rounded-md hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-        >
-          <Trash2 className="size-4" aria-hidden />
-        </button>
+          {show ? <EyeOff aria-hidden /> : <Eye aria-hidden />}
+        </Button>
+        <Button variant="ghost" size="icon" aria-label={`Remove URL ${index + 1}`} onClick={onRemove}>
+          <Trash2 aria-hidden />
+        </Button>
       </div>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
     </div>
@@ -71,17 +67,18 @@ export function NotifySettingsForm({ value }: { value?: SettingsDoc["notify"] })
   const e = form.formState.errors.notify;
   const urlErrors = e?.urls as ({ message?: string } | undefined)[] | undefined;
   return (
-    <form onSubmit={form.submit} className="grid gap-4" noValidate>
+    <form onSubmit={form.submit} className="grid gap-6" noValidate>
       <Controller
         control={form.control}
         name="notify.on"
         render={({ field }) => (
-          <fieldset className="grid gap-1.5">
+          <fieldset className="grid gap-2.5">
             <legend className="text-sm font-medium">Notify on</legend>
             {EVENTS.map(([k, label]) => (
-              <label key={k} className="flex items-center gap-2 text-sm">
+              <label key={k} className="flex items-center gap-2.5 text-sm">
                 <input
                   type="checkbox"
+                  className="size-4 accent-primary"
                   checked={field.value.includes(k)}
                   onChange={(ev) => field.onChange(ev.target.checked ? [...field.value, k] : field.value.filter((x) => x !== k))}
                 />
@@ -95,7 +92,7 @@ export function NotifySettingsForm({ value }: { value?: SettingsDoc["notify"] })
         control={form.control}
         name="notify.urls"
         render={({ field }) => (
-          <fieldset className="grid gap-2">
+          <fieldset className="grid gap-3">
             <legend className="text-sm font-medium">Notification URLs</legend>
             <p className="text-xs text-muted-foreground">Apprise URLs. Masked by default; saving sends the full list.</p>
             {field.value.map((u, i) => (
@@ -110,13 +107,9 @@ export function NotifySettingsForm({ value }: { value?: SettingsDoc["notify"] })
             ))}
             {e?.urls?.message && <p role="alert" className="text-sm text-destructive">{e.urls.message}</p>}
             <div>
-              <button
-                type="button"
-                onClick={() => field.onChange([...field.value, ""])}
-                className="inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-              >
-                <Plus className="size-4" aria-hidden /> Add URL
-              </button>
+              <Button variant="outline" size="sm" onClick={() => field.onChange([...field.value, ""])}>
+                <Plus aria-hidden /> Add URL
+              </Button>
             </div>
           </fieldset>
         )}

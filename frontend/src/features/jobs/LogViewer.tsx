@@ -7,16 +7,19 @@ import { unwrap } from "../../api/errors";
 import { keys } from "../../api/keys";
 import type { LogLine } from "../../live/types";
 import { MAX_LOG, useJobStream, type JobStreamState } from "../../live/useJobStream";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
+import { Select } from "../../components/ui/select";
 import { downloadLog } from "./downloadLog";
 import { LEVELS, filterLog, normLevel, type Level } from "./logFilter";
 
 const ROW_H = 20;
-const btn = "inline-flex h-9 items-center rounded-md border px-3 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50";
 const FIRST_PAGE = 200; // backend MAX_LIMIT (brief said 500; API rejects >200)
 
 const LEVEL_CLASS: Record<string, string> = {
-  error: "text-destructive",
-  warn: "text-amber-600 dark:text-amber-400",
+  error: "text-danger",
+  warn: "text-warning",
+  info: "text-info",
   debug: "text-muted-foreground",
   trace: "text-muted-foreground",
 };
@@ -69,6 +72,7 @@ function Viewer({ jobId, live, stream }: Props & { stream: JobStreamState }) {
   const [search, setSearch] = useState("");
   const query = useDebounced(search, 150);
   const [auto, setAuto] = useState(true);
+  const [wrap, setWrap] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -138,6 +142,10 @@ function Viewer({ jobId, live, stream }: Props & { stream: JobStreamState }) {
   });
 
   useEffect(() => {
+    v.measure();
+  }, [wrap, v]);
+
+  useEffect(() => {
     if (auto && rows.length > 0) v.scrollToIndex(rows.length - 1, { align: "end" });
   }, [auto, rows.length, v]);
 
@@ -161,49 +169,52 @@ function Viewer({ jobId, live, stream }: Props & { stream: JobStreamState }) {
   };
 
   return (
-    <section aria-label="Job log" className="grid gap-2">
-      <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-1 text-sm">
+    <section aria-label="Job log" className="grid gap-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-2 text-sm">
           Level
-          <select value={level} onChange={(e) => setLevel(e.target.value as Level)} className="h-9 rounded-md border bg-background px-2 text-sm">
+          <Select value={level} onChange={(e) => setLevel(e.target.value as Level)} className="w-auto">
             {LEVELS.map((l) => (
               <option key={l} value={l}>
                 {l}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
-        <input
+        <Input
           type="search"
           aria-label="Search log"
           placeholder="Search log"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="h-9 min-w-40 flex-1 rounded-md border bg-background px-2 text-sm"
+          className="min-w-40 flex-1"
         />
-        <button type="button" className={btn} aria-pressed={auto} onClick={() => setAuto((a) => !a)}>
+        <Button variant="outline" aria-pressed={auto} onClick={() => setAuto((a) => !a)}>
           Auto-scroll
-        </button>
+        </Button>
+        <Button variant="outline" aria-pressed={wrap} onClick={() => setWrap((w) => !w)}>
+          Wrap
+        </Button>
         {!auto && (
-          <button type="button" className={btn} onClick={() => setAuto(true)}>
+          <Button variant="outline" onClick={() => setAuto(true)}>
             Jump to latest
-          </button>
+          </Button>
         )}
-        <button type="button" className={btn} disabled={progress !== null} onClick={() => void onDownload()}>
+        <Button variant="outline" disabled={progress !== null} onClick={() => void onDownload()}>
           Download
-        </button>
+        </Button>
         {progress !== null && (
           <>
             <span role="status" className="text-xs text-muted-foreground">Downloading… {progress.toLocaleString()} lines</span>
-            <button type="button" className={btn} onClick={() => abortRef.current?.abort()}>
+            <Button variant="outline" onClick={() => abortRef.current?.abort()}>
               Cancel
-            </button>
+            </Button>
           </>
         )}
         {live && !stream.connected && <span className="text-xs text-muted-foreground">Reconnecting…</span>}
       </div>
       {(stream.logTruncated || overflow) && (
-        <p role="status" className="rounded-md border bg-muted p-2 text-sm">
+        <p role="status" className="rounded-lg border bg-muted p-3 text-sm">
           Showing the latest {MAX_LOG.toLocaleString()} lines. Download the log for the full history.
         </p>
       )}
@@ -217,7 +228,7 @@ function Viewer({ jobId, live, stream }: Props & { stream: JobStreamState }) {
         aria-live="off"
         aria-label="Log lines"
         tabIndex={0}
-        className="h-96 overflow-auto rounded-md border bg-card font-mono text-xs"
+        className="dark h-[28rem] max-h-[calc(100dvh-18rem)] overflow-auto rounded-xl border bg-background py-2 font-mono text-xs text-foreground"
       >
         <div style={{ height: v.getTotalSize(), position: "relative" }}>
           {v.getVirtualItems().map((vi) => {
@@ -227,12 +238,16 @@ function Viewer({ jobId, live, stream }: Props & { stream: JobStreamState }) {
               <div
                 key={l.id}
                 data-testid="log-row"
-                className="absolute left-0 flex w-full gap-2 whitespace-pre px-2"
-                style={{ height: ROW_H, lineHeight: `${ROW_H}px`, transform: `translateY(${vi.start}px)` }}
+                data-index={vi.index}
+                ref={v.measureElement}
+                className="absolute left-0 flex w-full gap-3 px-4 leading-5"
+                style={{ minHeight: ROW_H, transform: `translateY(${vi.start}px)` }}
               >
-                <span className="text-muted-foreground">{l.ts.slice(11, 19)}</span>
+                <span className="shrink-0 text-muted-foreground">{l.ts.slice(11, 19)}</span>
                 <span className={`w-12 shrink-0 uppercase ${LEVEL_CLASS[l.level] ?? ""}`}>{l.level}</span>
-                <span className="min-w-0 truncate">{highlight(l.msg, query)}</span>
+                <span title={wrap ? undefined : l.msg} className={wrap ? "min-w-0 flex-1 whitespace-pre-wrap break-words" : "min-w-0 flex-1 truncate whitespace-pre"}>
+                  {highlight(l.msg, query)}
+                </span>
               </div>
             );
           })}

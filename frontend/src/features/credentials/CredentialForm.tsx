@@ -1,7 +1,11 @@
 import { useState, type ReactNode } from "react";
-import { Dialog } from "radix-ui";
+import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { z } from "zod";
-import { FormField, FormRootError, inputClass } from "../../components/common/FormField";
+import { FormField, FormRootError } from "../../components/common/FormField";
 import { SecretInput } from "../../components/common/SecretInput";
 import { omitEmpty } from "../../components/common/omitEmpty";
 import { useApiForm } from "../../components/common/useApiForm";
@@ -37,37 +41,39 @@ function Fields({
   const hint = saved && kind === "cookies" ? `${KIND_HELP[kind]} Saved — enter a new value to replace.` : KIND_HELP[kind];
   return (
     <>
+      <DialogBody className="grid gap-4">
       <FormField label="Name" error={e.name?.message}>
-        <input className={inputClass} {...form.register("name")} />
+        <Input {...form.register("name")} />
       </FormField>
       <FormField label="Site" error={e.site?.message}>
-        <input className={inputClass} {...form.register("site")} />
+        <Input {...form.register("site")} />
       </FormField>
       <FormField label="Kind" error={e.kind?.message}>
-        <select className={inputClass} {...form.register("kind")}>
+        <Select {...form.register("kind")}>
           {KINDS.map((k) => (
             <option key={k} value={k}>
               {k}
             </option>
           ))}
-        </select>
+        </Select>
       </FormField>
       <FormField label="Secret" error={e.secret?.message} hint={hint}>
         {kind === "cookies" ? (
-          <textarea rows={6} autoComplete="off" spellCheck={false} className={`${inputClass} h-auto py-2 font-mono`} {...form.register("secret")} />
+          <Textarea rows={6} autoComplete="off" spellCheck={false} className="font-mono" {...form.register("secret")} />
         ) : (
           <SecretInput saved={saved} {...form.register("secret")} />
         )}
       </FormField>
       <FormRootError message={form.rootError} />
-      <div className="flex justify-end gap-2">
-        <Dialog.Close type="button" className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring">
-          Cancel
-        </Dialog.Close>
-        <button type="submit" disabled={form.formState.isSubmitting} className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50">
+      </DialogBody>
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button variant="outline">Cancel</Button>
+        </DialogClose>
+        <Button type="submit" loading={form.formState.isSubmitting}>
           Save
-        </button>
-      </div>
+        </Button>
+      </DialogFooter>
     </>
   );
 }
@@ -82,7 +88,7 @@ function CreateFields({ onDone }: { onDone: () => void }) {
     },
   });
   return (
-    <form onSubmit={form.submit} className="mt-3 grid gap-3" noValidate>
+    <form onSubmit={form.submit} className="flex min-h-0 flex-1 flex-col" noValidate>
       <Fields form={form} saved={false} />
     </form>
   );
@@ -98,7 +104,7 @@ function EditFields({ cred, onDone }: { cred: CredentialOut; onDone: () => void 
     },
   });
   return (
-    <form onSubmit={form.submit} className="mt-3 grid gap-3" noValidate>
+    <form onSubmit={form.submit} className="flex min-h-0 flex-1 flex-col" noValidate>
       <Fields form={form} saved={cred.has_secret} />
     </form>
   );
@@ -108,16 +114,15 @@ export function CredentialForm({ credential, trigger }: { credential?: Credentia
   const [open, setOpen] = useState(false);
   const done = () => setOpen(false);
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-lg border bg-popover p-4 text-popover-foreground shadow-xl">
-          <Dialog.Title className="text-base font-semibold">{credential ? `Edit ${credential.name}` : "Add credential"}</Dialog.Title>
-          <Dialog.Description className="sr-only">Credential settings. Secrets are write-only.</Dialog.Description>
-          {credential ? <EditFields cred={credential} onDone={done} /> : <CreateFields onDone={done} />}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>{trigger}</DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{credential ? `Edit ${credential.name}` : "Add credential"}</DialogTitle>
+          <DialogDescription>Credential settings. Secrets are write-only.</DialogDescription>
+        </DialogHeader>
+        {credential ? <EditFields cred={credential} onDone={done} /> : <CreateFields onDone={done} />}
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -6,6 +6,7 @@ Lives under backend/tests/, which .dockerignore excludes, so the bypass never sh
 import asyncio
 import base64
 import json
+import os
 import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,7 +33,7 @@ from app.db.models import (
 from app.main import create_app
 
 SESSION_SECRET = "e2e-session-secret-0123456789abcdef"
-PORT = 8090
+PORT = int(os.environ.get("E2E_PORT", "8090"))
 CSRF = "e2e"
 
 
@@ -139,6 +140,45 @@ async def _seed(settings: Settings) -> int:
                     data={"type": "log", "msg": f"e2e log line {i}", "logger": "e2e"},
                 )
             )
+        long_name = "Extremely long source name for truncation checks " * 3
+        long_url = "https://example.test/very/long/path/" + "segment-" * 30 + "end.jpg"
+        for i in range(3):
+            s.add(
+                Source(
+                    name=f"{long_name}{i}",
+                    url=long_url,
+                    extractor="gallery-dl",
+                    target_id=target.id,
+                    owner_id=admin.id,
+                    enabled=True,
+                )
+            )
+        s.add(
+            ImmichTarget(
+                name="Target with an exceptionally long display name " * 3,
+                url="http://immich-server-with-a-very-long-hostname." + "sub." * 12 + "invalid",
+                api_key_enc=b"x",
+                owner_id=admin.id,
+            )
+        )
+        for i in range(2):
+            s.add(
+                User(
+                    sub=f"e2e-long-{i}",
+                    email=f"a.very.long.email.address.for.truncation.{i}@subdomain.example-company.test",
+                    name="Maximilian Alexander Bartholomew Montgomery-Featherstonehaugh " * 2,
+                    role=Role.user if i else Role.admin,
+                    groups=["admins"],
+                )
+            )
+        s.add(
+            JobItem(
+                job_id=job.id,
+                url=long_url,
+                outcome="failed",
+                reason="Upstream error " + "with a long explanatory reason " * 6,
+            )
+        )
         admin_id = admin.id
     await engine.dispose()
     return admin_id
