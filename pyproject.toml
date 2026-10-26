@@ -28,6 +28,7 @@ dependencies = [
     "xxhash>=4.0.2",
     "psycopg[binary]>=3.3.6",
     "apprise>=2.1.0",
+    "apscheduler>=3.11,<4",
 ]
 
 [dependency-groups]
@@ -86,4 +87,8 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["gallery_dl", "gallery_dl.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["apscheduler.*"]
 ignore_missing_imports = true

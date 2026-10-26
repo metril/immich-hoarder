@@ -19,6 +19,7 @@ from app.core.logging import configure_logging
 from app.db.engine import dispose_engine, init_engine
 from app.db.migrate import upgrade_head_async
 from app.runtime.bus import EventBus
+from app.runtime.scheduler import SourceScheduler
 from app.runtime.supervisor import JobSupervisor
 from app.runtime.writer import IpcBridge, JobWriter, make_ipc_queue
 
@@ -34,6 +35,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         writer: JobWriter | None = None
         bridge: IpcBridge | None = None
         supervisor: JobSupervisor | None = None
+        scheduler: SourceScheduler | None = None
         try:
             if _app.state.runtime_enabled:
                 sf = async_sessionmaker(engine, expire_on_commit=False)
@@ -46,11 +48,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 bridge.start()
                 supervisor = JobSupervisor(sf, writer, settings, mp_ctx=ctx, ipc_queue=ipc_q)
                 await supervisor.start()
+                scheduler = SourceScheduler(supervisor, sf)
+                await scheduler.start()
+                _app.state.scheduler = scheduler
                 _app.state.bus = bus
                 _app.state.job_writer = writer
                 _app.state.supervisor = supervisor
             yield
         finally:
+            if scheduler is not None:
+                scheduler.shutdown(wait=False)
             if supervisor is not None:
                 await supervisor.stop()
             if bridge is not None:

@@ -35,6 +35,16 @@ from app.schemas.sources import SourceIn, SourceOut, SourcePatch
 PREVIEW_TIMEOUT = 60.0
 _PREVIEW_SEM = asyncio.Semaphore(2)
 
+
+async def _sync(request: Request, session: AsyncSession, source_id: int) -> None:
+    """Commit, then refresh the source's cron trigger (no-op without a scheduler)."""
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler is None:
+        return
+    await session.commit()
+    await scheduler.sync_source(source_id)
+
+
 router = APIRouter(prefix="/sources", tags=["sources"])
 
 
@@ -75,6 +85,7 @@ async def list_sources(
 @router.post("", response_model=SourceOut, status_code=201)
 async def create_source(
     body: SourceIn,
+    request: Request,
     p: Principal = Depends(current_principal),
     session: AsyncSession = Depends(get_session),
 ) -> SourceOut:
@@ -89,7 +100,9 @@ async def create_source(
     )
     session.add(s)
     await session.flush()
-    return SourceOut.of(s)
+    out = SourceOut.of(s)
+    await _sync(request, session, s.id)
+    return out
 
 
 class PreviewIn(SourceIn):
@@ -177,6 +190,7 @@ async def get_source(
 async def patch_source(
     obj_id: int,
     body: SourcePatch,
+    request: Request,
     p: Principal = Depends(current_principal),
     session: AsyncSession = Depends(get_session),
 ) -> SourceOut:
@@ -215,12 +229,15 @@ async def patch_source(
         s.extractor = await _extractor_for(session, s.url)
     await check_refs(session, s.owner_id, s.target_id, s.credential_id)
     await session.flush()
-    return SourceOut.of(s)
+    out = SourceOut.of(s)
+    await _sync(request, session, obj_id)
+    return out
 
 
 @router.delete("/{obj_id}", status_code=204)
 async def delete_source(
     obj_id: int,
+    request: Request,
     p: Principal = Depends(current_principal),
     session: AsyncSession = Depends(get_session),
 ) -> Response:
@@ -230,6 +247,7 @@ async def delete_source(
     await delete_shares(session, Source.share_type, obj_id)
     await session.delete(s)
     await session.flush()
+    await _sync(request, session, obj_id)
     return Response(status_code=204)
 
 

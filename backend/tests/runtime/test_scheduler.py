@@ -1,0 +1,135 @@
+import logging
+from collections.abc import AsyncIterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.core.crypto import SecretBox
+from app.db.engine import make_engine
+from app.db.models import Base, ImmichTarget, Source, User
+from app.runtime import scheduler as sched_mod
+from app.runtime.scheduler import SourceScheduler
+from app.runtime.supervisor import JobConflict
+
+KEY = "test-master-key-0123456789abcdef-xyz"
+
+
+class FakeSup:
+    def __init__(self) -> None:
+        self.calls: list[tuple[Any, ...]] = []
+        self.exc: Exception | None = None
+
+    async def enqueue(
+        self, source_id: int, triggered_by: int | None, log_level: str | None
+    ) -> None:
+        self.calls.append((source_id, triggered_by, log_level))
+        if self.exc:
+            raise self.exc
+
+
+@pytest.fixture
+async def sf(tmp_path: Path) -> AsyncIterator[async_sessionmaker[AsyncSession]]:
+    eng = make_engine(f"sqlite+aiosqlite:///{tmp_path / 's.db'}")
+    async with eng.begin() as c:
+        await c.run_sync(Base.metadata.create_all)
+    f = async_sessionmaker(eng, expire_on_commit=False)
+    async with f() as s:
+        u = User(sub="u")
+        s.add(u)
+        await s.flush()
+        t = ImmichTarget(
+            owner_id=u.id, name="t", url="http://i", api_key_enc=SecretBox(KEY).encrypt(b"k")
+        )
+        s.add(t)
+        await s.commit()
+    yield f
+    await eng.dispose()
+
+
+async def add(sf: async_sessionmaker[AsyncSession], **kw: Any) -> int:
+    async with sf() as s:
+        u = await s.get(User, 1)
+        t = await s.get(ImmichTarget, 1)
+        assert u and t
+        src = Source(owner_id=u.id, name="s", url="http://s", extractor="x", target_id=t.id, **kw)
+        s.add(src)
+        await s.commit()
+        return src.id
+
+
+async def test_start_registers_enabled_scheduled_sources(sf: Any) -> None:
+    a = await add(sf, schedule_cron="*/5 * * * *")
+    await add(sf)  # unscheduled
+    sch = SourceScheduler(FakeSup(), sf)  # type: ignore[arg-type]
+    await sch.start()
+    try:
+        assert sch.running
+        assert sch.job_ids() == {f"source-{a}"}
+        job = sch._sched.get_job(f"source-{a}")
+        assert job.misfire_grace_time == 300
+        assert job.coalesce is True
+        assert job.max_instances == 1
+    finally:
+        sch.shutdown(wait=False)
+
+
+async def test_sync_on_patch_and_delete(sf: Any) -> None:
+    a = await add(sf)
+    sch = SourceScheduler(FakeSup(), sf)  # type: ignore[arg-type]
+    await sch.start()
+    try:
+        assert sch.job_ids() == set()
+        async with sf() as s:
+            src = await s.get(Source, a)
+            assert src
+            src.schedule_cron = "0 3 * * *"
+            await s.commit()
+        await sch.sync_source(a)
+        assert sch.job_ids() == {f"source-{a}"}
+        async with sf() as s:
+            src = await s.get(Source, a)
+            assert src
+            src.schedule_cron = "0 4 * * *"
+            await s.commit()
+        await sch.sync_source(a)
+        assert "4" in str(sch._sched.get_job(f"source-{a}").trigger)
+        async with sf() as s:
+            src = await s.get(Source, a)
+            assert src
+            await s.delete(src)
+            await s.commit()
+        await sch.sync_source(a)
+        assert sch.job_ids() == set()
+    finally:
+        sch.shutdown(wait=False)
+
+
+async def test_disabled_or_ephemeral_not_scheduled(sf: Any) -> None:
+    await add(sf, schedule_cron="* * * * *", enabled=False)
+    await add(sf, schedule_cron="* * * * *", ephemeral=True)
+    sch = SourceScheduler(FakeSup(), sf)  # type: ignore[arg-type]
+    await sch.start()
+    try:
+        assert sch.job_ids() == set()
+    finally:
+        sch.shutdown(wait=False)
+
+
+async def test_fire_conflict_skipped(sf: Any, caplog: pytest.LogCaptureFixture) -> None:
+    sup = FakeSup()
+    sch = SourceScheduler(sup, sf)  # type: ignore[arg-type]
+    await sch.start()
+    try:
+        sup.exc = JobConflict()
+        with caplog.at_level(logging.INFO):
+            await sched_mod._fire(7)
+        assert sup.calls == [(7, None, None)]
+        assert any(r.levelno == logging.INFO for r in caplog.records)
+        sup.exc = RuntimeError("boom")
+        with caplog.at_level(logging.INFO):
+            await sched_mod._fire(7)
+        assert any(r.levelno == logging.ERROR and not r.exc_info for r in caplog.records)
+    finally:
+        sch.shutdown(wait=False)
