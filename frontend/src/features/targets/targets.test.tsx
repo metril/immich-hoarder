@@ -99,7 +99,7 @@ describe("targets", () => {
     renderWithProviders(null, { me: other, route: "/targets" });
     expect(await screen.findByRole("button", { name: "Edit Home" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete Home" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Share Home" })).not.toBeInTheDocument();
   });
 
   it("use-share user sees only Test and Albums; admin sees all", async () => {
@@ -111,7 +111,7 @@ describe("targets", () => {
     unmount();
     renderWithProviders(null, { me: { ...me, id: 3, role: "admin" }, route: "/targets" });
     expect(await screen.findByRole("button", { name: "Delete Home" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share Home" })).toBeInTheDocument();
   });
 
   it("shows 422 on the url field", async () => {

@@ -19,8 +19,8 @@ describe("SharingDialog", () => {
         return HttpResponse.json(body);
       }),
     );
-    renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} />, { me: owner });
-    await userEvent.click(await screen.findByRole("button", { name: "Share" }));
+    renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} name="Home" />, { me: owner });
+    await userEvent.click(await screen.findByRole("button", { name: "Share Home" }));
     const group = await screen.findByLabelText("Add group");
     expect(group.closest("fieldset")).toBeDisabled();
     await userEvent.click(screen.getByRole("radio", { name: "Restricted" }));
@@ -51,8 +51,8 @@ describe("SharingDialog", () => {
         }),
       );
       const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
-      renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} />, { me: { ...owner, role: "admin", id: 5 } });
-      await user.click(await screen.findByRole("button", { name: "Share" }));
+      renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} name="Home" />, { me: { ...owner, role: "admin", id: 5 } });
+      await user.click(await screen.findByRole("button", { name: "Share Home" }));
       const box = await screen.findByRole("combobox", { name: "Add user" });
       await user.type(box, "b");
       await act(() => vi.advanceTimersByTimeAsync(600));
@@ -86,19 +86,19 @@ describe("SharingDialog", () => {
         }),
       ),
     );
-    renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} />, { me: owner });
-    await userEvent.click(await screen.findByRole("button", { name: "Share" }));
+    renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} name="Home" />, { me: owner });
+    await userEvent.click(await screen.findByRole("button", { name: "Share Home" }));
     expect(await screen.findByLabelText("Permission for Bobby")).toBeInTheDocument();
     expect(screen.getByLabelText("Permission for User #11")).toBeInTheDocument();
   });
 
   it("sharing hidden for non-owner non-admin (owner sees it)", async () => {
-    const { unmount } = renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} />, { me: owner });
-    expect(await screen.findByRole("button", { name: "Share" })).toBeInTheDocument();
+    const { unmount } = renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} name="Home" />, { me: owner });
+    expect(await screen.findByRole("button", { name: "Share Home" })).toBeInTheDocument();
     unmount();
-    renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} />, { me: { ...owner, id: 3 } });
+    renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} name="Home" />, { me: { ...owner, id: 3 } });
     // positive control: a sentinel rendered by the same provider tree appears, Share does not.
     await waitFor(() => expect(document.body.innerHTML).not.toContain("Share"));
-    expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Share Home" })).toBeNull();
   });
 });

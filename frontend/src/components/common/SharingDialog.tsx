@@ -98,7 +98,7 @@ function UserPicker({ onPick }: { onPick: (u: { id: number; name: string | null 
         }}
       />
       {results.length > 0 && (
-        <ul id={listId} role="listbox" aria-label="Users" className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border bg-popover p-1 shadow-md">
+        <ul id={listId} role="listbox" aria-label="Users" className="mt-1 max-h-48 w-full overflow-y-auto rounded-lg border bg-popover p-1">
           {results.map((u, i) => (
             <li
               key={u.id}
@@ -245,6 +245,7 @@ export function SharingDialog({
   resource,
   id,
   ownerId,
+  name,
   open: openProp,
   onOpenChange,
   hideTrigger,
@@ -252,6 +253,7 @@ export function SharingDialog({
   resource: Extract<Resource, ShareResource>;
   id: number;
   ownerId: number;
+  name: string;
   /** Controlled mode (e.g. opened from a menu item); set hideTrigger to drop the built-in button. */
   open?: boolean;
   onOpenChange?: (o: boolean) => void;
@@ -266,7 +268,7 @@ export function SharingDialog({
     <Dialog open={open} onOpenChange={setOpen}>
       {hideTrigger ? null : (
         <DialogTrigger asChild>
-          <Button variant="outline" size="sm">Share</Button>
+          <Button variant="outline" size="sm" aria-label={`Share ${name}`}>Share</Button>
         </DialogTrigger>
       )}
       <DialogContent aria-describedby={undefined}>

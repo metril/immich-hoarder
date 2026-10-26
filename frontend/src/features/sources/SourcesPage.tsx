@@ -1,6 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
-import cronstrue from "cronstrue";
 import { MoreHorizontal, Search } from "lucide-react";
 import { isAdmin, useMe } from "../../api/me";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
@@ -9,7 +8,7 @@ import { SharingDialog } from "../../components/common/SharingDialog";
 import { useMediaQuery } from "../../components/common/useMediaQuery";
 import { VirtualTable, type Column } from "../../components/common/VirtualTable";
 import { VisibilityBadge } from "../../components/common/VisibilityBadge";
-import { Menu, menuItemCls } from "../../components/shell/Menu";
+import { Menu, MenuItem } from "../../components/shell/Menu";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
@@ -26,13 +25,29 @@ import { useDeleteSource, useSources, useToggleSource, type SourceIn, type Sourc
 
 const route = getRouteApi("/_app/sources");
 
-function schedule(cron: string | null): string {
-  if (!cron) return "Manual";
-  try {
-    return cronstrue.toString(cron, { use24HourTimeFormat: true, verbose: false });
-  } catch {
-    return cron;
+type Cronstrue = typeof import("cronstrue").default;
+let cronLib: Cronstrue | null = null;
+
+/** Human cron text; cronstrue is loaded lazily (raw cron shown until it arrives). */
+function Schedule({ cron }: { cron: string | null }) {
+  const [lib, setLib] = useState<{ c: Cronstrue } | null>(cronLib ? { c: cronLib } : null);
+  useEffect(() => {
+    if (!cron || lib) return;
+    let live = true;
+    void import("cronstrue").then((m) => {
+      cronLib = m.default;
+      if (live) setLib({ c: m.default });
+    });
+    return () => { live = false; };
+  }, [cron, lib]);
+  if (!cron) return <Truncate>Manual</Truncate>;
+  let text = cron;
+  if (lib) {
+    try {
+      text = lib.c.toString(cron, { use24HourTimeFormat: true, verbose: false });
+    } catch { /* keep raw */ }
   }
+  return <Truncate title={cron}>{text}</Truncate>;
 }
 
 function draftOf(s: SourceOut): SourceIn {
@@ -89,37 +104,15 @@ function Actions({ s }: { s: SourceOut }) {
     <div className="flex items-center gap-2">
       {s.can_use && <RunDialog sourceId={s.id} name={s.name} />}
       <Menu label={`More actions for ${s.name}`} trigger={<MoreHorizontal className="size-4" aria-hidden />}>
-        {(close) => (
-          <>
-            <button type="button" role="menuitem" aria-label={`Preview ${s.name}`} className={menuItemCls} onClick={() => { close(); setPreview(true); }}>
-              Preview
-            </button>
-            {owns && (
-              <button type="button" role="menuitem" aria-label={`Share ${s.name}`} className={menuItemCls} onClick={() => { close(); setShare(true); }}>
-                Share
-              </button>
-            )}
-            {s.can_edit && (
-              <button
-                type="button"
-                role="menuitem"
-                aria-label={`Edit ${s.name}`}
-                className={menuItemCls}
-                onClick={() => { close(); void navigate({ to: "/sources", search: (p) => ({ ...p, edit: s.id }) }); }}
-              >
-                Edit
-              </button>
-            )}
-            {owns && (
-              <button type="button" role="menuitem" aria-label={`Delete ${s.name}`} className={`${menuItemCls} text-destructive`} onClick={() => { close(); setConfirm(true); }}>
-                Delete
-              </button>
-            )}
-          </>
+        <MenuItem aria-label={`Preview ${s.name}`} onAction={() => setPreview(true)}>Preview</MenuItem>
+        {owns && <MenuItem aria-label={`Share ${s.name}`} onAction={() => setShare(true)}>Share</MenuItem>}
+        {s.can_edit && (
+          <MenuItem aria-label={`Edit ${s.name}`} onAction={() => void navigate({ to: "/sources", search: (p) => ({ ...p, edit: s.id }) })}>Edit</MenuItem>
         )}
+        {owns && <MenuItem aria-label={`Delete ${s.name}`} className="text-destructive" onAction={() => setConfirm(true)}>Delete</MenuItem>}
       </Menu>
       <PreviewDialog s={s} open={preview} onOpenChange={setPreview} />
-      {owns && <SharingDialog resource="sources" id={s.id} ownerId={s.owner_id} open={share} onOpenChange={setShare} hideTrigger />}
+      {owns && <SharingDialog resource="sources" id={s.id} ownerId={s.owner_id} name={s.name} open={share} onOpenChange={setShare} hideTrigger />}
       {owns && (
         <ConfirmDialog
           open={confirm}
@@ -154,7 +147,7 @@ export default function SourcesPage() {
     { id: "name", header: "Name", cell: (s) => <Truncate className="font-medium">{s.name}</Truncate>, width: "minmax(0,1.2fr)" },
     { id: "ext", header: "Extractor", cell: (s) => <Badge className="font-mono">{s.extractor}</Badge>, width: "8rem" },
     { id: "target", header: "Target", cell: (s) => <Truncate>{targetName.get(s.target_id) ?? `Target #${s.target_id}`}</Truncate>, width: "minmax(0,1fr)", hideBelow: "md" },
-    { id: "sched", header: "Schedule", cell: (s) => <Truncate title={s.schedule_cron ?? undefined}>{schedule(s.schedule_cron)}</Truncate>, width: "minmax(0,1fr)" },
+    { id: "sched", header: "Schedule", cell: (s) => <Schedule cron={s.schedule_cron} />, width: "minmax(0,1fr)" },
     { id: "enabled", header: "Enabled", cell: (s) => <EnabledSwitch s={s} />, width: "6rem" },
     { id: "vis", header: "Visibility", cell: (s) => <VisibilityBadge visibility={s.visibility} />, width: "8rem" },
     { id: "actions", header: "Actions", cell: (s) => <Actions s={s} />, width: "9rem" },
@@ -194,6 +187,7 @@ export default function SourcesPage() {
       ) : (
         <VirtualTable
           label="Sources"
+          minWidth="min-w-[60rem]"
           rows={rows}
           columns={columns}
           rowHeight={mobile ? 340 : 56}

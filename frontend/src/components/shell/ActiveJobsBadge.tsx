@@ -10,7 +10,6 @@ export function ActiveJobsBadge({ className }: { className?: string }) {
   return (
     <Badge
       tone="info"
-      aria-label={`${n} active ${total === 1 && !hasMore ? "job" : "jobs"}`}
       title={`${running.length} running, ${queued.length} queued`}
       className={className}
     >
@@ -18,6 +17,7 @@ export function ActiveJobsBadge({ className }: { className?: string }) {
         <span aria-hidden className="size-1.5 shrink-0 rounded-full bg-info motion-safe:animate-pulse" />
       ) : null}
       <span aria-hidden>{n}</span>
+      <span className="sr-only">, {n} active {total === 1 && !hasMore ? "job" : "jobs"}</span>
     </Badge>
   );
 }

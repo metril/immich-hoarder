@@ -1,10 +1,16 @@
 import { Dialog } from "radix-ui";
 import { Menu as MenuIcon, X } from "lucide-react";
 import type { MeOut } from "../../api/me";
+import { useEffect } from "react";
+import { useMediaQuery } from "../common/useMediaQuery";
 import { Sidebar } from "./Sidebar";
 
 /** Hamburger + slide-over sheet (Radix Dialog: focus trap, Escape, focus restore); hidden at >= md. */
 export function MobileNav({ admin, me, open, onOpenChange }: { admin: boolean; me: MeOut; open: boolean; onOpenChange: (o: boolean) => void }) {
+  const wide = useMediaQuery("(min-width:768px)");
+  useEffect(() => {
+    if (wide && open) onOpenChange(false);
+  }, [wide, open, onOpenChange]);
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Trigger

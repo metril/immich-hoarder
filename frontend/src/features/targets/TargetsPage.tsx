@@ -70,7 +70,7 @@ function TargetCard({ t }: { t: TargetOut }) {
       <CardFooter className="flex-wrap">
         <TargetTestButton id={t.id} name={t.name} />
         <AlbumsSheet t={t} />
-        {owns && <SharingDialog resource="targets" id={t.id} ownerId={t.owner_id} />}
+        {owns && <SharingDialog resource="targets" id={t.id} ownerId={t.owner_id} name={t.name} />}
         {t.can_edit && (
           <TargetForm
             target={t}

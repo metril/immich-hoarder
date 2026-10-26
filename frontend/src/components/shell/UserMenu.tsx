@@ -1,7 +1,7 @@
 import type { MeOut } from "../../api/me";
 import { LogOut } from "lucide-react";
 import { Badge } from "../ui/badge";
-import { Menu, menuItemCls } from "./Menu";
+import { Menu, MenuItem } from "./Menu";
 import { initials } from "./nav";
 import { useSignOut } from "./session";
 
@@ -17,26 +17,14 @@ export function UserMenu({ me }: { me: MeOut }) {
         </span>
       }
     >
-      {(close) => (
-        <>
-          <div className="flex items-center justify-between gap-3 px-2 py-1.5 text-sm">
-            <span className="font-medium">{name}</span>
-            <Badge tone="neutral">{me.role}</Badge>
-          </div>
-          <button
-            type="button"
-            role="menuitem"
-            className={menuItemCls}
-            onClick={() => {
-              close();
-              void signOut();
-            }}
-          >
-            <LogOut className="size-4" aria-hidden />
-            Sign out
-          </button>
-        </>
-      )}
+      <div className="flex items-center justify-between gap-3 px-2 py-1.5 text-sm">
+        <span className="font-medium">{name}</span>
+        <Badge tone="neutral">{me.role}</Badge>
+      </div>
+      <MenuItem onAction={() => void signOut()}>
+        <LogOut className="size-4" aria-hidden />
+        Sign out
+      </MenuItem>
     </Menu>
   );
 }

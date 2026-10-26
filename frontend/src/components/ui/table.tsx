@@ -10,7 +10,7 @@ export function Table({ className, ...p }: ComponentProps<"table">) {
   );
 }
 export function TableHeader({ className, ...p }: ComponentProps<"thead">) {
-  return <thead className={cn("sticky top-0 z-10 bg-card [&_tr]:border-b", className)} {...p} />;
+  return <thead className={cn("bg-card [&_tr]:border-b", className)} {...p} />;
 }
 export function TableBody({ className, ...p }: ComponentProps<"tbody">) {
   return <tbody className={cn("[&_tr:last-child]:border-0", className)} {...p} />;

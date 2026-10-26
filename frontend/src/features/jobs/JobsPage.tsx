@@ -58,7 +58,7 @@ export default function JobsPage() {
         <label htmlFor="jobs-source" className="sr-only">Source</label>
         <Select
           id="jobs-source"
-          className="w-auto max-w-full"
+          className="w-full sm:ml-auto sm:w-56"
           value={search.source_id ?? ""}
           onChange={(e) => set({ ...search, source_id: e.target.value ? Number(e.target.value) : undefined })}
         >

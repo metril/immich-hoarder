@@ -232,23 +232,23 @@ describe("active jobs badge", () => {
       }),
     );
     renderWithProviders(null, { me: admin, route: "/sources" });
-    const badge = await screen.findAllByLabelText("2 active jobs");
-    expect(badge[0]).toHaveAttribute("title", "1 running, 1 queued");
+    const badge = await screen.findAllByText(", 2 active jobs");
+    expect(badge[0]!.closest("[title]")).toHaveAttribute("title", "1 running, 1 queued");
     const stream = () => FakeEventSource.instances.filter((e) => e.url.includes("/jobs/stream")).at(-1)!;
     // unknown job id -> invalidation -> refetch
     jobs = [...jobs, j(3, "queued")];
     act(() => stream().emit("status", { id: 1, ts: "t", job_id: 3, status: "queued" }));
-    expect((await screen.findAllByLabelText("3 active jobs"))[0]).toHaveAttribute("title", "1 running, 2 queued");
+    expect((await screen.findAllByText(", 3 active jobs"))[0]!.closest("[title]")).toHaveAttribute("title", "1 running, 2 queued");
     // terminal status
     jobs = jobs.filter((x) => x.id !== 1);
     act(() => stream().emit("status", { id: 2, ts: "t", job_id: 1, status: "succeeded" }));
-    expect((await screen.findAllByLabelText("2 active jobs"))[0]).toHaveAttribute("title", "0 running, 2 queued");
+    expect((await screen.findAllByText(", 2 active jobs"))[0]!.closest("[title]")).toHaveAttribute("title", "0 running, 2 queued");
   });
 
   it("is hidden when nothing is active", async () => {
     renderWithProviders(null, { me: admin, route: "/sources" });
     await screen.findByRole("navigation", { name: "Main" });
-    expect(screen.queryByLabelText(/active job/)).toBeNull();
+    expect(screen.queryByText(/active jobs?$/)).toBeNull();
   });
 });
 

@@ -1,5 +1,6 @@
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import type { ReactNode } from "react";
+import { useMediaQuery } from "../../components/common/useMediaQuery";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page";
 import { PageSkeleton } from "../../components/common/PageSkeleton";
@@ -21,6 +22,7 @@ export default function SettingsPage() {
   const tab = route.useSearch().tab ?? "rip";
   const navigate = useNavigate();
   const settings = useSettings();
+  const vertical = useMediaQuery("(min-width:1024px)");
   let body: ReactNode;
   if (tab === "admin") body = <AdminTools />;
   else if (settings.isPending) body = <PageSkeleton />;
@@ -33,8 +35,8 @@ export default function SettingsPage() {
     <>
       <PageHeader title="Settings" description="Tune ripping, runtime behaviour, notifications and maintenance." />
       <div className="grid gap-6 lg:grid-cols-[13rem_minmax(0,1fr)] lg:gap-10">
-        <nav aria-label="Settings sections" className="min-w-0 lg:sticky lg:top-6 lg:self-start">
-          <div role="tablist" aria-label="Settings sections" aria-orientation="horizontal" className="flex gap-1 overflow-x-auto border-b pb-px lg:flex-col lg:overflow-visible lg:border-b-0 lg:pb-0">
+        <nav className="min-w-0 lg:sticky lg:top-6 lg:self-start">
+          <div role="tablist" aria-label="Settings sections" aria-orientation={vertical ? "vertical" : "horizontal"} className="flex gap-1 overflow-x-auto border-b pb-px lg:flex-col lg:overflow-visible lg:border-b-0 lg:pb-0">
             {TABS.map((t, i) => (
               <button
                 key={t.id}
@@ -44,10 +46,12 @@ export default function SettingsPage() {
                 aria-selected={tab === t.id}
                 tabIndex={tab === t.id ? 0 : -1}
                 onKeyDown={(ev) => {
-                  const d = ev.key === "ArrowRight" ? 1 : ev.key === "ArrowLeft" ? -1 : 0;
-                  if (!d) return;
+                  const next = vertical ? "ArrowDown" : "ArrowRight";
+                  const prev = vertical ? "ArrowUp" : "ArrowLeft";
+                  const idx = ev.key === "Home" ? 0 : ev.key === "End" ? TABS.length - 1 : ev.key === next ? i + 1 : ev.key === prev ? i - 1 : null;
+                  if (idx === null) return;
                   ev.preventDefault();
-                  const n = TABS[(i + d + TABS.length) % TABS.length]!;
+                  const n = TABS[(idx + TABS.length) % TABS.length]!;
                   void navigate({ to: "/settings", search: { tab: n.id }, replace: true });
                   document.getElementById(`tab-${n.id}`)?.focus();
                 }}

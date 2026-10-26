@@ -19,7 +19,7 @@ function Actions({ c }: { c: CredentialOut }) {
   const owns = me != null && (me.id === c.owner_id || isAdmin(me));
   return (
     <div className="flex flex-wrap justify-end gap-2">
-      {owns && <SharingDialog resource="credentials" id={c.id} ownerId={c.owner_id} />}
+      {owns && <SharingDialog resource="credentials" id={c.id} ownerId={c.owner_id} name={c.name} />}
       {c.can_edit && (
         <CredentialForm
           credential={c}

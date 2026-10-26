@@ -59,7 +59,7 @@ describe("credentials", () => {
     expect(await screen.findByText("Pixiv")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Edit Pixiv" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Delete Pixiv" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Share Home" })).not.toBeInTheDocument();
   });
 
   it("edit-share user sees Edit only", async () => {
