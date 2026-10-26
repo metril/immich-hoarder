@@ -20,7 +20,6 @@ jobs:
       skip: ${{ steps.skip.outputs.skip }}
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
-      api: ${{ steps.filter.outputs.api }}
       docker: ${{ steps.filter.outputs.docker }}
     steps:
       # Release-PR skip rule: skip all jobs only when the PR comes from this
@@ -69,10 +68,6 @@ jobs:
             frontend:
               - 'frontend/**'
               - '.github/workflows/ci.yml'
-            api:
-              - 'backend/app/**'
-              - 'frontend/openapi.json'
-              - 'frontend/src/api/**'
             docker:
               - 'Dockerfile'
               - '.dockerignore'
@@ -197,7 +192,9 @@ jobs:
         working-directory: frontend
         run: |
           (cd ../backend && uv run python -m tests.e2e_server) &
-          for _ in $(seq 60); do curl -sf http://127.0.0.1:8090/healthz >/dev/null && break; sleep 1; done
+          ok=
+          for _ in $(seq 60); do curl -sf http://127.0.0.1:8090/healthz >/dev/null && ok=1 && break; sleep 1; done
+          [ -n "$ok" ] || { echo "e2e server did not become healthy"; exit 1; }
           CHROME_PATH="$(node -e "import('@playwright/test').then(m=>console.log(m.chromium.executablePath()))")" pnpm lhci
       - uses: actions/upload-artifact@v4
         if: failure()
