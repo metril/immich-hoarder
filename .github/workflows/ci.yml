@@ -150,7 +150,7 @@ jobs:
           package_json_file: frontend/package.json
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.21.0
+          node-version: 26.11.1
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck && pnpm build && pnpm budget
@@ -173,7 +173,7 @@ jobs:
           package_json_file: frontend/package.json
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.21.0
+          node-version: 26.11.1
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile && pnpm test --shard=${{ matrix.shard }}/2
@@ -192,7 +192,7 @@ jobs:
           package_json_file: frontend/package.json
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.21.0
+          node-version: 26.11.1
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - name: Dump OpenAPI
@@ -219,7 +219,7 @@ jobs:
           package_json_file: frontend/package.json
       - uses: actions/setup-node@v4
         with:
-          node-version: 24.21.0
+          node-version: 26.11.1
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: uv sync --frozen

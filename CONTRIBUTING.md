@@ -33,7 +33,7 @@ The only setup needed is Settings → Actions → General → Workflow permissio
 - Pass criterion: p99 < 5 ms for all three lookups.
 
 ## Frontend
-The web UI lives in `frontend/` (Vite, React, TanStack Router). Use Node 24.21.0 and pnpm 12.12.1 (`corepack enable`).
+The web UI lives in `frontend/` (Vite, React, TanStack Router). Use Node 26.11.1 and pnpm 12.12.1 (Node 26 has no corepack; install with `npm i -g pnpm@12.12.1`, or use the pnpm version pinned in `packageManager`).
 - `pnpm install --frozen-lockfile`, then `pnpm dev` (proxies `/api` to `127.0.0.1:8080`).
 - Checks: `pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm budget`.
 - API types are generated. After backend API changes run `cd backend && uv run python -m app.openapi_dump ../frontend/openapi.json`, then `pnpm gen:api`; CI fails on a stale client.
