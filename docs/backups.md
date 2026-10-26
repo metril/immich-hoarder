@@ -18,7 +18,7 @@ docker compose run --rm --no-deps --entrypoint sh -v "$PWD:/restore:ro" immich-h
 docker compose start immich-hoarder
 ```
 
-The point is: stop the container, put the snapshot at `/data/hoarder.db`, delete any `hoarder.db-wal` and `hoarder.db-shm`, then start. Migrations run automatically on start. Use the same `MASTER_KEY` as when the snapshot was taken.
+The point is: stop the container, put the snapshot at `/data/hoarder.db`, delete any `hoarder.db-wal` and `hoarder.db-shm`, then start. Migrations run automatically on start. Restore into the same or a newer app version than took the snapshot, because migrations only move forward. The snapshot must be readable by uid 10001 (`chown 10001:10001`). Use the same `MASTER_KEY` as when the snapshot was taken.
 
 ## Config export and import
 
@@ -46,12 +46,21 @@ curl -H "X-API-Key: ih_..." -H 'Content-Type: application/yaml' --data-binary @h
   litestream:
     image: litestream/litestream:0.3.13
     restart: unless-stopped
-    command: replicate /data/hoarder.db s3://my-bucket/hoarder
-    environment:
-      LITESTREAM_ACCESS_KEY_ID_FILE: /run/secrets/ls_key_id   # or plain env vars
-      LITESTREAM_SECRET_ACCESS_KEY_FILE: /run/secrets/ls_secret
+    command: replicate -config /etc/litestream.yml
     volumes:
       - ih_data:/data
+      - ./litestream.yml:/etc/litestream.yml:ro
+```
+
+Keep the S3 credentials in the mounted `litestream.yml` (mode 600) so they stay out of the environment:
+
+```yaml
+dbs:
+  - path: /data/hoarder.db
+    replicas:
+      - url: s3://my-bucket/hoarder
+        access-key-id: <key id>
+        secret-access-key: <secret>
 ```
 
 Check the Litestream docs for the options of your version, pin it by digest, and restore with `litestream restore` while the app is stopped.

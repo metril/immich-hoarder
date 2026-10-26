@@ -56,7 +56,7 @@ Once a source has recorded items, later runs are incremental: the downloader ski
 | `{source}` | The source's name |
 | `{date}` | Post month as `YYYY-MM` |
 
-Examples: `Reddit/{subreddit}`, `{author}`, or fixed text like `Wallpapers`. If the template is empty, a field is missing from an item, or a field is unknown, the album falls back to the source name. Control characters are stripped and names are limited to 255 characters.
+Examples: `Reddit/{subreddit}`, `{author}`, or fixed text like `Wallpapers`. If the template is empty or a field is missing from an item, the album falls back to the source name. Control characters are stripped and names are limited to 255 characters.
 
 ## De-duplication
 

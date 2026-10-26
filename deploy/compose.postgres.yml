@@ -1,7 +1,7 @@
 # Postgres instead of the default SQLite. Use with the base file:
 #   docker compose -f compose.example.yml -f deploy/compose.postgres.yml up -d
 # Create secrets/ih_pg_password (the password) and secrets/ih_db_url, e.g.
-#   postgresql+psycopg://hoarder:<password>@postgres:5432/hoarder
+#   postgresql://hoarder:<password>@postgres:5432/hoarder
 services:
   postgres:
     image: postgres:17.11-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
