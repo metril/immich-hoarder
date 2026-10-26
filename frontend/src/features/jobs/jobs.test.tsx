@@ -7,6 +7,8 @@ import { renderWithProviders } from "../../test/render";
 import { server } from "../../test/server";
 import { FakeEventSource } from "../../test/setup";
 
+const user = userEvent.setup({ delay: null });
+
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user" };
 const job = (id: number, o: Record<string, unknown> = {}) => ({
@@ -36,7 +38,7 @@ describe("jobs list", () => {
     setup("/jobs");
     server.use(http.get("*/api/v1/jobs", ({ request }) => { seen = new URL(request.url).searchParams.get("status"); return page([job(1)]); }));
     await screen.findByText("#1");
-    await userEvent.click(screen.getByRole("button", { name: "failed" }));
+    await user.click(screen.getByRole("button", { name: "failed" }));
     await waitFor(() => expect(seen).toBe("failed"));
     expect(screen.getByRole("button", { name: "failed" })).toHaveAttribute("aria-pressed", "true");
   });
@@ -112,9 +114,9 @@ describe("job detail", () => {
     let posted = false;
     setup("/jobs/1");
     server.use(http.post("*/api/v1/jobs/1/cancel", () => { posted = true; return HttpResponse.json(job(1, { status: "cancelled" }), { status: 202 }); }));
-    await userEvent.click(await screen.findByRole("button", { name: "Cancel" }));
+    await user.click(await screen.findByRole("button", { name: "Cancel" }));
     expect(posted).toBe(false);
-    await userEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancel job" }));
+    await user.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancel job" }));
     await waitFor(() => expect(posted).toBe(true));
   });
 
@@ -132,7 +134,7 @@ describe("job detail", () => {
       http.get("*/api/v1/jobs/2/items", () => page([])),
     );
     expect(await screen.findByRole("button", { name: "Retry failed" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Re-run" }));
+    await user.click(screen.getByRole("button", { name: "Re-run" }));
     expect(await screen.findByRole("heading", { name: "Job #2" })).toBeInTheDocument();
   });
 
@@ -155,14 +157,14 @@ describe("job detail", () => {
   it("re-run 409 links to the active job", async () => {
     setup("/jobs/1", { status: "failed", counters: { failed: 0 } });
     server.use(http.post("*/api/v1/sources/3/run", () => HttpResponse.json({ detail: { msg: "active", job_id: 9 } }, { status: 409 })));
-    await userEvent.click(await screen.findByRole("button", { name: "Re-run" }));
+    await user.click(await screen.findByRole("button", { name: "Re-run" }));
     expect(await screen.findByRole("link", { name: /job #9/i })).toHaveAttribute("href", "/jobs/9");
   });
 
   it("retry 409 links to the active job", async () => {
     setup("/jobs/1", { status: "failed", counters: { failed: 2 } });
     server.use(http.post("*/api/v1/jobs/1/retry", () => HttpResponse.json({ detail: { msg: "active", job_id: 8 } }, { status: 409 })));
-    await userEvent.click(await screen.findByRole("button", { name: "Retry failed" }));
+    await user.click(await screen.findByRole("button", { name: "Retry failed" }));
     expect(await screen.findByRole("link", { name: /job #8/i })).toHaveAttribute("href", "/jobs/8");
   });
 

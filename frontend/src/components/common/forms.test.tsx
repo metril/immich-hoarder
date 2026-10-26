@@ -10,6 +10,8 @@ import { FormField, FormRootError, inputClass } from "./FormField";
 import { SecretInput } from "./SecretInput";
 import { useApiForm } from "./useApiForm";
 
+const user = userEvent.setup({ delay: null });
+
 const schema = z.object({ name: z.string(), runtime: z.object({ retention_days: z.coerce.number() }) });
 
 function F({ err }: { err: ApiError }) {
@@ -40,7 +42,7 @@ describe("useApiForm", () => {
   it("shows unrenderable and root 422 keys as a root error", async () => {
     const err = new ApiError(422, "bad", [], { "runtime.nope": "unknown thing", root: "cron invalid" });
     render(<F err={err} />);
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("alert", { name: "" })).toBeInTheDocument();
     expect(screen.getByText(/unknown thing/)).toBeInTheDocument();
     expect(screen.getByText(/cron invalid/)).toBeInTheDocument();
@@ -54,7 +56,7 @@ describe("useApiForm", () => {
       name: "regex invalid",
     });
     render(<F err={err} />);
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("must be >= 1")).toBeInTheDocument();
     expect(screen.getByText("regex invalid")).toBeInTheDocument();
     expect(screen.getByLabelText("Name")).toHaveValue("keep me");
@@ -71,7 +73,7 @@ describe("SecretInput", () => {
     expect(i).toHaveAttribute("placeholder", "Saved — enter a new value to replace");
     expect(i).toHaveAttribute("autocomplete", "off");
     expect(i).toHaveAttribute("type", "password");
-    await userEvent.click(screen.getByRole("button", { name: "Show value" }));
+    await user.click(screen.getByRole("button", { name: "Show value" }));
     expect(i).toHaveAttribute("type", "text");
   });
 });
@@ -107,7 +109,7 @@ describe("useApiForm nested 422", () => {
   }
   it("lands on a leaf under a registered object field, not root", async () => {
     render(<N />);
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("bad regex")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });

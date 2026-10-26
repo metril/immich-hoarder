@@ -7,6 +7,8 @@ import { renderWithProviders } from "../../test/render";
 import { dashboardDefaults } from "../../test/handlers";
 import { server } from "../../test/server";
 
+const user = userEvent.setup({ delay: null });
+
 const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user" };
 const target = { id: 1, name: "Home", url: "https://immich.example", has_api_key: true, owner_id: 1, visibility: "private", can_edit: true, can_use: true };
 
@@ -22,9 +24,9 @@ function setup() {
 
 async function openRip() {
   await screen.findByRole("navigation", { name: "Main" });
-  await userEvent.keyboard("{Control>}k{/Control}");
+  await user.keyboard("{Control>}k{/Control}");
   const dlg = await screen.findByRole("dialog");
-  await userEvent.click(await within(dlg).findByText("Ad-hoc rip"));
+  await user.click(await within(dlg).findByText("Ad-hoc rip"));
   const rip = await screen.findByRole("dialog", { name: "Ad-hoc rip" });
   await screen.findByRole("option", { name: "Home" });
   return rip;
@@ -41,9 +43,9 @@ describe("RipDialog", () => {
     );
     const { router } = setup();
     const rip = await openRip();
-    await userEvent.type(within(rip).getByLabelText("URL"), "https://e.com/x");
-    await userEvent.selectOptions(within(rip).getByLabelText("Target"), "1");
-    await userEvent.click(within(rip).getByRole("button", { name: "Start rip" }));
+    await user.type(within(rip).getByLabelText("URL"), "https://e.com/x");
+    await user.selectOptions(within(rip).getByLabelText("Target"), "1");
+    await user.click(within(rip).getByRole("button", { name: "Start rip" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/jobs/9"));
     expect(body).toMatchObject({ url: "https://e.com/x", target_id: 1, visibility: "private" });
   });
@@ -56,9 +58,9 @@ describe("RipDialog", () => {
     );
     setup();
     const rip = await openRip();
-    await userEvent.type(within(rip).getByLabelText("URL"), "nope");
-    await userEvent.selectOptions(within(rip).getByLabelText("Target"), "1");
-    await userEvent.click(within(rip).getByRole("button", { name: "Start rip" }));
+    await user.type(within(rip).getByLabelText("URL"), "nope");
+    await user.selectOptions(within(rip).getByLabelText("Target"), "1");
+    await user.click(within(rip).getByRole("button", { name: "Start rip" }));
     const err = await within(rip).findByText("not a supported url");
     const input = within(rip).getByLabelText("URL");
     expect(input).toHaveAttribute("aria-invalid", "true");

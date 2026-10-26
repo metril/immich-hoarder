@@ -7,7 +7,7 @@ import { useTestTarget } from "./hooks";
 export function TestResult({ r }: { r: components["schemas"]["TargetTestOut"] }) {
   if (r.ok) {
     return (
-      <p role="status" className="font-medium text-green-700 dark:text-green-400">
+      <p role="status" className="font-medium text-green-800 dark:text-green-400">
         Connected · Immich v{r.version ?? "?"}
       </p>
     );

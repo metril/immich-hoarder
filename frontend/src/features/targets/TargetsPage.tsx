@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { Dialog } from "radix-ui";
 import { isAdmin, useMe } from "../../api/me";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
@@ -12,6 +13,7 @@ import { TargetForm } from "./TargetForm";
 import { TargetTestButton } from "./TargetTestButton";
 import { useDeleteTarget, useTargets, type TargetOut } from "./hooks";
 
+const route = getRouteApi("/_app/targets");
 const btn = "rounded-md border px-2 py-1 text-xs hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring";
 
 function AlbumsSheet({ t }: { t: TargetOut }) {
@@ -78,11 +80,16 @@ const columns: Column<TargetOut>[] = [
 export default function TargetsPage() {
   const q = useTargets();
   const mobile = useMediaQuery("(max-width: 767px)");
+  const search = route.useSearch();
+  const navigate = useNavigate();
   return (
     <div className="space-y-4 p-4">
       <div className="flex items-center justify-between gap-2">
         <h1 className="text-xl font-semibold">Targets</h1>
-        <TargetForm trigger={<button type="button" className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring">Add target</button>} />
+        <TargetForm
+          open={search.new === true}
+          onOpenChange={(o) => void navigate({ to: "/targets", search: o ? { new: true } : {}, replace: !o })}
+          trigger={<button type="button" className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring">Add target</button>} />
       </div>
       {q.isPending ? (
         <p role="status">Loading…</p>

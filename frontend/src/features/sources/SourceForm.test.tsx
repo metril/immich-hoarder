@@ -7,6 +7,8 @@ import { server } from "../../test/server";
 import { SourceForm } from "./SourceForm";
 import type { SourceOut } from "./hooks";
 
+const user = userEvent.setup({ delay: null });
+
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 const hidden = { id: 4, name: "Locked", url: "https://l.x", has_api_key: true, owner_id: 2, visibility: "restricted", can_edit: false, can_use: false };
@@ -20,7 +22,7 @@ const src: SourceOut = {
   id: 7, name: "Cats", url: "https://reddit.com/r/cats", target_id: 3, credential_id: null, album_template: "{subreddit}",
   schedule_cron: null, backfill_mode: "full", backfill_value: null, allow_animated: false,
   filters: { phash_distance: 3 }, notify: { credential_ids: [], on: ["failure"] }, gdl_options: {}, proxy: null, log_level: null,
-  enabled: true, ephemeral: false, extractor: "reddit", owner_id: 1, visibility: "private", can_edit: true,
+  enabled: true, ephemeral: false, extractor: "reddit", owner_id: 1, visibility: "private", can_edit: true, can_use: true,
 };
 
 function handlers() {
@@ -36,12 +38,12 @@ describe("SourceForm", () => {
     handlers();
     const onSaved = vi.fn();
     renderWithProviders(<SourceForm onSaved={onSaved} />);
-    await userEvent.type(await screen.findByLabelText("Name"), "S");
-    await userEvent.type(screen.getByLabelText("URL"), "https://reddit.com/r/x");
-    await userEvent.selectOptions(await screen.findByLabelText("Target"), "3");
-    await userEvent.click(screen.getByLabelText("Last N items"));
-    await userEvent.type(screen.getByLabelText("Item count"), "0");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.type(await screen.findByLabelText("Name"), "S");
+    await user.type(screen.getByLabelText("URL"), "https://reddit.com/r/x");
+    await user.selectOptions(await screen.findByLabelText("Target"), "3");
+    await user.click(screen.getByLabelText("Last N items"));
+    await user.type(screen.getByLabelText("Item count"), "0");
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("Enter a whole number, 1 or more")).toBeInTheDocument();
     expect(onSaved).not.toHaveBeenCalled();
   });
@@ -65,9 +67,9 @@ describe("SourceForm", () => {
     renderWithProviders(<SourceForm initial={src} onSaved={vi.fn()} />);
     await screen.findByRole("option", { name: "Home" });
     const name = await screen.findByLabelText("Name");
-    await userEvent.clear(name);
-    await userEvent.type(name, "Dogs");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.clear(name);
+    await user.type(name, "Dogs");
+    await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(body).toBeDefined());
     expect(body).toEqual({ name: "Dogs" });
   });
@@ -81,8 +83,8 @@ describe("SourceForm", () => {
     );
     renderWithProviders(<SourceForm initial={src} onSaved={vi.fn()} />);
     await screen.findByRole("option", { name: "Home" });
-    await userEvent.click(screen.getByRole("button", { name: "Hourly" }));
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Hourly" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     const input = screen.getByLabelText("Schedule (cron)");
     await waitFor(() => expect(input).toHaveAttribute("aria-invalid", "true"));
     expect(screen.getByText("invalid cron expression")).toBeInTheDocument();
@@ -125,10 +127,10 @@ describe("SourceForm", () => {
       }),
     );
     renderWithProviders(<SourceForm onSaved={vi.fn()} />);
-    await userEvent.type(await screen.findByLabelText("Name"), "S");
-    await userEvent.type(screen.getByLabelText("URL"), "https://reddit.com/r/x");
-    await userEvent.selectOptions(await screen.findByLabelText("Target"), "3");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.type(await screen.findByLabelText("Name"), "S");
+    await user.type(screen.getByLabelText("URL"), "https://reddit.com/r/x");
+    await user.selectOptions(await screen.findByLabelText("Target"), "3");
+    await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(body.name).toBe("S"));
     expect(body).toMatchObject({ target_id: 3, backfill_mode: "full", backfill_value: null, credential_id: null, visibility: "private" });
   });
@@ -144,8 +146,8 @@ describe("SourceForm", () => {
     );
     renderWithProviders(<SourceForm initial={src} onSaved={vi.fn()} />);
     await screen.findByRole("option", { name: "Home" });
-    await userEvent.type(screen.getByLabelText("Min width (px)"), "800");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.type(screen.getByLabelText("Min width (px)"), "800");
+    await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(body).toBeDefined());
     expect(Object.keys(body as object)).toEqual(["filters"]);
     expect((body as { filters: { min_width: number } }).filters.min_width).toBe(800);
@@ -160,8 +162,8 @@ describe("SourceForm", () => {
     );
     renderWithProviders(<SourceForm initial={src} onSaved={vi.fn()} />);
     await screen.findByRole("option", { name: "Home" });
-    await userEvent.type(screen.getByLabelText("Min width (px)"), "800");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.type(screen.getByLabelText("Min width (px)"), "800");
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("min_bytes must be <= max_bytes")).toBeInTheDocument();
     expect(screen.getByLabelText("Min width (px)")).toHaveValue(800);
   });
@@ -175,8 +177,8 @@ describe("SourceForm", () => {
     );
     renderWithProviders(<SourceForm initial={src} onSaved={vi.fn()} />);
     await screen.findByRole("option", { name: "Home" });
-    await userEvent.click(await screen.findByLabelText("On success"));
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(await screen.findByLabelText("On success"));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     const msg = await screen.findByText("bad notify");
     expect(screen.getByRole("group", { name: "Notifications" })).toHaveAttribute("aria-describedby", msg.id);
   });

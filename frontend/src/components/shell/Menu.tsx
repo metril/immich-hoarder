@@ -29,12 +29,12 @@ export function Menu({
     <div ref={root} className="relative">
       <button
         type="button"
-        aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
         className="inline-flex h-9 items-center gap-2 rounded-md px-2 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
       >
+        <span className="sr-only">{label}</span>
         {trigger}
       </button>
       {open && (

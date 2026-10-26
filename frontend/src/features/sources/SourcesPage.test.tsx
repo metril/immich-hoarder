@@ -2,17 +2,20 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse, delay } from "msw";
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { keys } from "../../api/keys";
 import type { MeOut } from "../../api/me";
 import { renderWithProviders } from "../../test/render";
 import { server } from "../../test/server";
 import type { SourceOut } from "./hooks";
+
+const user = userEvent.setup({ delay: null });
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user" };
 const s3 = {
   id: 3, name: "Cats", url: "https://example.com/cats", extractor: "reddit", target_id: 1, credential_id: null, album_template: "",
   schedule_cron: "0 3 * * *", backfill_mode: "full", backfill_value: null, allow_animated: false, filters: { phash_distance: 3 }, notify: { credential_ids: [], on: ["failure"] },
-  gdl_options: {}, proxy: null, log_level: null, enabled: false, ephemeral: false, visibility: "private", owner_id: 1, can_edit: true,
+  gdl_options: {}, proxy: null, log_level: null, enabled: false, ephemeral: false, visibility: "private", owner_id: 1, can_edit: true, can_use: true,
 } as SourceOut;
 const target = { id: 1, name: "Home", url: "https://immich.example", has_api_key: true, owner_id: 1, visibility: "private", can_edit: true, can_use: true };
 
@@ -24,7 +27,7 @@ function setup(route = "/sources", sources: unknown[] = [s3]) {
     http.get("*/api/v1/sources/3", () => HttpResponse.json(s3)),
     http.get("*/api/v1/targets", () => HttpResponse.json({ items: [target], next_cursor: null })),
     http.get("*/api/v1/credentials", () => HttpResponse.json({ items: [], next_cursor: null })),
-    http.get("*/api/v1/extractors", () => HttpResponse.json([])),
+    http.get("*/api/v1/extractors", () => HttpResponse.json({ items: [] })),
   );
   return renderWithProviders(null, { me, route });
 }
@@ -49,7 +52,7 @@ describe("sources page", () => {
     );
     const sw = await screen.findByRole("switch", { name: "Enabled Cats" });
     expect(sw).toHaveAttribute("aria-checked", "false");
-    await userEvent.click(sw);
+    await user.click(sw);
     expect(screen.getByRole("switch", { name: "Enabled Cats" })).toHaveAttribute("aria-checked", "true");
     await waitFor(() => expect(body).toEqual({ enabled: true }));
   });
@@ -63,7 +66,7 @@ describe("sources page", () => {
   it("n opens new source sheet", async () => {
     setup();
     await screen.findByText("Cats");
-    await userEvent.keyboard("n");
+    await user.keyboard("n");
     expect(await screen.findByRole("heading", { name: "New source" })).toBeInTheDocument();
   });
 
@@ -71,8 +74,8 @@ describe("sources page", () => {
     const { toast } = await import("sonner");
     setup();
     server.use(http.delete("*/api/v1/sources/3", () => HttpResponse.json({ detail: "source has an active job" }, { status: 409 })));
-    await userEvent.click(await screen.findByRole("button", { name: "Delete Cats" }));
-    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await user.click(await screen.findByRole("button", { name: "Delete Cats" }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("source has an active job"));
   });
 
@@ -85,13 +88,37 @@ describe("sources page", () => {
         return HttpResponse.json({ items: [{ url: "https://e.com/a.jpg", title: "A", date: null, filename: "a.jpg", verdict: null }] });
       }),
     );
-    await userEvent.type(await screen.findByLabelText("Name"), "Draft");
-    await userEvent.type(screen.getByLabelText("URL"), "https://example.com/draft");
+    await user.type(await screen.findByLabelText("Name"), "Draft");
+    await user.type(screen.getByLabelText("URL"), "https://example.com/draft");
     await screen.findByRole("option", { name: "Home" });
-    await userEvent.selectOptions(screen.getByLabelText("Target"), "1");
+    await user.selectOptions(screen.getByLabelText("Target"), "1");
     const region = screen.getByRole("region", { name: "Dry run" });
-    await userEvent.click(await within(region).findByRole("button", { name: "Dry run" }));
+    await user.click(await within(region).findByRole("button", { name: "Dry run" }));
     expect(await within(region).findByText("would grab")).toBeInTheDocument();
     expect(body).toMatchObject({ name: "Draft", url: "https://example.com/draft", target_id: 1, limit: 50 });
+  });
+
+  it("hides Run when the source is not usable", async () => {
+    setup("/sources", [{ ...s3, can_use: false }]);
+    await screen.findByText("Cats");
+    expect(screen.queryByRole("button", { name: "Run Cats" })).not.toBeInTheDocument();
+  });
+
+  it("shows Run when usable", async () => {
+    setup();
+    expect(await screen.findByRole("button", { name: "Run Cats" })).toBeInTheDocument();
+  });
+
+  it("delete invalidates jobs lists and the source detail", async () => {
+    const { queryClient } = setup();
+    server.use(http.delete("*/api/v1/sources/3", () => new HttpResponse(null, { status: 204 })));
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    await user.click(await screen.findByRole("button", { name: "Delete Cats" }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => {
+      const ks = spy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey));
+      expect(ks).toContain(JSON.stringify(["list", "jobs"]));
+      expect(ks).toContain(JSON.stringify(keys.detail("sources", 3)));
+    });
   });
 });

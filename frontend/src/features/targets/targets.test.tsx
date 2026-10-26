@@ -7,6 +7,8 @@ import { toast } from "sonner";
 import { renderWithProviders } from "../../test/render";
 import { server } from "../../test/server";
 
+const user = userEvent.setup({ delay: null });
+
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user" };
 const t1 = { id: 1, name: "Home", url: "https://immich.example", has_api_key: true, owner_id: 1, visibility: "private", can_edit: true };
@@ -28,11 +30,11 @@ describe("targets", () => {
       }),
     );
     open();
-    await userEvent.click(await screen.findByRole("button", { name: "Add target" }));
-    await userEvent.type(screen.getByLabelText("Name"), "New");
-    await userEvent.type(screen.getByLabelText("URL"), "https://immich.example");
-    await userEvent.type(screen.getByLabelText("API key"), "k123");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(await screen.findByRole("button", { name: "Add target" }));
+    await user.type(screen.getByLabelText("Name"), "New");
+    await user.type(screen.getByLabelText("URL"), "https://immich.example");
+    await user.type(screen.getByLabelText("API key"), "k123");
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("API key saved")).toBeInTheDocument();
     expect(body).toMatchObject({ name: "New", url: "https://immich.example", api_key: "k123", visibility: "private" });
   });
@@ -47,12 +49,12 @@ describe("targets", () => {
       }),
     );
     open();
-    await userEvent.click(await screen.findByRole("button", { name: "Edit Home" }));
+    await user.click(await screen.findByRole("button", { name: "Edit Home" }));
     const name = screen.getByLabelText("Name");
-    await userEvent.clear(name);
-    await userEvent.type(name, "Renamed");
+    await user.clear(name);
+    await user.type(name, "Renamed");
     expect(screen.getByLabelText("API key")).toHaveValue("");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(body).toBeDefined());
     expect(body).toEqual({ name: "Renamed", url: "https://immich.example" });
   });
@@ -65,7 +67,7 @@ describe("targets", () => {
       ),
     );
     open();
-    await userEvent.click(await screen.findByRole("button", { name: "Test Home" }));
+    await user.click(await screen.findByRole("button", { name: "Test Home" }));
     const dlg = await screen.findByRole("dialog");
     expect(within(dlg).getByText("Forbidden")).toBeInTheDocument();
     expect(within(dlg).getByText("asset.upload")).toBeInTheDocument();
@@ -83,8 +85,8 @@ describe("targets", () => {
       }),
     );
     open();
-    await userEvent.click(await screen.findByRole("button", { name: "Delete Home" }));
-    await userEvent.click(screen.getByRole("button", { name: "Delete" }));
+    await user.click(await screen.findByRole("button", { name: "Delete Home" }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(screen.queryByText("https://immich.example")).not.toBeInTheDocument());
     release();
     expect(await screen.findByText("https://immich.example")).toBeInTheDocument();
@@ -120,11 +122,11 @@ describe("targets", () => {
       ),
     );
     open();
-    await userEvent.click(await screen.findByRole("button", { name: "Add target" }));
-    await userEvent.type(screen.getByLabelText("Name"), "N");
-    await userEvent.type(screen.getByLabelText("URL"), "https://x.example");
-    await userEvent.type(screen.getByLabelText("API key"), "k");
-    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(await screen.findByRole("button", { name: "Add target" }));
+    await user.type(screen.getByLabelText("Name"), "N");
+    await user.type(screen.getByLabelText("URL"), "https://x.example");
+    await user.type(screen.getByLabelText("API key"), "k");
+    await user.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("unreachable host")).toBeInTheDocument();
     expect(screen.getByLabelText("URL")).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByLabelText("Name")).toHaveValue("N");
@@ -137,9 +139,28 @@ describe("targets", () => {
     );
     open();
     const b = await screen.findByRole("button", { name: "Test Home" });
-    await userEvent.click(b);
+    await user.click(b);
     expect(await screen.findByText("Connected · Immich v1.2")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Close" }));
+    await user.click(screen.getByRole("button", { name: "Close" }));
     await waitFor(() => expect(b).toHaveFocus());
+  });
+});
+
+describe("targets ?new", () => {
+  it("opens the create dialog from ?new=1", async () => {
+    server.use(http.get("*/api/v1/targets", () => HttpResponse.json({ items: [], next_cursor: null })));
+    renderWithProviders(null, { me, route: "/targets?new=1" });
+    expect(await screen.findByRole("dialog", { name: "Add target" })).toBeInTheDocument();
+  });
+
+  it("palette New target opens the dialog", async () => {
+    server.use(http.get("*/api/v1/targets", () => HttpResponse.json({ items: [], next_cursor: null })));
+    renderWithProviders(null, { me, route: "/targets" });
+    await screen.findByRole("button", { name: "Add target" });
+    await user.keyboard("{Control>}k{/Control}");
+    const dlg = await screen.findByRole("dialog", { name: "Command palette" });
+    await user.type(within(dlg).getByRole("combobox"), "New target");
+    await user.keyboard("{Enter}");
+    expect(await screen.findByRole("dialog", { name: "Add target" })).toBeInTheDocument();
   });
 });

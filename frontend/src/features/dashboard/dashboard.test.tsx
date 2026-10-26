@@ -9,6 +9,8 @@ import { dashboardDefaults } from "../../test/handlers";
 import { server } from "../../test/server";
 import { FakeEventSource } from "../../test/setup";
 
+const user = userEvent.setup({ delay: null });
+
 const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user" };
 const job = (id: number, status: string, o: Record<string, unknown> = {}) => ({
   id, status, counters: { uploaded: 2 }, phase: null, source_id: 3, source_name: "Cats",
@@ -124,7 +126,7 @@ describe("dashboard states and edge cases", () => {
     );
     await waitFor(() => expect(screen.getAllByRole("alert")).toHaveLength(2), { timeout: 5000 });
     fail = false;
-    for (const b of screen.getAllByRole("button", { name: "Retry" })) await userEvent.click(b);
+    for (const b of screen.getAllByRole("button", { name: "Retry" })) await user.click(b);
     expect(await screen.findByText("No jobs running")).toBeInTheDocument();
     expect(await screen.findByRole("img", { name: "cat1.jpg" })).toBeInTheDocument();
   });
@@ -144,7 +146,7 @@ describe("dashboard states and edge cases", () => {
       return cursor ? page([upload(2)]) : page([upload(1)], "c1");
     }));
     await screen.findByRole("img", { name: "cat1.jpg" });
-    await userEvent.click(screen.getByRole("button", { name: "Load more" }));
+    await user.click(screen.getByRole("button", { name: "Load more" }));
     expect(await screen.findByRole("img", { name: "cat2.jpg" })).toBeInTheDocument();
     expect(cursor).toBe("c1");
     expect(screen.queryByRole("button", { name: "Load more" })).toBeNull();
@@ -152,10 +154,10 @@ describe("dashboard states and edge cases", () => {
 
   it("clicking an image opens preview dialog", async () => {
     setup({ uploads: [upload(1)] });
-    await userEvent.click(await screen.findByRole("button", { name: "Preview cat1.jpg" }));
+    await user.click(await screen.findByRole("button", { name: "Preview cat1.jpg" }));
     const dlg = await screen.findByRole("dialog");
     expect(within(dlg).getByRole("img", { name: "cat1.jpg" }).getAttribute("src")).toContain("size=preview");
-    await userEvent.click(within(dlg).getByRole("button", { name: "Close" }));
+    await user.click(within(dlg).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 });

@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient, type InfiniteData, type QueryClient } from "@tanstack/react-query";
 import { api } from "../../api/client";
 import { ApiError, unwrap } from "../../api/errors";
 import { keys } from "../../api/keys";
@@ -22,12 +22,21 @@ export function useCreateSource() {
   });
 }
 
+/** Source edit/delete changes job names/sources too: refresh lists, jobs and this source's detail. */
+function invalidateSource(qc: QueryClient, id: number) {
+  return Promise.all([
+    qc.invalidateQueries({ queryKey: LISTS }),
+    qc.invalidateQueries({ queryKey: ["list", "jobs"] }),
+    qc.invalidateQueries({ queryKey: keys.detail("sources", id) }),
+  ]);
+}
+
 export function useUpdateSource(id: number) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (body: SourcePatch) =>
       unwrap(await api.PATCH("/api/v1/sources/{obj_id}", { params: { path: { obj_id: id } }, body })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: LISTS }),
+    onSuccess: () => invalidateSource(qc, id),
   });
 }
 
@@ -80,7 +89,7 @@ export function useDeleteSource() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: number) => unwrap(await api.DELETE("/api/v1/sources/{obj_id}", { params: { path: { obj_id: id } } })),
-    onSuccess: () => qc.invalidateQueries({ queryKey: LISTS }),
+    onSuccess: (_d, id) => invalidateSource(qc, id),
   });
 }
 

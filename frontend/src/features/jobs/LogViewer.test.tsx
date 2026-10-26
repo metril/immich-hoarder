@@ -7,6 +7,8 @@ import { server } from "../../test/server";
 import { FakeEventSource } from "../../test/setup";
 import { LogViewer } from "./LogViewer";
 
+const user = userEvent.setup({ delay: null });
+
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 const ev = (id: number, level = "info", msg = `line ${id}`) => ({ id, ts: "2026-10-26T10:00:00Z", level, type: "log", data: { msg } });
@@ -23,7 +25,7 @@ describe("LogViewer", () => {
     act(() => stream().emit("log", logMsg(3, "debug", "noisy")));
     await screen.findByText("hi");
     expect(screen.queryByText("noisy")).toBeNull();
-    await userEvent.selectOptions(screen.getByLabelText("Level"), "warn");
+    await user.selectOptions(screen.getByLabelText("Level"), "warn");
     await waitFor(() => expect(screen.queryByText("hi")).toBeNull());
     expect(screen.getByText("careful")).toBeInTheDocument();
   });
@@ -32,7 +34,7 @@ describe("LogViewer", () => {
     api([ev(1, "info", "Upload Done"), ev(2, "info", "other")]);
     renderWithProviders(<LogViewer jobId={1} live />);
     await screen.findByText("other");
-    await userEvent.type(screen.getByLabelText("Search log"), "upLOAD");
+    await user.type(screen.getByLabelText("Search log"), "upLOAD");
     await waitFor(() => expect(screen.queryByText("other")).toBeNull());
     expect(screen.getByText("Upload", { selector: "mark" })).toBeInTheDocument();
   });
@@ -49,7 +51,7 @@ describe("LogViewer", () => {
     el.scrollTop = 100;
     fireEvent.scroll(el);
     await waitFor(() => expect(toggle).toHaveAttribute("aria-pressed", "false"));
-    await userEvent.click(screen.getByRole("button", { name: "Jump to latest" }));
+    await user.click(screen.getByRole("button", { name: "Jump to latest" }));
     expect(toggle).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByRole("button", { name: "Jump to latest" })).toBeNull();
   });

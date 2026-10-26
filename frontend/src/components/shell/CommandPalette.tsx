@@ -22,10 +22,13 @@ export default function CommandPalette({ open, onOpenChange, me }: { open: boole
   const { theme, setTheme } = useTheme();
   const signOut = useSignOut();
 
-  // TODO(T10): drop the `as never` cast once /targets?new exists as a typed route.
-  const go = (to: string, search?: Record<string, unknown>) => {
+  const go = (to: string) => {
     onOpenChange(false);
-    void navigate({ to, search } as never);
+    void navigate({ to });
+  };
+  const goNewTarget = () => {
+    onOpenChange(false);
+    void navigate({ to: "/targets", search: { new: true } });
   };
   const goJob = (id: string) => {
     onOpenChange(false);
@@ -87,7 +90,7 @@ export default function CommandPalette({ open, onOpenChange, me }: { open: boole
           <Command.Item value="action Ad-hoc rip" className={itemCls} onSelect={run(() => setRip(true))}>
             Ad-hoc rip
           </Command.Item>
-          <Command.Item value="action New target" className={itemCls} onSelect={() => go("/targets", { new: 1 })}>
+          <Command.Item value="action New target" className={itemCls} onSelect={() => goNewTarget()}>
             New target
           </Command.Item>
           <Command.Item value="action Toggle theme" className={itemCls} onSelect={run(() => setTheme(theme === "dark" ? "light" : "dark"))}>

@@ -80,7 +80,7 @@ function Actions({ s }: { s: SourceOut }) {
   const owns = me != null && (me.id === s.owner_id || isAdmin(me));
   return (
     <div className="flex flex-wrap gap-1">
-      <RunDialog sourceId={s.id} name={s.name} />
+      {s.can_use && <RunDialog sourceId={s.id} name={s.name} />}
       <PreviewButton s={s} />
       {owns && <SharingDialog resource="sources" id={s.id} ownerId={s.owner_id} />}
       {s.can_edit && (

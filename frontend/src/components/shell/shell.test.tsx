@@ -94,7 +94,7 @@ describe("nav", () => {
 
   it("mobile: hamburger opens sheet nav", async () => {
     window.innerWidth = 375;
-    const u = userEvent.setup();
+    const u = userEvent.setup({ delay: null });
     renderWithProviders(null, { me: admin, route: "/" });
     await u.click(await screen.findByRole("button", { name: "Open navigation" }));
     const sheet = await screen.findByRole("dialog", { name: "Navigation" });
@@ -103,7 +103,7 @@ describe("nav", () => {
   });
 
   it("sheet traps focus, closes on Escape and restores focus to the trigger", async () => {
-    const u = userEvent.setup();
+    const u = userEvent.setup({ delay: null });
     renderWithProviders(null, { me: admin, route: "/" });
     const trigger = await screen.findByRole("button", { name: "Open navigation" });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
@@ -121,7 +121,7 @@ describe("nav", () => {
 
 describe("theme", () => {
   it("theme toggle persists and sets dark class", async () => {
-    const u = userEvent.setup();
+    const u = userEvent.setup({ delay: null });
     renderWithProviders(null, { me: admin, route: "/" });
     await u.click(await screen.findByRole("button", { name: "Theme" }));
     await u.click(screen.getByRole("menuitemradio", { name: "Dark" }));
@@ -173,7 +173,7 @@ describe("theme", () => {
 
 describe("shortcuts", () => {
   it("mod+k opens palette and navigates", async () => {
-    const u = userEvent.setup();
+    const u = userEvent.setup({ delay: null });
     const { router } = renderWithProviders(null, { me: admin, route: "/" });
     await screen.findByRole("navigation", { name: "Main" });
     await u.keyboard("{Control>}k{/Control}");
@@ -184,7 +184,7 @@ describe("shortcuts", () => {
   });
 
   it("g j navigates to jobs", async () => {
-    const u = userEvent.setup();
+    const u = userEvent.setup({ delay: null });
     const { router } = renderWithProviders(null, { me: admin, route: "/" });
     await screen.findByRole("navigation", { name: "Main" });
     await u.keyboard("gj");
@@ -192,7 +192,7 @@ describe("shortcuts", () => {
   });
 
   it("shortcuts ignored in inputs", async () => {
-    const u = userEvent.setup();
+    const u = userEvent.setup({ delay: null });
     const fn = vi.fn();
     function H() {
       useShortcuts({ "g j": fn, "?": fn });
@@ -208,7 +208,7 @@ describe("shortcuts", () => {
   });
 
   it("? opens help", async () => {
-    const u = userEvent.setup();
+    const u = userEvent.setup({ delay: null });
     renderWithProviders(null, { me: admin, route: "/" });
     await screen.findByRole("navigation", { name: "Main" });
     await u.keyboard("?");

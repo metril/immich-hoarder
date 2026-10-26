@@ -3,7 +3,7 @@ import type { components } from "../../api/schema";
 const TONE: Record<components["schemas"]["JobStatus"], string> = {
   queued: "bg-muted text-muted-foreground",
   running: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
-  succeeded: "bg-green-500/15 text-green-700 dark:text-green-300",
+  succeeded: "bg-green-500/15 text-green-800 dark:text-green-300",
   failed: "bg-red-500/15 text-red-700 dark:text-red-300",
   cancelled: "bg-amber-500/15 text-amber-800 dark:text-amber-300",
 };

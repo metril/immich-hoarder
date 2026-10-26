@@ -8,6 +8,8 @@ import { dashboardDefaults } from "../../test/handlers";
 import { renderWithProviders } from "../../test/render";
 import { server } from "../../test/server";
 
+const user = userEvent.setup({ delay: null });
+
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 const admin: MeOut = { id: 1, name: "Boss", email: "b@x.io", groups: ["ih-admin"], role: "admin" };
 const u = (id: number, name: string, role = "user", disabled = false) => ({ id, sub: `s${id}`, name, email: `${name}@x.io`, groups: ["g"], role, disabled });
@@ -28,7 +30,7 @@ describe("users", () => {
     renderWithProviders(null, { me: admin, route: "/users" });
     const sw = await screen.findByRole("switch", { name: "Disabled: Other" });
     expect(screen.getByRole("switch", { name: "Disabled: Boss" })).toBeDisabled();
-    await userEvent.click(sw);
+    await user.click(sw);
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Cannot disable the last admin"));
     await waitFor(() => expect(sw).toHaveAttribute("aria-checked", "false"));
   });
@@ -39,7 +41,7 @@ describe("users", () => {
       http.patch("*/api/v1/users/2", () => HttpResponse.json({ detail: "conflict elsewhere" }, { status: 409 })),
     );
     renderWithProviders(null, { me: admin, route: "/users" });
-    await userEvent.click(await screen.findByRole("switch", { name: "Disabled: Other" }));
+    await user.click(await screen.findByRole("switch", { name: "Disabled: Other" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("conflict elsewhere"));
   });
 
@@ -53,7 +55,7 @@ describe("users", () => {
       }),
     );
     renderWithProviders(null, { me: admin, route: "/users" });
-    await userEvent.click(await screen.findByRole("switch", { name: "Disabled: Other" }));
+    await user.click(await screen.findByRole("switch", { name: "Disabled: Other" }));
     await waitFor(() => expect(body).toEqual({ disabled: true }));
   });
 });

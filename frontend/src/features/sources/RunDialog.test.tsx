@@ -6,6 +6,8 @@ import { renderWithProviders } from "../../test/render";
 import { server } from "../../test/server";
 import { RunDialog } from "./RunDialog";
 
+const user = userEvent.setup({ delay: null });
+
 const job = { id: 42 };
 
 describe("RunDialog", () => {
@@ -18,8 +20,8 @@ describe("RunDialog", () => {
       }),
     );
     const { router } = renderWithProviders(<RunDialog sourceId={3} name="Cats" />);
-    await userEvent.click(await screen.findByRole("button", { name: "Run Cats" }));
-    await userEvent.click(screen.getByRole("button", { name: "Start run" }));
+    await user.click(await screen.findByRole("button", { name: "Run Cats" }));
+    await user.click(screen.getByRole("button", { name: "Start run" }));
     await waitFor(() => expect(router.state.location.pathname).toBe("/jobs/42"));
     expect(body).toEqual({});
   });
@@ -33,9 +35,9 @@ describe("RunDialog", () => {
       }),
     );
     renderWithProviders(<RunDialog sourceId={3} name="Cats" />);
-    await userEvent.click(await screen.findByRole("button", { name: "Run Cats" }));
-    await userEvent.selectOptions(screen.getByLabelText("Log level"), "debug");
-    await userEvent.click(screen.getByRole("button", { name: "Start run" }));
+    await user.click(await screen.findByRole("button", { name: "Run Cats" }));
+    await user.selectOptions(screen.getByLabelText("Log level"), "debug");
+    await user.click(screen.getByRole("button", { name: "Start run" }));
     await waitFor(() => expect(body).toEqual({ log_level: "debug" }));
   });
 
@@ -44,8 +46,8 @@ describe("RunDialog", () => {
       http.post("*/api/v1/sources/3/run", () => HttpResponse.json({ detail: { msg: "active", job_id: 7 } }, { status: 409 })),
     );
     const { router } = renderWithProviders(<RunDialog sourceId={3} name="Cats" />);
-    await userEvent.click(await screen.findByRole("button", { name: "Run Cats" }));
-    await userEvent.click(screen.getByRole("button", { name: "Start run" }));
+    await user.click(await screen.findByRole("button", { name: "Run Cats" }));
+    await user.click(screen.getByRole("button", { name: "Start run" }));
     expect(await screen.findByText(/already queued or running/)).toBeInTheDocument();
     const link = screen.getByRole("link", { name: /job #7/ });
     expect(link).toHaveAttribute("href", "/jobs/7");

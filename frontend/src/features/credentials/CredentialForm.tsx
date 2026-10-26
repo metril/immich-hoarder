@@ -5,7 +5,7 @@ import { FormField, FormRootError, inputClass } from "../../components/common/Fo
 import { SecretInput } from "../../components/common/SecretInput";
 import { omitEmpty } from "../../components/common/omitEmpty";
 import { useApiForm } from "../../components/common/useApiForm";
-import { useCreateCredential, useUpdateCredential, type CredentialKind, type CredentialOut } from "./hooks";
+import { useCreateCredential, useUpdateCredential, type CredentialIn, type CredentialKind, type CredentialOut } from "./hooks";
 
 const KIND_HELP = {
   oauth: "OAuth refresh/access token JSON.",
@@ -22,7 +22,8 @@ const base = {
   kind: z.enum(["oauth", "cookies", "userpass", "token", "apprise"]),
 };
 const createSchema = z.object({ ...base, secret: z.string().min(1, "Secret is required") });
-const editSchema = z.object({ ...base, secret: z.string().optional() });
+// Same shape as create (empty secret = keep saved; omitEmpty drops it) so Fields types both forms.
+const editSchema = z.object({ ...base, secret: z.string() });
 
 function Fields({
   form,
@@ -76,7 +77,7 @@ function CreateFields({ onDone }: { onDone: () => void }) {
   const form = useApiForm(createSchema, {
     defaultValues: { name: "", site: "", kind: "token", secret: "" },
     onSubmit: async (v) => {
-      await create.mutateAsync(v as never);
+      await create.mutateAsync({ ...v, visibility: "private" } satisfies CredentialIn);
       onDone();
     },
   });
@@ -98,7 +99,7 @@ function EditFields({ cred, onDone }: { cred: CredentialOut; onDone: () => void 
   });
   return (
     <form onSubmit={form.submit} className="mt-3 grid gap-3" noValidate>
-      <Fields form={form as never} saved={cred.has_secret} />
+      <Fields form={form} saved={cred.has_secret} />
     </form>
   );
 }

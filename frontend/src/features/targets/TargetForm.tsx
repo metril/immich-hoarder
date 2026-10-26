@@ -91,8 +91,20 @@ function Actions({ root, busy }: { root?: string; busy: boolean }) {
 }
 
 /** Create (no `target`) or edit dialog. Fields remount on open so secrets are never retained. */
-export function TargetForm({ target, trigger }: { target?: TargetOut; trigger: ReactNode }) {
-  const [open, setOpen] = useState(false);
+export function TargetForm({
+  target,
+  trigger,
+  open: controlled,
+  onOpenChange,
+}: {
+  target?: TargetOut;
+  trigger: ReactNode;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}) {
+  const [own, setOwn] = useState(false);
+  const open = controlled ?? own;
+  const setOpen = onOpenChange ?? setOwn;
   const done = () => setOpen(false);
   return (
     <Dialog.Root open={open} onOpenChange={setOpen}>
