@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from pydantic import BaseModel
+from sqlalchemy import Engine, event
 
 from app.db.engine import make_sync_engine
 from app.immich.client import ImmichClient
@@ -31,6 +32,24 @@ class WorkerSpec(BaseModel):
     incremental: bool
     db_url: str
     log_level: str
+
+
+def make_readonly_engine(url: str) -> Engine:
+    """Sync engine that rejects writes (the parent is the only DB writer)."""
+    engine = make_sync_engine(url)
+
+    def _ro(dbapi_conn: Any, _rec: Any) -> None:
+        cur = dbapi_conn.cursor()
+        if engine.dialect.name == "sqlite":
+            cur.execute("PRAGMA query_only=1")
+        else:
+            cur.execute("SET default_transaction_read_only = on")
+        cur.close()
+        if engine.dialect.name != "sqlite":
+            dbapi_conn.commit()
+
+    event.listen(engine, "connect", _ro)
+    return engine
 
 
 def _ham(a: int, b: int) -> int:
@@ -156,7 +175,7 @@ def worker_main(spec: WorkerSpec, q: Any, cancel: Any) -> None:
     engine = None
     try:
         flag = _bridge_cancel(cancel, stop)
-        engine = make_sync_engine(spec.db_url)
+        engine = make_readonly_engine(spec.db_url)
         overlay = OverlayStore(DedupeStore(engine), q, spec.job_id)
         ctx = RipContext(
             job_id=spec.job_id,

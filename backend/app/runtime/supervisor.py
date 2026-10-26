@@ -11,6 +11,7 @@ from typing import Any
 
 from fastapi import HTTPException
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
@@ -48,6 +49,7 @@ class RunHandle:
     cancel_requested: bool = False
     task: asyncio.Task[None] | None = None
     escalation: asyncio.Task[None] | None = None
+    exitcode: int | None = None
 
 
 def _now() -> datetime:
@@ -101,21 +103,29 @@ class JobSupervisor:
     async def stop(self) -> None:
         self._stop = True
         self._wake.set()
-        for job_id in list(self.running):
-            self._request_cancel(job_id)
-        grace = await self._grace()
-        tasks = [h.task for h in self.running.values() if h.task is not None]
-        if tasks:
-            _, pending = await asyncio.wait(tasks, timeout=grace + self.kill_delay_s + 5)
-            for t in pending:
-                t.cancel()
-        for h in self.running.values():
-            if h.process is not None and h.process.is_alive():
-                h.process.kill()
         if self._loop_task is not None:
             self._loop_task.cancel()
             await asyncio.gather(self._loop_task, return_exceptions=True)
             self._loop_task = None
+        handles = dict(self.running)
+        for job_id in handles:
+            self._request_cancel(job_id)
+        grace = await self._grace()
+        tasks = [h.task for h in handles.values() if h.task is not None]
+        pending: set[asyncio.Task[None]] = set()
+        if tasks:
+            _, pending = await asyncio.wait(tasks, timeout=grace + self.kill_delay_s + 5)
+        if pending:
+            for h in handles.values():
+                proc = h.process
+                if proc is not None and proc.is_alive():
+                    proc.kill()
+                    await asyncio.to_thread(proc.join, 2)
+            for t in pending:
+                t.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
+            for job_id in handles:
+                shutil.rmtree(self._settings.scratch_dir / str(job_id), ignore_errors=True)
 
     async def enqueue(self, source_id: int, triggered_by: int | None, log_level: str | None) -> Job:
         async with self._sf() as s, s.begin():
@@ -136,7 +146,10 @@ class JobSupervisor:
                 log_level=log_level,
             )
             s.add(job)
-            await s.flush()
+            try:
+                await s.flush()
+            except IntegrityError:
+                raise JobConflict(source_id) from None
         self._wake.set()
         return job
 
@@ -144,13 +157,20 @@ class JobSupervisor:
         if job_id in self.running:
             self._request_cancel(job_id)
             return
-        async with self._sf() as s:
-            job = await s.get(Job, job_id)
-        if job is None or job.status != JobStatus.queued or job_id in self._skip:
+        queued = await self._is_queued(job_id)
+        if job_id in self.running:  # picked while we awaited the DB
+            self._request_cancel(job_id)
+            return
+        if not queued or job_id in self._skip:
             raise JobNotActive(job_id)
         self._skip.add(job_id)
         self._writer.submit(("status", job_id, "cancelled", {"finished_at": _now()}))
         self._wake.set()
+
+    async def _is_queued(self, job_id: int) -> bool:
+        async with self._sf() as s:
+            job = await s.get(Job, job_id)
+        return job is not None and job.status == JobStatus.queued
 
     async def is_incremental(self, source_id: int) -> bool:
         async with self._sf() as s:
@@ -162,9 +182,11 @@ class JobSupervisor:
     # -- internals -------------------------------------------------------
     async def _on_done(self, job_id: int, result: dict[str, Any]) -> None:
         h = self.running.get(job_id)
-        if h is not None:
+        if h is not None and h.done_result is None:
             h.done_result = result
             h.done_evt.set()
+        else:
+            log.warning("done for job %s ignored (not running or already finalized)", job_id)
 
     async def _grace(self) -> float:
         if self.grace_override_s is not None:
@@ -210,11 +232,11 @@ class JobSupervisor:
                 pass
 
     async def _start_ready(self) -> None:
+        if self._stop:
+            return
         async with self._sf() as s:
             runtime = await load_runtime_settings(s)
             cap = runtime.max_concurrent_jobs or self._settings.max_concurrent_jobs
-            if len(self.running) >= cap:
-                return
             rows = (
                 await s.execute(
                     select(Job.id, Job.source_id, Source.target_id)
@@ -223,6 +245,9 @@ class JobSupervisor:
                     .order_by(Job.id)
                 )
             ).all()
+        self._skip &= {r[0] for r in rows}
+        if len(self.running) >= cap:
+            return
         busy = {h.target_id for h in self.running.values()}
         for job_id, source_id, target_id in rows:
             if len(self.running) >= cap:
@@ -247,11 +272,7 @@ class JobSupervisor:
             except HTTPException as e:
                 return "access revoked" if e.status_code == 403 else f"cannot start: {e.detail}"
             rip = await load_rip_settings(s)
-            incremental = (
-                await s.execute(
-                    select(AssetSeen.id).where(AssetSeen.source_id == source.id).limit(1)
-                )
-            ).first() is not None
+            incremental = await self.is_incremental(source.id)
             return WorkerSpec(
                 job_id=job_id,
                 source=source_snap,
@@ -282,12 +303,25 @@ class JobSupervisor:
             self.running.pop(job_id, None)
             self._wake.set()
 
+    async def _await_done(self, job_id: int, h: RunHandle) -> None:
+        if h.exitcode == 0:  # worker_main always sends done before a clean exit
+            while not h.done_evt.is_set():
+                try:
+                    await asyncio.wait_for(h.done_evt.wait(), 30)
+                except TimeoutError:
+                    log.warning("job %s: still waiting for done after clean worker exit", job_id)
+            return
+        try:
+            await asyncio.wait_for(h.done_evt.wait(), self.done_wait_s)
+        except TimeoutError:
+            pass
+
     async def _run_job_inner(self, job_id: int, h: RunHandle) -> None:
         spec = await self._prepare(job_id, h)
         if isinstance(spec, str):
             self._finish(job_id, "failed", spec)
             return
-        if h.cancel_requested:
+        if h.cancel_requested or job_id in self._skip:
             self._finish(job_id, "cancelled", None)
             return
         self._writer.submit(("status", job_id, "running", {"started_at": _now()}))
@@ -298,12 +332,13 @@ class JobSupervisor:
         h.process = proc
         if h.cancel_requested and h.escalation is None:
             h.escalation = asyncio.create_task(self._escalate(h))
-        await asyncio.to_thread(proc.join)
+        while proc.exitcode is None:
+            await asyncio.sleep(self.poll_s)
+        h.exitcode = proc.exitcode
+        proc.join(0)
+        proc.close()
         if h.done_result is None:
-            try:
-                await asyncio.wait_for(h.done_evt.wait(), self.done_wait_s)
-            except TimeoutError:
-                pass
+            await self._await_done(job_id, h)
         if h.escalation is not None:
             h.escalation.cancel()
         res = h.done_result

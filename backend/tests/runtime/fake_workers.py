@@ -1,6 +1,7 @@
 """Module-level spawn targets for supervisor tests (spawn needs importable functions)."""
 
 import os
+import signal
 import time
 from pathlib import Path
 from typing import Any
@@ -43,3 +44,21 @@ def crash_worker(spec: Any, q: Any, cancel: Any) -> None:
 def stubborn_worker(spec: Any, q: Any, cancel: Any) -> None:
     _touch(spec)
     time.sleep(60)
+
+
+def sigterm_proof_worker(spec: Any, q: Any, cancel: Any) -> None:
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    _touch(spec)  # readiness marker: handler is installed
+    time.sleep(60)
+
+
+def incremental_worker(spec: Any, q: Any, cancel: Any) -> None:
+    q.put(
+        (
+            "done",
+            spec.job_id,
+            {"status": "succeeded", "error": None, "counters": {"incremental": spec.incremental}},
+        )
+    )
+    q.close()
+    q.join_thread()

@@ -195,18 +195,142 @@ async def test_worker_crash_marks_failed_and_frees_slot(env: Env) -> None:
 
 async def test_cancel_grace_then_kill(env: Env) -> None:
     _, src = await env.seed()
-    sup = env.make(fw.stubborn_worker)
+    sup = env.make(fw.sigterm_proof_worker)
     await sup.start()
     job = await sup.enqueue(src, None, "info")
-    await wait_for(env, job.id, JobStatus.running)
-    while job.id not in sup.running or sup.running[job.id].process is None:
+    marker = env.scratch / str(job.id) / "f"
+    for _ in range(400):
+        if marker.exists():
+            break
         await asyncio.sleep(0.05)
-    await asyncio.sleep(0.5)  # let the child start
-    proc = sup.running[job.id].process
+    assert marker.exists()
+    h = sup.running[job.id]
     await sup.cancel(job.id)
     await wait_for(env, job.id, JobStatus.cancelled)
-    assert proc is not None and not proc.is_alive()
+    assert h.exitcode == -9  # SIGTERM ignored, so only kill() ends it
     assert not (env.scratch / str(job.id)).exists()
+
+
+async def test_exit_zero_waits_for_late_done(env: Env) -> None:
+    _, src = await env.seed()
+    sup = env.make(fw.fast_worker)
+    sup.done_wait_s = 0.01  # shorter than the writer flush: only exit!=0 may use it
+    await sup.start()
+    job = await sup.enqueue(src, None, "info")
+    await wait_for(env, job.id, JobStatus.succeeded)
+
+
+async def test_late_done_after_finalize_is_ignored_and_logged(
+    env: Env, caplog: pytest.LogCaptureFixture
+) -> None:
+    sup = env.make(fw.fast_worker)
+    with caplog.at_level("WARNING"):
+        await sup._on_done(4242, {"status": "succeeded"})
+    assert "4242" in caplog.text
+
+
+async def test_cancel_during_pick_never_runs(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    _, src = await env.seed()
+    sup = env.make(fw.slow_worker)
+    job = await sup.enqueue(src, None, "info")
+    gate = asyncio.Event()
+    orig_prepare = sup._prepare
+
+    async def slow_prepare(job_id: int, h: Any) -> Any:
+        await gate.wait()
+        return await orig_prepare(job_id, h)
+
+    monkeypatch.setattr(sup, "_prepare", slow_prepare)
+    orig_queued = sup._is_queued
+
+    async def racing(job_id: int) -> bool:
+        result = await orig_queued(job_id)
+        await sup._start_ready()  # the pick lands while cancel awaited the DB
+        return result
+
+    monkeypatch.setattr(sup, "_is_queued", racing)
+    await sup.cancel(job.id)
+    assert job.id in sup.running
+    h = sup.running[job.id]
+    gate.set()
+    await wait_for(env, job.id, JobStatus.cancelled)
+    assert h.process is None  # never spawned
+
+
+async def test_stop_prevents_new_picks(env: Env) -> None:
+    _, src = await env.seed()
+    sup = env.make(fw.fast_worker)
+    await sup.enqueue(src, None, "info")
+    await sup.stop()
+    await sup._start_ready()
+    assert sup.running == {}
+
+
+async def test_concurrent_enqueue_creates_one_job(env: Env) -> None:
+    _, src = await env.seed()
+    sup = env.make(fw.fast_worker)
+    res = await asyncio.gather(
+        sup.enqueue(src, None, "info"), sup.enqueue(src, None, "info"), return_exceptions=True
+    )
+    assert sorted(type(r).__name__ for r in res) == ["Job", "JobConflict"]
+    async with env.sf() as s:
+        assert len((await s.execute(select(Job.id))).all()) == 1
+
+
+async def test_skip_set_is_cleaned(env: Env) -> None:
+    _, src = await env.seed()
+    sup = env.make(fw.slow_worker)
+    job = await sup.enqueue(src, None, "info")
+    await sup.cancel(job.id)
+    await wait_for(env, job.id, JobStatus.cancelled)
+    await sup.start()
+    await asyncio.sleep(0.3)
+    assert sup._skip == set()
+
+
+@pytest.mark.parametrize("case", ["success", "failed", "crash", "cancel", "revoked", "prepare"])
+async def test_scratch_removed_after_every_outcome(
+    env: Env, case: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, src = await env.seed(disabled=case == "revoked")
+    worker = {
+        "success": fw.fast_worker,
+        "failed": fw.failing_worker,
+        "crash": fw.crash_worker,
+        "cancel": fw.slow_worker,
+    }.get(case, fw.fast_worker)
+    sup = env.make(worker)
+    if case == "prepare":
+
+        async def boom(job_id: int, h: Any) -> Any:
+            raise RuntimeError("x")
+
+        monkeypatch.setattr(sup, "_prepare", boom)
+    job = await sup.enqueue(src, None, "info")
+    leftover = env.scratch / str(job.id)
+    leftover.mkdir()
+    (leftover / "junk").write_text("x")
+    await sup.start()
+    if case == "cancel":
+        await wait_for(env, job.id, JobStatus.running)
+        for _ in range(400):
+            if sup.running[job.id].process is not None:
+                break
+            await asyncio.sleep(0.05)
+        await sup.cancel(job.id)
+        await wait_for(env, job.id, JobStatus.cancelled)
+    else:
+        for _ in range(400):
+            async with env.sf() as s:
+                st = (await s.get(Job, job.id)).status  # type: ignore[union-attr]
+            if st in (JobStatus.succeeded, JobStatus.failed):
+                break
+            await asyncio.sleep(0.05)
+    for _ in range(100):
+        if job.id not in sup.running:
+            break
+        await asyncio.sleep(0.05)
+    assert not leftover.exists()
 
 
 async def test_cancel_finished_job_raises(env: Env) -> None:
@@ -247,16 +371,16 @@ async def test_access_revoked_fails_job(env: Env) -> None:
     assert sup.running == {}
 
 
-async def test_incremental_computed_at_start(env: Env) -> None:
+async def test_incremental_computed_when_job_starts(env: Env) -> None:
     t, src = await env.seed()
-    sup = env.make(fw.fast_worker)
+    sup = env.make(fw.incremental_worker)
     job = await sup.enqueue(src, None, "info")
     async with env.sf() as s:
         s.add(AssetSeen(target_id=t, source_id=src, url_hash=b"x" * 16, seen_at=1))
         await s.commit()
-    assert await sup.is_incremental(src) is True
     await sup.start()
-    await wait_for(env, job.id, JobStatus.succeeded)
+    done = await wait_for(env, job.id, JobStatus.succeeded)
+    assert done.counters == {"incremental": True}
 
 
 async def test_cancel_queued_goes_straight_to_cancelled(env: Env) -> None:

@@ -482,3 +482,17 @@ async def test_stop_cancels_pending_respawn_timer(
     await w.stop()
     assert w._respawn_timer is None
     assert timer.cancelled()
+
+
+async def test_status_never_leaves_terminal_state(env: Any) -> None:
+    _, sf = env
+    w = JobWriter(sf, EventBus())
+    w.start()
+    w.submit(("status", 1, "succeeded", {}))
+    await asyncio.sleep(0.4)
+    w.submit(("status", 1, "running", {}))
+    w.submit(("status", 1, "cancelled", {}))
+    await w.stop()
+    async with sf() as s:
+        job = await s.get(Job, 1)
+    assert job is not None and job.status == JobStatus.succeeded

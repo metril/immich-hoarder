@@ -164,3 +164,33 @@ def test_worker_exception_still_sends_done(tmp_path: Path, monkeypatch: pytest.M
     worker_main(_spec(tmp_path), q, ctx.Event())
     done = _drain(q)[-1]
     assert done[2]["status"] == "failed" and done[2]["error"] == "worker error: KeyError"
+
+
+def test_spec_pickle_round_trip_keeps_secrets(tmp_path: Path) -> None:
+    import pickle
+
+    from app.db.models import CredentialKind
+    from app.rip.snapshot import CredentialSnapshot
+
+    spec = _spec(tmp_path)
+    spec.credential = CredentialSnapshot(
+        site="s", kind=CredentialKind(list(CredentialKind)[0]), secret="sek"
+    )  # type: ignore[arg-type]
+    back = pickle.loads(pickle.dumps(spec))
+    assert back.target.api_key.get_secret_value() == "k"
+    assert back.credential is not None and back.credential.secret.get_secret_value() == "sek"
+    assert back == spec
+
+
+def test_readonly_engine_with_async_url(tmp_path: Path) -> None:
+    import sqlalchemy as sa
+
+    from app.runtime.worker import make_readonly_engine
+
+    url = f"sqlite+aiosqlite:///{tmp_path / 'ro.db'}"
+    Base.metadata.create_all(make_sync_engine(url))
+    eng = make_readonly_engine(url)
+    with eng.connect() as c:
+        assert c.execute(sa.text("select count(*) from jobs")).scalar_one() == 0
+    with pytest.raises(sa.exc.OperationalError), eng.begin() as c:
+        c.execute(sa.text("insert into settings (key, value) values ('k', '{}')"))

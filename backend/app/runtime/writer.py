@@ -214,10 +214,13 @@ class JobWriter:
         for _, job_id, status, fields in statuses:
             vals = {k: v for k, v in fields.items() if k in _STATUS_FIELDS}
             await session.execute(
-                update(Job).where(Job.id == job_id).values(status=JobStatus(status), **vals)
+                update(Job)
+                .where(Job.id == job_id, Job.status.notin_(_TERMINAL))
+                .values(status=JobStatus(status), **vals)
             )
 
 
+_TERMINAL = (JobStatus.succeeded, JobStatus.failed, JobStatus.cancelled)
 _STATUS_FIELDS = {"error", "started_at", "finished_at", "counters"}
 _RECORD_KEYS = {"target_id", "source_id", "key", "sha1", "phash", "immich_asset_id"}
 
