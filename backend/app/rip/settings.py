@@ -8,17 +8,31 @@ from app.runtime.settings import load_model
 
 
 class RateLimit(BaseModel, extra="forbid"):
-    sleep_request: float = Field(default=1.0, ge=0)
-    sleep: float = Field(default=0.0, ge=0)
-    retries: int = Field(default=4, ge=0)
+    sleep_request: float = Field(
+        default=1.0, ge=0, description="Seconds to wait between requests to the site."
+    )
+    sleep: float = Field(default=0.0, ge=0, description="Seconds to wait between file downloads.")
+    retries: int = Field(default=4, ge=0, description="Number of retries after a failed request.")
 
 
 class RipSettings(BaseModel, extra="forbid"):
-    proxy: str | None = None
-    rate_limits: dict[str, RateLimit] = {}
-    upload_concurrency: int = Field(default=4, ge=1, le=16)
-    job_scratch_max_bytes: int | None = Field(default=None, ge=1)
-    allow_private_hosts: bool = False
+    proxy: str | None = Field(
+        default=None, description="Proxy URL used for all downloads; unset means no proxy."
+    )
+    rate_limits: dict[str, RateLimit] = Field(
+        default={}, description="Per-site rate limits keyed by extractor name."
+    )
+    upload_concurrency: int = Field(
+        default=4, ge=1, le=16, description="Number of simultaneous uploads to Immich."
+    )
+    job_scratch_max_bytes: int | None = Field(
+        default=None,
+        ge=1,
+        description="Scratch size limit for a single job, in bytes; unset means no per-job limit.",
+    )
+    allow_private_hosts: bool = Field(
+        default=False, description="Allow downloads from private and loopback network addresses."
+    )
 
     @field_validator("proxy")
     @classmethod

@@ -3,7 +3,7 @@
 import json
 from collections.abc import Iterable
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 from app.db.models import CredentialKind
 from app.rip.snapshot import CredentialSnapshot
@@ -61,3 +61,16 @@ def scrub_data(value: Any, fragments: Iterable[str]) -> Any:
     if isinstance(value, list | tuple):
         return [scrub_data(v, fragments) for v in value]
     return value
+
+
+def safe_url(url: str) -> str:
+    """scheme://host[:port]/path only: no userinfo, query or fragment."""
+    try:
+        u = urlsplit(url)
+        host = u.hostname or ""
+        if ":" in host:
+            host = f"[{host}]"
+        netloc = f"{host}:{u.port}" if u.port else host
+    except ValueError:
+        return ""
+    return f"{u.scheme}://{netloc}{u.path}" if netloc else ""
