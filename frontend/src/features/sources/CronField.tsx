@@ -27,14 +27,14 @@ export function CronField({ value, onChange, error }: { value: string | null; on
           onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
         />
       </FormField>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Schedule presets">
+      <div className="flex flex-wrap gap-2" role="group" aria-label="Schedule presets">
         {CRON_PRESETS.map((p) => (
           <button
             key={p.label}
             type="button"
             aria-pressed={value === p.value}
             onClick={() => onChange(p.value)}
-            className="rounded-full border px-2.5 py-1 text-xs hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring aria-pressed:bg-accent"
+            className="rounded-full border px-3 py-1 text-xs transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring aria-pressed:border-primary/40 aria-pressed:bg-accent"
           >
             {p.label}
           </button>

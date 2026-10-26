@@ -11,8 +11,8 @@ export function BackfillField({ mode, value, onModeChange, onValueChange, error 
   mode: BackfillMode; value: string; onModeChange: (m: BackfillMode) => void; onValueChange: (v: string) => void; error?: string;
 }) {
   return (
-    <fieldset className="grid gap-2">
-      <legend className="text-sm font-medium">Backfill</legend>
+    <fieldset className="grid gap-3">
+      <legend className="mb-2 text-sm font-medium">Backfill</legend>
       <div className="flex flex-wrap gap-4">
         {MODES.map((m) => (
           <label key={m.value} className="flex items-center gap-1.5 text-sm">

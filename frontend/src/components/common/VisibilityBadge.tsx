@@ -1,11 +1,12 @@
 import type { components } from "../../api/schema";
+import { Badge } from "../ui/badge";
 
-const STYLE: Record<components["schemas"]["Visibility"], string> = {
-  private: "bg-secondary text-secondary-foreground",
-  everyone: "bg-accent text-accent-foreground",
-  restricted: "bg-muted text-foreground",
+const TONE: Record<components["schemas"]["Visibility"], "neutral" | "info" | "warning"> = {
+  private: "neutral",
+  everyone: "info",
+  restricted: "warning",
 };
 
 export function VisibilityBadge({ visibility }: { visibility: components["schemas"]["Visibility"] }) {
-  return <span className={`rounded-full border px-2 py-0.5 text-xs ${STYLE[visibility]}`}>{visibility}</span>;
+  return <Badge tone={TONE[visibility]}>{visibility}</Badge>;
 }

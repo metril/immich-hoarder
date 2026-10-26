@@ -14,12 +14,12 @@ export function NotifyField({ value, onChange, error, keep }: { value: SourceNot
   const errId = useId();
   const apprise = useUsableCredentials(undefined, keep).filter((c) => c.kind === "apprise");
   return (
-    <fieldset className="grid gap-2 rounded-md border p-3" aria-describedby={error ? errId : undefined}>
-      <legend className="px-1 text-sm font-medium">Notifications</legend>
+    <fieldset className="grid gap-3" aria-describedby={error ? errId : undefined}>
+      <legend className="sr-only">Notifications</legend>
       {apprise.length === 0 ? (
         <p className="text-sm text-muted-foreground">No Apprise credentials available.</p>
       ) : (
-        <div className="grid gap-1" role="group" aria-label="Notify credentials">
+        <div className="grid gap-2" role="group" aria-label="Notify credentials">
           {apprise.map((c) => (
             <label key={c.id} className="flex items-center gap-2 text-sm">
               <input
