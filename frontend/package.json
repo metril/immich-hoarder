@@ -15,6 +15,7 @@
     "gen:api": "openapi-typescript openapi.json -o src/api/schema.d.ts",
     "budget": "node scripts/budget.mjs dist 153600",
     "e2e": "playwright test",
+    "screenshots": "SCREENSHOTS=1 playwright test e2e/screenshots.spec.ts",
     "lhci": "lhci autorun"
   },
   "dependencies": {

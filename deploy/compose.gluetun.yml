@@ -1,0 +1,27 @@
+# VPN HTTP proxy for source fetches. Use with the base file:
+#   docker compose -f compose.example.yml -f deploy/compose.gluetun.yml up -d
+# Configure your provider via the environment below (see the gluetun wiki).
+#
+# In the admin UI set the GLOBAL proxy to http://gluetun:8888. The global proxy
+# allows private hosts, while a per-source proxy needs `allow_private_hosts`.
+# gluetun stays on `default` only; it is not exposed through Traefik.
+services:
+  gluetun:
+    image: qmcgaw/gluetun:v3.41.2@sha256:280809bc6900ed06d6529ad246499103efb31fd80c6327cbfaf90de0b17c3a99
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      VPN_SERVICE_PROVIDER: ${VPN_SERVICE_PROVIDER:?set VPN_SERVICE_PROVIDER}
+      VPN_TYPE: ${VPN_TYPE:-wireguard}
+      HTTPPROXY: "on"
+      HTTPPROXY_LISTENING_ADDRESS: ":8888"
+    networks:
+      - default
+
+  immich-hoarder:
+    depends_on:
+      gluetun:
+        condition: service_healthy

@@ -3,33 +3,67 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
 
-from pydantic import SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 MIN_SECRET_LENGTH = 32
 _ENV_PREFIX = "IH_"
-_FILE_SECRETS = ("master_key", "session_secret", "oidc_client_secret")
+_FILE_SECRETS = ("database_url", "master_key", "session_secret", "oidc_client_secret")
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="IH_", extra="ignore", hide_input_in_errors=True)
 
-    database_url: str = "sqlite+aiosqlite:////data/hoarder.db"
-    master_key: SecretStr
-    scratch_dir: Path = Path("/scratch")
-    backup_dir: Path = Path("/data/backups")
-    web_dir: Path = Path("/srv/web")
-    scratch_max_bytes: int = 4 * 1024**3
-    max_concurrent_jobs: int = os.cpu_count() or 1
-    log_level: Literal["error", "warn", "info", "debug", "trace"] = "info"
-    oidc_issuer: str | None = None
-    oidc_client_id: str | None = None
-    oidc_client_secret: SecretStr | None = None
-    oidc_admin_groups: list[str] = ["hoarder-admins"]
-    oidc_user_groups: list[str] = ["hoarder-users"]
-    oidc_groups_claim: str = "groups"
-    public_url: str
-    session_secret: SecretStr
+    database_url: str = Field(
+        default="sqlite+aiosqlite:////data/hoarder.db",
+        repr=False,
+        description="SQLAlchemy async database URL (SQLite or PostgreSQL); may embed a password.",
+    )
+    master_key: SecretStr = Field(
+        description="Key that encrypts stored credentials; at least 32 characters.",
+    )
+    scratch_dir: Path = Field(
+        default=Path("/scratch"), description="Directory for temporary download files."
+    )
+    backup_dir: Path = Field(
+        default=Path("/data/backups"), description="Directory where database backups are written."
+    )
+    web_dir: Path = Field(
+        default=Path("/srv/web"), description="Directory containing the built web UI."
+    )
+    scratch_max_bytes: int = Field(
+        default=4 * 1024**3,
+        description="Total size limit of the scratch directory, in bytes.",
+    )
+    max_concurrent_jobs: int = Field(
+        default=os.cpu_count() or 1,
+        description="Maximum number of jobs run at the same time; defaults to the CPU count.",
+    )
+    log_level: Literal["error", "warn", "info", "debug", "trace"] = Field(
+        default="info", description="Minimum severity of emitted log lines."
+    )
+    oidc_issuer: str | None = Field(
+        default=None, description="OIDC issuer URL; OIDC login is enabled when set."
+    )
+    oidc_client_id: str | None = Field(default=None, description="OIDC client ID.")
+    oidc_client_secret: SecretStr | None = Field(default=None, description="OIDC client secret.")
+    oidc_admin_groups: list[str] = Field(
+        default=["hoarder-admins"],
+        description="OIDC groups granted the admin role, as a JSON list.",
+    )
+    oidc_user_groups: list[str] = Field(
+        default=["hoarder-users"],
+        description="OIDC groups granted the user role, as a JSON list.",
+    )
+    oidc_groups_claim: str = Field(
+        default="groups", description="Name of the OIDC claim that lists the user's groups."
+    )
+    public_url: str = Field(
+        description="Externally visible base URL of this service, used for OIDC redirects."
+    )
+    session_secret: SecretStr = Field(
+        description="Secret that signs session cookies; at least 32 characters.",
+    )
 
     @model_validator(mode="before")
     @classmethod
