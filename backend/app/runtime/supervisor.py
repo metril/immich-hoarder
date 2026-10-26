@@ -120,10 +120,10 @@ class JobSupervisor:
             )
         if pending:
             for h in handles.values():
-                proc = h.process
-                if h.exitcode is None and proc is not None and proc.is_alive():
-                    proc.kill()
-                    await asyncio.to_thread(proc.join, 2)
+                if self._signal(h, "kill"):
+                    deadline = time.monotonic() + self.stop_join_s
+                    while self._alive(h) and time.monotonic() < deadline:
+                        await asyncio.sleep(0.02)
             for t in pending:
                 t.cancel()
             await asyncio.gather(*pending, return_exceptions=True)
@@ -207,14 +207,31 @@ class JobSupervisor:
             h.escalation = asyncio.create_task(self._escalate(h))
         self._wake.set()
 
+    @staticmethod
+    def _alive(h: RunHandle) -> bool:
+        proc = h.process
+        if proc is None or h.exitcode is not None:
+            return False
+        try:
+            return bool(proc.is_alive())
+        except ValueError:  # process object already closed
+            return False
+
+    def _signal(self, h: RunHandle, how: str) -> bool:
+        """Send terminate/kill when the worker is still alive; True if sent."""
+        if not self._alive(h):
+            return False
+        try:
+            getattr(h.process, how)()
+        except ValueError:
+            return False
+        return True
+
     async def _escalate(self, h: RunHandle) -> None:
         await asyncio.sleep(await self._grace())
-        proc = h.process
-        if h.exitcode is None and proc is not None and proc.is_alive():
-            proc.terminate()
+        if self._signal(h, "terminate"):
             await asyncio.sleep(self.kill_delay_s)
-            if proc.is_alive():
-                proc.kill()
+            self._signal(h, "kill")
 
     async def _loop(self) -> None:
         last_sweep = time.monotonic()

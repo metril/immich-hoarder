@@ -451,3 +451,26 @@ async def test_cancel_during_await_done_logs_no_error(
         await asyncio.sleep(0.6)  # past the escalation grace
         await sup.stop()
     assert [r for r in caplog.records if r.levelname == "ERROR"] == []
+
+
+async def test_escalation_after_sigterm_exit_raises_nothing(
+    env: Env, caplog: pytest.LogCaptureFixture
+) -> None:
+    _, src = await env.seed()
+    sup = env.make(fw.hang_worker)
+    await sup.start()
+    job = await sup.enqueue(src, None, "info")
+    marker = env.scratch / str(job.id) / "f"
+    for _ in range(400):
+        if marker.exists():
+            break
+        await asyncio.sleep(0.05)
+    h = sup.running[job.id]
+    with caplog.at_level("ERROR"):
+        await sup.cancel(job.id)
+        esc = h.escalation
+        assert esc is not None
+        (res,) = await asyncio.gather(esc, return_exceptions=True)
+        await wait_for(env, job.id, JobStatus.cancelled)
+    assert res is None
+    assert [r for r in caplog.records if r.levelname == "ERROR"] == []

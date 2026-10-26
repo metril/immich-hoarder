@@ -71,3 +71,8 @@ def silent_exit_worker(spec: Any, q: Any, cancel: Any) -> None:
 def silent_after_cancel_worker(spec: Any, q: Any, cancel: Any) -> None:
     _touch(spec)
     cancel.wait(30)
+
+
+def hang_worker(spec: Any, q: Any, cancel: Any) -> None:
+    _touch(spec)
+    time.sleep(60)  # default SIGTERM kills it; never sends done
