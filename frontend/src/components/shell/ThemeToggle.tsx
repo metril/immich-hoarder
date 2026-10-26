@@ -12,7 +12,7 @@ export function ThemeToggle() {
   const { theme, setTheme } = useTheme();
   const Icon = OPTS.find((o) => o.v === theme)?.icon ?? Monitor;
   return (
-    <Menu label="Theme" trigger={<Icon className="size-4" aria-hidden />}>
+    <Menu label="Theme" trigger={<Icon className="size-[18px]" aria-hidden />}>
       {(close) =>
         OPTS.map(({ v, label, icon: I }) => (
           <button

@@ -10,7 +10,7 @@ import { RipDialog } from "../../features/sources/RipDialog";
 
 type Row = { id: number; name?: string | null };
 
-const itemCls = "flex cursor-pointer items-center justify-between rounded-sm px-2 py-1.5 text-sm aria-selected:bg-accent";
+const itemCls = "flex cursor-pointer items-center justify-between rounded-lg px-2.5 py-2 text-sm aria-selected:bg-primary/10 aria-selected:text-foreground";
 const groupCls = "px-1 py-1 text-xs text-muted-foreground [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1";
 
 /** Lazy chunk (cmdk): loaded on first open only. */
@@ -59,10 +59,10 @@ export default function CommandPalette({ open, onOpenChange, me }: { open: boole
         if (!o) setQ("");
       }}
       label="Command palette"
-      overlayClassName="fixed inset-0 z-50 bg-black/50"
-      contentClassName="fixed left-1/2 top-[15%] z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-xl"
+      overlayClassName="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150"
+      contentClassName="fixed left-1/2 top-[15%] z-50 w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 overflow-hidden rounded-2xl border bg-popover text-popover-foreground shadow-2xl motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95 motion-safe:duration-150"
     >
-      <Command.Input value={q} onValueChange={setQ} placeholder="Type a command or search…" className="w-full border-b bg-transparent px-4 py-3 text-sm outline-none placeholder:text-muted-foreground" />
+      <Command.Input value={q} onValueChange={setQ} placeholder="Type a command or search…" className="w-full border-b bg-transparent px-4 py-4 text-sm outline-none placeholder:text-muted-foreground" />
       <Command.List className="max-h-80 overflow-auto p-1">
         <Command.Empty className="px-3 py-6 text-center text-sm text-muted-foreground">No results.</Command.Empty>
         {jobId && (
@@ -79,7 +79,7 @@ export default function CommandPalette({ open, onOpenChange, me }: { open: boole
                 <Icon className="size-4" aria-hidden />
                 {label}
               </span>
-              <kbd className="text-xs text-muted-foreground">{shortcut}</kbd>
+              <kbd className="rounded-md border bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">{shortcut}</kbd>
             </Command.Item>
           ))}
         </Command.Group>

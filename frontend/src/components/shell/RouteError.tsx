@@ -1,4 +1,6 @@
 import { useEffect } from "react";
+import { TriangleAlert } from "lucide-react";
+import { Button } from "../ui/button";
 import { CHUNK_RE, reloadOnce } from "./reload";
 
 export function RouteError({ error, reset }: { error: unknown; reset: () => void }) {
@@ -8,16 +10,13 @@ export function RouteError({ error, reset }: { error: unknown; reset: () => void
     if (chunk) reloadOnce();
   }, [chunk, error]);
   return (
-    <div role="alert" className="mx-auto max-w-md space-y-3 p-6 text-center">
-      <h2 className="text-lg font-semibold">{chunk ? "A new version is available" : "Something went wrong"}</h2>
+    <div role="alert" className="mx-auto max-w-md space-y-4 p-8 text-center">
+      <TriangleAlert className="mx-auto size-8 text-warning" aria-hidden />
+      <h2 className="font-display text-lg font-semibold">{chunk ? "A new version is available" : "Something went wrong"}</h2>
       <p className="text-sm text-muted-foreground break-words">{message}</p>
-      <button
-        type="button"
-        onClick={reset}
-        className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-      >
+      <Button variant="outline" onClick={reset}>
         Retry
-      </button>
+      </Button>
     </div>
   );
 }
