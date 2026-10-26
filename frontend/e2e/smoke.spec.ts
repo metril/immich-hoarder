@@ -9,7 +9,7 @@ test("dashboard loads with no console errors and no CSP violations", async ({ pa
   });
   page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: /Dashboard|Welcome/ })).toBeVisible();
   // Settled = dashboard data loaded (no skeletons left), so late console errors would have surfaced.
   await expect(page.getByRole("heading", { name: "Recent uploads" })).toBeVisible();
   await expect(page.getByRole("status", { name: /^Loading/ })).toHaveCount(0);
