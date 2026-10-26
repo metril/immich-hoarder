@@ -16,6 +16,7 @@ class Settings(BaseSettings):
 
     database_url: str = Field(
         default="sqlite+aiosqlite:////data/hoarder.db",
+        repr=False,
         description="SQLAlchemy async database URL (SQLite or PostgreSQL); may embed a password.",
     )
     master_key: SecretStr = Field(

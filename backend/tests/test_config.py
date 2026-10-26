@@ -136,3 +136,11 @@ def test_database_url_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
     monkeypatch.setenv("IH_SESSION_SECRET", "s" * 32)
     monkeypatch.setenv("IH_PUBLIC_URL", "http://x")
     assert Settings().database_url == "postgresql://u:p@db/h"
+
+
+def test_repr_hides_database_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("IH_DATABASE_URL", "postgresql://u:topsecretpw@db/h")
+    monkeypatch.setenv("IH_MASTER_KEY", "k" * 32)
+    monkeypatch.setenv("IH_SESSION_SECRET", "s" * 32)
+    monkeypatch.setenv("IH_PUBLIC_URL", "http://x")
+    assert "topsecretpw" not in repr(Settings()) + str(Settings())
