@@ -21,6 +21,7 @@ export interface JobStreamState {
   phase: string | undefined;
   status: JobStatus | undefined;
   truncated: boolean;
+  logTruncated: boolean;
   connected: boolean;
 }
 
@@ -34,6 +35,7 @@ const EMPTY: JobStreamState = {
   phase: undefined,
   status: undefined,
   truncated: false,
+  logTruncated: false,
   connected: false,
 };
 
@@ -52,6 +54,7 @@ export function useJobStream(jobId: number): JobStreamState {
     let phase: string | undefined;
     let status: JobStatus | undefined;
     let truncated = false;
+    let logTruncated = false;
     let connected = false;
     let dirty = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -60,6 +63,7 @@ export function useJobStream(jobId: number): JobStreamState {
       if (arr.length <= max) return arr;
       for (const d of arr.slice(0, arr.length - max)) seen.delete(`${prefix}:${d.id}`);
       truncated = true;
+      if (prefix === "e") logTruncated = true;
       return arr.slice(arr.length - max);
     };
 
@@ -71,7 +75,7 @@ export function useJobStream(jobId: number): JobStreamState {
       items = trim(items, MAX_ITEMS, "i");
       setSnap({
         jobId,
-        s: { log: [...log], items: [...items], counters, rate, total, scratchBytes, phase, status, truncated, connected },
+        s: { log: [...log], items: [...items], counters, rate, total, scratchBytes, phase, status, truncated, logTruncated, connected },
       });
       qc.setQueryData<JobOut>(keys.detail("jobs", jobId), (old) =>
         old

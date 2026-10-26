@@ -1,29 +1,35 @@
 import { api } from "../../api/client";
 import { unwrap } from "../../api/errors";
-import type { components } from "../../api/schema";
 
-type EventOut = components["schemas"]["EventOut"];
 const PAGE = 200; // backend MAX_LIMIT
 
-export async function fetchAllEvents(jobId: number, minLevel?: string): Promise<EventOut[]> {
-  const all: EventOut[] = [];
+export interface DownloadOpts {
+  signal?: AbortSignal;
+  onProgress?: (lines: number) => void;
+}
+
+/** Pages are newest-first; each page is serialized once, reversed, and the page order is reversed at the end. */
+export async function downloadLog(jobId: number, minLevel?: string, opts: DownloadOpts = {}): Promise<void> {
+  const parts: string[] = [];
   let cursor: string | undefined;
+  let n = 0;
   do {
+    opts.signal?.throwIfAborted();
     const page = unwrap(
       await api.GET("/api/v1/jobs/{job_id}/events", {
         params: { path: { job_id: jobId }, query: { limit: PAGE, ...(minLevel ? { min_level: minLevel } : {}), ...(cursor ? { cursor } : {}) } },
+        signal: opts.signal,
       }),
     );
-    all.push(...page.items);
+    if (page.items.length > 0) {
+      parts.push(page.items.map((e) => JSON.stringify(e) + "\n").reverse().join(""));
+      n += page.items.length;
+      opts.onProgress?.(n);
+    }
     cursor = page.next_cursor ?? undefined;
   } while (cursor);
-  return all.sort((a, b) => a.id - b.id);
-}
-
-export async function downloadLog(jobId: number, minLevel?: string): Promise<void> {
-  const events = await fetchAllEvents(jobId, minLevel);
-  const body = events.map((e) => JSON.stringify(e)).join("\n") + (events.length ? "\n" : "");
-  const url = URL.createObjectURL(new Blob([body], { type: "application/x-ndjson" }));
+  opts.signal?.throwIfAborted();
+  const url = URL.createObjectURL(new Blob(parts.reverse(), { type: "application/x-ndjson" }));
   try {
     const a = document.createElement("a");
     a.href = url;

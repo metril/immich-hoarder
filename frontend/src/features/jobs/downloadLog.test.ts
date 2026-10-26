@@ -35,4 +35,14 @@ describe("downloadLog", () => {
     expect(lines.map((l) => l.id)).toEqual([1, 2, 3, 4]);
     expect(revoke).toHaveBeenCalledWith("blob:x");
   });
+
+  it("aborts and reports progress", async () => {
+    server.use(http.get("*/api/v1/jobs/7/events", () => HttpResponse.json({ items: [ev(2), ev(1)], next_cursor: "c" })));
+    const ac = new AbortController();
+    const seen: number[] = [];
+    await expect(
+      downloadLog(7, "info", { signal: ac.signal, onProgress: (n) => { seen.push(n); if (n >= 4) ac.abort(); } }),
+    ).rejects.toThrow();
+    expect(seen.slice(0, 2)).toEqual([2, 4]);
+  });
 });

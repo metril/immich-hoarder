@@ -78,4 +78,46 @@ describe("LogViewer", () => {
     await screen.findByText("line 5");
     expect(rows().map((r) => /line (\d+)/.exec(r.textContent ?? "")?.[1])).toEqual(["1", "2", "3", "4", "5"]);
   });
+
+  it("item overflow alone shows no log banner", async () => {
+    api([]);
+    renderWithProviders(<LogViewer jobId={1} live />);
+    await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
+    act(() => {
+      for (let i = 1; i <= 5_100; i++) stream().emit("item.discovered", { id: i, url: `u${i}` });
+      stream().emit("log", logMsg(1, "info", "only line"));
+    });
+    await screen.findByText("only line");
+    expect(screen.queryByText(/latest 20,000 lines/)).toBeNull();
+  });
+
+  it("skips non-log api rows", async () => {
+    api([{ ...ev(2), type: "phase", data: { name: "downloading" } }, ev(1)]);
+    renderWithProviders(<LogViewer jobId={1} live />);
+    await screen.findByText("line 1");
+    expect(rows()).toHaveLength(1);
+  });
+
+  it("log container is not a live region; counts go to a polite region", async () => {
+    api([ev(1)]);
+    renderWithProviders(<LogViewer jobId={1} live />);
+    await screen.findByText("line 1");
+    expect(screen.getByRole("log")).toHaveAttribute("aria-live", "off");
+    expect(screen.getByTestId("log-count")).toHaveAttribute("aria-live", "polite");
+  });
+
+  it("maps unknown levels to info", async () => {
+    api([ev(1, "weird", "odd")]);
+    renderWithProviders(<LogViewer jobId={1} live />);
+    await screen.findByText("odd");
+  });
+
+  it("scrolls to the last row when auto-scroll is on", async () => {
+    const scrollTo = vi.fn();
+    HTMLElement.prototype.scrollTo = scrollTo as never;
+    api([ev(3), ev(2), ev(1)]);
+    renderWithProviders(<LogViewer jobId={1} live />);
+    await screen.findByText("line 3");
+    await waitFor(() => expect(scrollTo).toHaveBeenCalled());
+  });
 });

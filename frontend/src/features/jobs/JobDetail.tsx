@@ -42,7 +42,17 @@ export default function JobDetail() {
       <JobActions job={j} />
       <JobProgress job={j} total={stream.total} />
       <JobCounters job={j} rate={stream.rate} scratchBytes={stream.scratchBytes} />
-      <div role="tablist" aria-label="Job details" className="flex gap-2">
+      <div
+        role="tablist"
+        aria-label="Job details"
+        className="flex gap-2"
+        onKeyDown={(e) => {
+          if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+          const next = tab === "items" ? "log" : "items";
+          setTab(next);
+          document.getElementById(`tab-${next}`)?.focus();
+        }}
+      >
         {(["items", "log"] as const).map((t) => (
           <button
             key={t}
@@ -51,6 +61,7 @@ export default function JobDetail() {
             id={`tab-${t}`}
             aria-selected={tab === t}
             aria-controls={`panel-${t}`}
+            tabIndex={tab === t ? 0 : -1}
             onClick={() => setTab(t)}
             className={`h-9 rounded-md border px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring ${tab === t ? "bg-primary text-primary-foreground" : "hover:bg-accent"}`}
           >
@@ -58,12 +69,11 @@ export default function JobDetail() {
           </button>
         ))}
       </div>
-      <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === "items" ? (
-          <ItemsTable jobId={id} hostTargetId={source.data?.target_id} live={stream.items} />
-        ) : (
-          <LogViewer jobId={id} live={j.status === "running"} stream={stream} />
-        )}
+      <div role="tabpanel" id="panel-items" aria-labelledby="tab-items" hidden={tab !== "items"}>
+        <ItemsTable jobId={id} hostTargetId={source.data?.target_id} live={stream.items} />
+      </div>
+      <div role="tabpanel" id="panel-log" aria-labelledby="tab-log" hidden={tab !== "log"}>
+        {tab === "log" && <LogViewer jobId={id} live={j.status === "running"} stream={stream} />}
       </div>
     </div>
   );
