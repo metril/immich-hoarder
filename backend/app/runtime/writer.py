@@ -6,7 +6,7 @@ import logging
 import queue
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from typing import Any
 
 from sqlalchemy import update
@@ -27,6 +27,7 @@ STOP_TIMEOUT = 10.0
 RESTART_MIN_INTERVAL = 1.0
 
 Msg = tuple[Any, ...]
+DoneListener = Callable[[int, dict[str, Any]], Awaitable[None]]
 
 
 class JobWriter:
@@ -39,10 +40,22 @@ class JobWriter:
         self._stopped = False
         self._last_restart = float("-inf")
         self._hook: Callable[[], None] | None = None  # test fault-injection point
+        self._respawn_timer: asyncio.TimerHandle | None = None
+        self._done_listeners: list[DoneListener] = []
+
+    def add_done_listener(self, cb: DoneListener) -> None:
+        """Call ``cb(job_id, result)`` after the batch carrying a "done" message commits."""
+        self._done_listeners.append(cb)
+
+    def _cancel_timer(self) -> None:
+        if self._respawn_timer is not None:
+            self._respawn_timer.cancel()
+            self._respawn_timer = None
 
     def start(self) -> None:
         if self._task is not None and not self._task.done():
             return
+        self._cancel_timer()
         self._stopping = self._stopped = False
         self._drop_sentinels()
         self._spawn()
@@ -67,9 +80,10 @@ class JobWriter:
         loop = asyncio.get_running_loop()
         delay = max(0.0, self._last_restart + RESTART_MIN_INTERVAL - loop.time())
         log.error("writer task exited unexpectedly; restarting in %.2fs", delay, exc_info=exc)
-        loop.call_later(delay, self._respawn)
+        self._respawn_timer = loop.call_later(delay, self._respawn)
 
     def _respawn(self) -> None:
+        self._respawn_timer = None
         if self._stopping:
             return
         self._last_restart = asyncio.get_running_loop().time()
@@ -83,6 +97,7 @@ class JobWriter:
 
     async def stop(self, timeout: float = STOP_TIMEOUT) -> None:
         self._stopping = True
+        self._cancel_timer()
         self._queue.put_nowait(None)
         task, self._task = self._task, None
         if task is not None:
@@ -90,6 +105,8 @@ class JobWriter:
                 await asyncio.wait_for(task, timeout)
             except TimeoutError:
                 log.error("writer did not drain within %ss; cancelled", timeout)
+            except Exception:
+                log.exception("writer task had already failed")
         self._stopped = True
 
     async def _run(self) -> None:
@@ -152,6 +169,13 @@ class JobWriter:
                     )
             except Exception:
                 log.exception("writer: publish failed")
+        for msg in ok:
+            if msg[0] == "done":
+                for cb in tuple(self._done_listeners):
+                    try:
+                        await cb(msg[1], msg[2])
+                    except Exception:
+                        log.exception("writer: done listener failed")
 
     async def _apply(self, session: AsyncSession, batch: list[Msg]) -> None:
         counters: dict[int, dict[str, Any]] = {}
@@ -219,6 +243,12 @@ def _validate(msg: Any) -> str | None:
             if not isinstance(job_id, int) or not isinstance(fields, dict):
                 return "bad status"
             JobStatus(status)
+        elif kind == "done":
+            _, job_id, result = msg
+            if not isinstance(job_id, int) or not isinstance(result, dict):
+                return "bad done"
+            if result.get("status") not in ("succeeded", "failed", "cancelled"):
+                return "bad done status"
         else:
             return "unknown kind"
     except (ValueError, TypeError, IndexError, KeyError) as e:

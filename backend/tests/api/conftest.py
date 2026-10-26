@@ -23,6 +23,7 @@ def settings(tmp_path: Path) -> Settings:
 @pytest.fixture
 async def client(settings: Settings) -> AsyncIterator[httpx.AsyncClient]:
     app: FastAPI = create_app(settings)
+    app.state.runtime_enabled = False
     async with (
         app.router.lifespan_context(app),
         httpx.AsyncClient(

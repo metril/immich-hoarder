@@ -1,3 +1,5 @@
+import asyncio
+import multiprocessing
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -5,6 +7,7 @@ from fastapi import FastAPI, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
@@ -15,6 +18,9 @@ from app.core.config import Settings, get_settings
 from app.core.logging import configure_logging
 from app.db.engine import dispose_engine, init_engine
 from app.db.migrate import upgrade_head_async
+from app.runtime.bus import EventBus
+from app.runtime.supervisor import JobSupervisor
+from app.runtime.writer import IpcBridge, JobWriter, make_ipc_queue
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -24,10 +30,33 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await upgrade_head_async(settings.database_url)
-        init_engine(settings.database_url)
+        engine = init_engine(settings.database_url)
+        writer: JobWriter | None = None
+        bridge: IpcBridge | None = None
+        supervisor: JobSupervisor | None = None
         try:
+            if _app.state.runtime_enabled:
+                sf = async_sessionmaker(engine, expire_on_commit=False)
+                ctx = multiprocessing.get_context("spawn")
+                ipc_q = make_ipc_queue(ctx)
+                bus = EventBus()
+                writer = JobWriter(sf, bus)
+                writer.start()
+                bridge = IpcBridge(ipc_q, writer, asyncio.get_running_loop())
+                bridge.start()
+                supervisor = JobSupervisor(sf, writer, settings, mp_ctx=ctx, ipc_queue=ipc_q)
+                await supervisor.start()
+                _app.state.bus = bus
+                _app.state.job_writer = writer
+                _app.state.supervisor = supervisor
             yield
         finally:
+            if supervisor is not None:
+                await supervisor.stop()
+            if bridge is not None:
+                await asyncio.to_thread(bridge.stop)
+            if writer is not None:
+                await writer.stop()
             await dispose_engine()
 
     app = FastAPI(
@@ -39,6 +68,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         redoc_url=None,
     )
     app.state.settings = settings
+    app.state.runtime_enabled = True
     app.state.immich_transport = None
     app.state.oauth = build_oauth(settings)
     app.state.verifier = BearerVerifier(settings)

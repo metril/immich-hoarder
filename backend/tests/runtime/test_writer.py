@@ -445,3 +445,40 @@ async def test_restart_after_stop_ignores_stale_sentinel(env: Any) -> None:
     w.submit(("event", 1, {"type": "phase", "name": "again"}))
     await w.stop()
     assert await _count(sf, JobEvent) == 1
+
+
+async def test_done_listener_runs_after_commit(env: Any) -> None:
+    _, sf = env
+    w = JobWriter(sf, EventBus())
+    seen: list[tuple[int, dict[str, Any], int]] = []
+
+    async def cb(job_id: int, result: dict[str, Any]) -> None:
+        seen.append((job_id, result, await _count(sf, JobEvent)))
+
+    w.add_done_listener(cb)
+    w.start()
+    w.submit(("event", 1, {"type": "phase", "name": "x"}))
+    w.submit(("done", 1, {"status": "succeeded", "error": None, "counters": {}}))
+    w.submit(("done", 1, {"status": "bogus"}))  # malformed: dropped
+    await w.stop()
+    assert seen == [(1, {"status": "succeeded", "error": None, "counters": {}}, 1)]
+
+
+async def test_stop_cancels_pending_respawn_timer(
+    env: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, sf = env
+    monkeypatch.setattr(writer_mod, "RESTART_MIN_INTERVAL", 30.0)
+    w = JobWriter(sf, EventBus())
+
+    def hook() -> None:
+        raise RuntimeError("crash")
+
+    w._hook = hook
+    w.start()
+    await asyncio.sleep(0.2)
+    assert w._respawn_timer is not None
+    timer = w._respawn_timer
+    await w.stop()
+    assert w._respawn_timer is None
+    assert timer.cancelled()

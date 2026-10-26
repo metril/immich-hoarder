@@ -22,6 +22,7 @@ def settings(tmp_path: Path) -> Settings:
 @pytest.fixture
 async def client(settings: Settings) -> AsyncIterator[httpx.AsyncClient]:
     app = create_app(settings)
+    app.state.runtime_enabled = False
     transport = httpx.ASGITransport(app=app)
     async with (
         app.router.lifespan_context(app),

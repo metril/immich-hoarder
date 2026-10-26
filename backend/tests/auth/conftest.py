@@ -39,6 +39,7 @@ def idp() -> AsyncIterator[fake_idp.FakeIdp]:  # type: ignore[misc]
 @pytest.fixture
 async def app(settings: Settings, idp: fake_idp.FakeIdp) -> AsyncIterator[FastAPI]:
     app = create_app(settings)
+    app.state.runtime_enabled = False
 
     @app.post("/_t/echo")
     async def echo(p: Principal = Depends(current_principal)) -> dict[str, int]:

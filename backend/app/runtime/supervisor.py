@@ -1,0 +1,315 @@
+"""Job supervisor: queue, concurrency rules, worker lifecycle, cancel and recovery."""
+
+import asyncio
+import logging
+import shutil
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from typing import Any
+
+from fastapi import HTTPException
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.core.config import Settings
+from app.core.crypto import SecretBox
+from app.db.models import AssetSeen, Job, JobStatus, Source
+from app.rip.build import build_snapshots
+from app.rip.pipeline import sweep_scratch
+from app.rip.settings import load_rip_settings
+from app.runtime.settings import load_runtime_settings
+from app.runtime.worker import WorkerSpec, worker_main
+from app.runtime.writer import JobWriter
+
+log = logging.getLogger(__name__)
+
+SWEEP_INTERVAL_S = 600.0
+
+
+class JobConflict(Exception):
+    """The source already has a queued or running job."""
+
+
+class JobNotActive(Exception):
+    """The job is not queued or running."""
+
+
+@dataclass
+class RunHandle:
+    target_id: int
+    source_id: int
+    cancel_event: Any
+    started: float = field(default_factory=time.monotonic)
+    process: Any = None
+    done_result: dict[str, Any] | None = None
+    done_evt: asyncio.Event = field(default_factory=asyncio.Event)
+    cancel_requested: bool = False
+    task: asyncio.Task[None] | None = None
+    escalation: asyncio.Task[None] | None = None
+
+
+def _now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
+class JobSupervisor:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        writer: JobWriter,
+        settings: Settings,
+        *,
+        mp_ctx: Any,
+        ipc_queue: Any,
+        worker_target: Callable[..., None] = worker_main,
+    ) -> None:
+        self._sf = session_factory
+        self._writer = writer
+        self._settings = settings
+        self._ctx = mp_ctx
+        self._q = ipc_queue
+        self._target = worker_target
+        self.running: dict[int, RunHandle] = {}
+        self.poll_s = 1.0
+        self.kill_delay_s = 5.0
+        self.done_wait_s = 5.0
+        self.grace_override_s: float | None = None
+        self._wake = asyncio.Event()
+        self._stop = False
+        self._loop_task: asyncio.Task[None] | None = None
+        self._skip: set[int] = set()  # queued jobs cancelled but not yet committed
+        writer.add_done_listener(self._on_done)
+
+    # -- public ----------------------------------------------------------
+    async def start(self) -> None:
+        async with self._sf() as s, s.begin():
+            await s.execute(
+                update(Job)
+                .where(Job.status == JobStatus.running)
+                .values(
+                    status=JobStatus.failed,
+                    error="interrupted by restart",
+                    finished_at=_now(),
+                )
+            )
+        await asyncio.to_thread(sweep_scratch, self._settings.scratch_dir, set())
+        self._stop = False
+        self._loop_task = asyncio.create_task(self._loop())
+
+    async def stop(self) -> None:
+        self._stop = True
+        self._wake.set()
+        for job_id in list(self.running):
+            self._request_cancel(job_id)
+        grace = await self._grace()
+        tasks = [h.task for h in self.running.values() if h.task is not None]
+        if tasks:
+            _, pending = await asyncio.wait(tasks, timeout=grace + self.kill_delay_s + 5)
+            for t in pending:
+                t.cancel()
+        for h in self.running.values():
+            if h.process is not None and h.process.is_alive():
+                h.process.kill()
+        if self._loop_task is not None:
+            self._loop_task.cancel()
+            await asyncio.gather(self._loop_task, return_exceptions=True)
+            self._loop_task = None
+
+    async def enqueue(self, source_id: int, triggered_by: int | None, log_level: str | None) -> Job:
+        async with self._sf() as s, s.begin():
+            active = await s.execute(
+                select(Job.id)
+                .where(
+                    Job.source_id == source_id,
+                    Job.status.in_((JobStatus.queued, JobStatus.running)),
+                )
+                .limit(1)
+            )
+            if active.first() is not None:
+                raise JobConflict(source_id)
+            job = Job(
+                source_id=source_id,
+                triggered_by=triggered_by,
+                status=JobStatus.queued,
+                log_level=log_level,
+            )
+            s.add(job)
+            await s.flush()
+        self._wake.set()
+        return job
+
+    async def cancel(self, job_id: int) -> None:
+        if job_id in self.running:
+            self._request_cancel(job_id)
+            return
+        async with self._sf() as s:
+            job = await s.get(Job, job_id)
+        if job is None or job.status != JobStatus.queued or job_id in self._skip:
+            raise JobNotActive(job_id)
+        self._skip.add(job_id)
+        self._writer.submit(("status", job_id, "cancelled", {"finished_at": _now()}))
+        self._wake.set()
+
+    async def is_incremental(self, source_id: int) -> bool:
+        async with self._sf() as s:
+            row = await s.execute(
+                select(AssetSeen.id).where(AssetSeen.source_id == source_id).limit(1)
+            )
+            return row.first() is not None
+
+    # -- internals -------------------------------------------------------
+    async def _on_done(self, job_id: int, result: dict[str, Any]) -> None:
+        h = self.running.get(job_id)
+        if h is not None:
+            h.done_result = result
+            h.done_evt.set()
+
+    async def _grace(self) -> float:
+        if self.grace_override_s is not None:
+            return self.grace_override_s
+        async with self._sf() as s:
+            return float((await load_runtime_settings(s)).cancel_grace_s)
+
+    def _request_cancel(self, job_id: int) -> None:
+        h = self.running.get(job_id)
+        if h is None:
+            return
+        h.cancel_requested = True
+        h.cancel_event.set()
+        if h.process is not None and h.escalation is None:
+            h.escalation = asyncio.create_task(self._escalate(h))
+        self._wake.set()
+
+    async def _escalate(self, h: RunHandle) -> None:
+        await asyncio.sleep(await self._grace())
+        proc = h.process
+        if proc.is_alive():
+            proc.terminate()
+            await asyncio.sleep(self.kill_delay_s)
+            if proc.is_alive():
+                proc.kill()
+
+    async def _loop(self) -> None:
+        last_sweep = time.monotonic()
+        while not self._stop:
+            self._wake.clear()
+            try:
+                await self._start_ready()
+                if time.monotonic() - last_sweep >= SWEEP_INTERVAL_S:
+                    last_sweep = time.monotonic()
+                    await asyncio.to_thread(
+                        sweep_scratch, self._settings.scratch_dir, set(self.running)
+                    )
+            except Exception:
+                log.exception("supervisor loop error")
+            try:
+                await asyncio.wait_for(self._wake.wait(), self.poll_s)
+            except TimeoutError:
+                pass
+
+    async def _start_ready(self) -> None:
+        async with self._sf() as s:
+            runtime = await load_runtime_settings(s)
+            cap = runtime.max_concurrent_jobs or self._settings.max_concurrent_jobs
+            if len(self.running) >= cap:
+                return
+            rows = (
+                await s.execute(
+                    select(Job.id, Job.source_id, Source.target_id)
+                    .join(Source, Source.id == Job.source_id)
+                    .where(Job.status == JobStatus.queued)
+                    .order_by(Job.id)
+                )
+            ).all()
+        busy = {h.target_id for h in self.running.values()}
+        for job_id, source_id, target_id in rows:
+            if len(self.running) >= cap:
+                break
+            if job_id in self.running or job_id in self._skip or target_id in busy:
+                continue
+            h = RunHandle(target_id, source_id, self._ctx.Event())
+            self.running[job_id] = h
+            busy.add(target_id)
+            h.task = asyncio.create_task(self._run_job(job_id, h))
+
+    async def _prepare(self, job_id: int, h: RunHandle) -> WorkerSpec | str:
+        """Return the worker spec, or a failure message."""
+        async with self._sf() as s:
+            job = await s.get(Job, job_id)
+            source = await s.get(Source, h.source_id)
+            if job is None or source is None:
+                return "source missing"
+            box = SecretBox(self._settings.master_key.get_secret_value())
+            try:
+                source_snap, target_snap, cred = await build_snapshots(s, source, box)
+            except HTTPException as e:
+                return "access revoked" if e.status_code == 403 else f"cannot start: {e.detail}"
+            rip = await load_rip_settings(s)
+            incremental = (
+                await s.execute(
+                    select(AssetSeen.id).where(AssetSeen.source_id == source.id).limit(1)
+                )
+            ).first() is not None
+            return WorkerSpec(
+                job_id=job_id,
+                source=source_snap,
+                target=target_snap,
+                credential=cred,
+                rip_settings=rip,
+                scratch_dir=self._settings.scratch_dir,
+                scratch_cap_bytes=rip.job_scratch_max_bytes or self._settings.scratch_max_bytes,
+                incremental=incremental,
+                db_url=self._settings.database_url,
+                log_level=job.log_level or source.log_level or self._settings.log_level,
+            )
+
+    def _finish(self, job_id: int, status: str, error: str | None, counters: Any = None) -> None:
+        fields: dict[str, Any] = {"error": error, "finished_at": _now()}
+        if counters is not None:
+            fields["counters"] = counters
+        self._writer.submit(("status", job_id, status, fields))
+
+    async def _run_job(self, job_id: int, h: RunHandle) -> None:
+        try:
+            await self._run_job_inner(job_id, h)
+        except Exception as e:
+            log.exception("job %s supervision failed", job_id)
+            self._finish(job_id, "failed", f"supervisor error: {type(e).__name__}")
+        finally:
+            await asyncio.to_thread(shutil.rmtree, self._settings.scratch_dir / str(job_id), True)
+            self.running.pop(job_id, None)
+            self._wake.set()
+
+    async def _run_job_inner(self, job_id: int, h: RunHandle) -> None:
+        spec = await self._prepare(job_id, h)
+        if isinstance(spec, str):
+            self._finish(job_id, "failed", spec)
+            return
+        if h.cancel_requested:
+            self._finish(job_id, "cancelled", None)
+            return
+        self._writer.submit(("status", job_id, "running", {"started_at": _now()}))
+        proc = self._ctx.Process(
+            target=self._target, args=(spec, self._q, h.cancel_event), daemon=True
+        )
+        await asyncio.to_thread(proc.start)
+        h.process = proc
+        if h.cancel_requested and h.escalation is None:
+            h.escalation = asyncio.create_task(self._escalate(h))
+        await asyncio.to_thread(proc.join)
+        if h.done_result is None:
+            try:
+                await asyncio.wait_for(h.done_evt.wait(), self.done_wait_s)
+            except TimeoutError:
+                pass
+        if h.escalation is not None:
+            h.escalation.cancel()
+        res = h.done_result
+        if res is not None:
+            self._finish(job_id, res["status"], res.get("error"), res.get("counters"))
+        elif h.cancel_requested:
+            self._finish(job_id, "cancelled", None)
+        else:
+            self._finish(job_id, "failed", "worker crashed")
