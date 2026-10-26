@@ -77,7 +77,14 @@ def test_non_secret_untouched() -> None:
 
 
 def test_redact_is_linear_on_long_input() -> None:
-    for payload in ("a" * 65536, "x://" + "a" * 65536, "a" * 30 + "://" * 20000):
+    for payload in (
+        "a" * 65536,
+        "x://" + "a" * 65536,
+        "a" * 30 + "://" * 20000,
+        "?a" * 30000,
+        "&=" * 30000,
+        "?" * 60000,
+    ):
         t = time.perf_counter()
         redact(payload)
         assert time.perf_counter() - t < 0.2
