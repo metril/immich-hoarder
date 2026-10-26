@@ -1,7 +1,7 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { MeOut } from "../../api/me";
 import { renderWithProviders } from "../../test/render";
 import { server } from "../../test/server";
@@ -27,6 +27,9 @@ async function openRip() {
   await screen.findByRole("option", { name: "Home" });
   return rip;
 }
+
+// "/" is the lazy dashboard; warm its chunk so the palette opens within findBy timeouts.
+beforeAll(() => import("../dashboard/Dashboard"), 30_000);
 
 describe("RipDialog", () => {
   it("palette Ad-hoc rip submits POST /rip and navigates to the job", async () => {
