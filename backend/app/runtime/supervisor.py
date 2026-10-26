@@ -77,6 +77,7 @@ class JobSupervisor:
         self.poll_s = 1.0
         self.kill_delay_s = 5.0
         self.done_wait_s = 5.0
+        self.stop_join_s = 5.0
         self.grace_override_s: float | None = None
         self._wake = asyncio.Event()
         self._stop = False
@@ -114,11 +115,13 @@ class JobSupervisor:
         tasks = [h.task for h in handles.values() if h.task is not None]
         pending: set[asyncio.Task[None]] = set()
         if tasks:
-            _, pending = await asyncio.wait(tasks, timeout=grace + self.kill_delay_s + 5)
+            _, pending = await asyncio.wait(
+                tasks, timeout=grace + self.kill_delay_s + self.stop_join_s
+            )
         if pending:
             for h in handles.values():
                 proc = h.process
-                if proc is not None and proc.is_alive():
+                if h.exitcode is None and proc is not None and proc.is_alive():
                     proc.kill()
                     await asyncio.to_thread(proc.join, 2)
             for t in pending:
@@ -207,7 +210,7 @@ class JobSupervisor:
     async def _escalate(self, h: RunHandle) -> None:
         await asyncio.sleep(await self._grace())
         proc = h.process
-        if proc.is_alive():
+        if h.exitcode is None and proc is not None and proc.is_alive():
             proc.terminate()
             await asyncio.sleep(self.kill_delay_s)
             if proc.is_alive():
@@ -337,6 +340,7 @@ class JobSupervisor:
         h.exitcode = proc.exitcode
         proc.join(0)
         proc.close()
+        h.process = None
         if h.done_result is None:
             await self._await_done(job_id, h)
         if h.escalation is not None:

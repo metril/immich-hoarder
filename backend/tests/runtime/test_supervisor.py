@@ -409,3 +409,45 @@ async def test_lifespan_wires_runtime(settings: Settings) -> None:
     off.state.runtime_enabled = False
     async with off.router.lifespan_context(off):
         assert not hasattr(off.state, "supervisor")
+
+
+async def _until_exited(sup: JobSupervisor, job_id: int) -> Any:
+    for _ in range(600):
+        h = sup.running.get(job_id)
+        if h is not None and h.exitcode is not None:
+            return h
+        await asyncio.sleep(0.05)
+    raise AssertionError("worker never exited")
+
+
+async def test_stop_while_waiting_for_done_after_clean_exit(env: Env) -> None:
+    _, src = await env.seed()
+    sup = env.make(fw.silent_exit_worker)
+    sup.stop_join_s = 0.2
+    await sup.start()
+    job = await sup.enqueue(src, None, "info")
+    h = await _until_exited(sup, job.id)
+    assert h.exitcode == 0 and h.process is None
+    await sup.stop()
+    assert not (env.scratch / str(job.id)).exists()
+
+
+async def test_cancel_during_await_done_logs_no_error(
+    env: Env, caplog: pytest.LogCaptureFixture
+) -> None:
+    _, src = await env.seed()
+    sup = env.make(fw.silent_after_cancel_worker)
+    sup.stop_join_s = 0.2
+    await sup.start()
+    job = await sup.enqueue(src, None, "info")
+    marker = env.scratch / str(job.id) / "f"
+    for _ in range(400):
+        if marker.exists():
+            break
+        await asyncio.sleep(0.05)
+    with caplog.at_level("ERROR"):
+        await sup.cancel(job.id)
+        await _until_exited(sup, job.id)
+        await asyncio.sleep(0.6)  # past the escalation grace
+        await sup.stop()
+    assert [r for r in caplog.records if r.levelname == "ERROR"] == []

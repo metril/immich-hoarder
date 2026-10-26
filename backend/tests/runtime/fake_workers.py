@@ -62,3 +62,12 @@ def incremental_worker(spec: Any, q: Any, cancel: Any) -> None:
     )
     q.close()
     q.join_thread()
+
+
+def silent_exit_worker(spec: Any, q: Any, cancel: Any) -> None:
+    _touch(spec)  # exits 0 without ever sending done
+
+
+def silent_after_cancel_worker(spec: Any, q: Any, cancel: Any) -> None:
+    _touch(spec)
+    cancel.wait(30)
