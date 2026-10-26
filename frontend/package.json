@@ -33,7 +33,7 @@
     "sonner": "2.0.8",
     "cronstrue": "3.31.0",
     "react-hook-form": "7.90.0",
-    "zod": "4.6.6",
+    "zod": "4.6.7",
     "@hookform/resolvers": "5.9.1"
   },
   "devDependencies": {
