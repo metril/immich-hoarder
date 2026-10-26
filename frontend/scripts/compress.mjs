@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { brotliCompressSync, constants, gzipSync } from "node:zlib";
 
 const RE = /\.(js|css|html|svg|json|webmanifest|txt)$/;
@@ -25,7 +26,7 @@ export function compressDir(dir) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const dir = process.argv[2];
   if (!dir) {
     console.error("usage: compress.mjs <dir>");

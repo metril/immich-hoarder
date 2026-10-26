@@ -16,3 +16,15 @@ describe("test harness", () => {
     expect(document.body.getBoundingClientRect().width).toBe(1024);
   });
 });
+
+describe("FakeEventSource", () => {
+  it("tracks readyState across open and fail", () => {
+    const es = new FakeEventSource("/x");
+    es.open();
+    expect(es.readyState).toBe(1);
+    es.fail();
+    expect(es.readyState).toBe(0);
+    es.fail(true);
+    expect(es.readyState).toBe(2);
+  });
+});

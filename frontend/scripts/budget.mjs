@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
 
 /** Entry chunk + static imports (never dynamicImports), gzip level 9. */
@@ -12,7 +13,11 @@ export function computeInitialJs(manifest, readFile) {
     if (seen.has(chunk)) return;
     seen.add(chunk);
     if (chunk.file.endsWith(".js")) files.push(chunk.file);
-    for (const key of chunk.imports ?? []) visit(manifest[key]);
+    for (const key of chunk.imports ?? []) {
+      const dep = manifest[key];
+      if (!dep) throw new Error(`manifest key not found: ${key}`);
+      visit(dep);
+    }
   };
   visit(entry);
   const sizes = files.map((f) => gzipSync(readFile(f), { level: 9 }).length);
@@ -31,7 +36,7 @@ export function runBudget(manifest, readFile, maxBytes, log = console.log) {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   const [dir, max] = process.argv.slice(2);
   if (!dir || !max) {
     console.error("usage: budget.mjs <dir> <maxBytes>");

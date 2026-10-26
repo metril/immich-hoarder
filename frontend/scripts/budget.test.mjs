@@ -30,4 +30,9 @@ describe("budget", () => {
     expect(runBudget(manifest, readFile, r.gzipBytes, () => {})).toBe(0);
     expect(runBudget(manifest, readFile, r.gzipBytes - 1, () => {})).toBe(1);
   });
+
+  it("names a missing manifest key", () => {
+    const bad = { e: { file: "a.js", isEntry: true, imports: ["nope.js"] } };
+    expect(() => computeInitialJs(bad, readFile)).toThrow("nope.js");
+  });
 });

@@ -10,12 +10,16 @@ export default tseslint.config(
     files: ["**/*.{ts,tsx,js,mjs}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommendedTypeChecked, reactHooks.configs.flat.recommended, reactRefresh.configs.vite],
     languageOptions: {
-      globals: { ...globals.browser, ...globals.node },
+      globals: { ...globals.browser },
       parserOptions: {
         projectService: { allowDefaultProject: ["public/*.js", "*.config.js", "scripts/*.mjs", "e2e/*.ts"] },
         tsconfigRootDir: import.meta.dirname,
       },
     },
+  },
+  {
+    files: ["scripts/**/*.mjs", "*.config.{js,ts}"],
+    languageOptions: { globals: { ...globals.node } },
   },
   {
     // plain JS outside the TS projects: no type information

@@ -39,7 +39,13 @@ export class FakeEventSource {
     if (type === "message") this.onmessage?.(ev);
   }
   /** Simulate a connection error. */
-  fail() {
+  open() {
+    this.readyState = 1;
+    this.onopen?.(new Event("open"));
+  }
+  /** Simulate a connection error; readyState 0 = reconnecting, 2 = closed for good. */
+  fail(closed = false) {
+    this.readyState = closed ? 2 : 0;
     const ev = new Event("error");
     this.onerror?.(ev);
     this.listeners.get("error")?.forEach((fn) => fn(ev));
