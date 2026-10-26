@@ -30,6 +30,16 @@ Msg = tuple[Any, ...]
 DoneListener = Callable[[int, dict[str, Any]], Awaitable[None]]
 
 
+_LEVEL_ALIASES = {"warning": "warn", "critical": "error", "fatal": "error"}
+_LEVELS = frozenset({"trace", "debug", "info", "warn", "error"})
+
+
+def _norm_level(level: object) -> str:
+    lv = str(level or "info").lower()
+    lv = _LEVEL_ALIASES.get(lv, lv)
+    return lv if lv in _LEVELS else "info"
+
+
 class JobWriter:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession], bus: EventBus) -> None:
         self._sf = session_factory
@@ -199,7 +209,7 @@ class JobWriter:
                         )
                     )
                 elif typ in ("log", "phase"):
-                    level = ev.get("level", "info")
+                    level = _norm_level(ev.get("level"))
                     session.add(JobEvent(job_id=job_id, level=level, type=typ, data=ev))
                 elif typ == "progress":
                     counters[job_id] = ev["counters"]

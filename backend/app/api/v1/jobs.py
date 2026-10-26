@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.common import get_obj
@@ -8,8 +8,8 @@ from app.api.v1.sources import build_source
 from app.auth.authz import require_scope
 from app.auth.deps import current_principal
 from app.auth.principal import Principal
-from app.db.engine import get_session
-from app.db.models import Job, JobEvent, JobItem, JobStatus, Source
+from app.db.engine import get_session, session_scope
+from app.db.models import Job, JobEvent, JobItem, JobStatus, Source, Visibility
 from app.runtime.supervisor import JobConflict, JobNotActive, JobSupervisor
 from app.runtime.visibility import visible_jobs_stmt
 from app.schemas.jobs import LOG_LEVELS, EventOut, ItemOut, JobOut, RipIn, RunIn
@@ -78,10 +78,21 @@ async def adhoc_rip(
     require_scope(p, "sources:run")
     sup = _supervisor(request)
     payload = body.model_copy(
-        update={"ephemeral": True, "schedule_cron": None, "name": f"ad-hoc: {body.url[:80]}"}
+        update={
+            "ephemeral": True,
+            "schedule_cron": None,
+            "visibility": Visibility.private,
+            "name": f"ad-hoc: {body.url[:80]}",
+        }
     )
     src = await build_source(session, p, payload)
-    return await _enqueue(session, sup, src.id, p, body.log_level)
+    source_id = src.id
+    try:
+        return await _enqueue(session, sup, source_id, p, body.log_level)
+    except BaseException:
+        async with session_scope() as s:
+            await s.execute(delete(Source).where(Source.id == source_id))
+        raise
 
 
 @router.get("/jobs", response_model=Page[JobOut])
@@ -99,7 +110,7 @@ async def list_jobs(
         stmt = stmt.where(Job.source_id == source_id)
     if status is not None:
         stmt = stmt.where(Job.status == status)
-    rows, nxt = await paginate(session, stmt, cursor, limit)
+    rows, nxt = await paginate(session, stmt, cursor, limit, desc=True)
     names = await _names(session, rows)
     return Page(items=[JobOut.of(j, names.get(j.source_id)) for j in rows], next_cursor=nxt)
 
@@ -128,7 +139,7 @@ async def job_items(
     stmt = select(JobItem).where(JobItem.job_id == job_id)
     if outcome is not None:
         stmt = stmt.where(JobItem.outcome == outcome)
-    rows, nxt = await paginate(session, stmt, cursor, limit)
+    rows, nxt = await paginate(session, stmt, cursor, limit, desc=True)
     return Page(items=[ItemOut.of(r) for r in rows], next_cursor=nxt)
 
 
@@ -148,7 +159,7 @@ async def job_events(
     stmt = select(JobEvent).where(JobEvent.job_id == job_id)
     if min_level is not None:
         stmt = stmt.where(JobEvent.level.in_(LOG_LEVELS[LOG_LEVELS.index(min_level) :]))
-    rows, nxt = await paginate(session, stmt, cursor, limit)
+    rows, nxt = await paginate(session, stmt, cursor, limit, desc=True)
     return Page(items=[EventOut.of(r) for r in rows], next_cursor=nxt)
 
 

@@ -28,14 +28,20 @@ def decode_cursor(cursor: str) -> int:
 
 
 async def paginate(
-    session: AsyncSession, stmt: Select[Any], cursor: str | None, limit: int = DEFAULT_LIMIT
+    session: AsyncSession,
+    stmt: Select[Any],
+    cursor: str | None,
+    limit: int = DEFAULT_LIMIT,
+    desc: bool = False,
 ) -> tuple[list[Any], str | None]:
     """Keyset pagination on the primary-key `id` of the statement's first entity."""
     limit = max(1, min(limit, MAX_LIMIT))
     id_col = stmt.column_descriptions[0]["entity"].id
     if cursor:
-        stmt = stmt.where(id_col > decode_cursor(cursor))
-    rows = list((await session.execute(stmt.order_by(id_col).limit(limit + 1))).scalars())
+        after = decode_cursor(cursor)
+        stmt = stmt.where(id_col < after if desc else id_col > after)
+    order = id_col.desc() if desc else id_col
+    rows = list((await session.execute(stmt.order_by(order).limit(limit + 1))).scalars())
     if len(rows) > limit:
         rows = rows[:limit]
         return rows, encode_cursor(rows[-1].id)

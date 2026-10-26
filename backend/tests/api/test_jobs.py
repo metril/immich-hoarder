@@ -140,11 +140,11 @@ async def test_items_and_events_paginated_and_filtered(client: httpx.AsyncClient
     d = r.json()
     assert len(d["items"]) == 2 and d["next_cursor"]
     r2 = await client.get(f"/api/v1/jobs/{jid}/items?limit=2&cursor={d['next_cursor']}", headers=h)
-    assert [i["url"] for i in r2.json()["items"]] == ["u2", "u3"]
+    assert [i["url"] for i in r2.json()["items"]] == ["u2", "u1"]
     r = await client.get(f"/api/v1/jobs/{jid}/items?outcome=skipped", headers=h)
-    assert [i["url"] for i in r.json()["items"]] == ["u3", "u4"]
+    assert [i["url"] for i in r.json()["items"]] == ["u4", "u3"]
     r = await client.get(f"/api/v1/jobs/{jid}/events?min_level=warn", headers=h)
-    assert [e["level"] for e in r.json()["items"]] == ["warn", "error"]
+    assert [e["level"] for e in r.json()["items"]] == ["error", "warn"]
     r = await client.get(f"/api/v1/jobs/{jid}/events?limit=2", headers=h)
     assert len(r.json()["items"]) == 2 and r.json()["next_cursor"]
     assert (
@@ -185,3 +185,93 @@ async def test_runtime_unavailable_503(client: httpx.AsyncClient) -> None:
     client._transport.app.state.supervisor = None  # type: ignore[attr-defined]
     r = await client.post(f"/api/v1/sources/{sid}/run", headers=h)
     assert r.status_code == 503 and r.json() == {"detail": "runtime unavailable"}
+
+
+async def test_rip_forces_private_visibility(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    tid = (await client.post("/api/v1/targets", json=TARGET, headers=h)).json()["id"]
+    r = await client.post(
+        "/api/v1/rip",
+        json={"url": SRC["url"], "target_id": tid, "visibility": "everyone"},
+        headers=h,
+    )
+    assert r.status_code == 202, r.text
+    async with session_scope() as s:
+        src = await s.get(Source, r.json()["source_id"])
+        assert src and src.visibility == "private"
+
+
+async def test_rip_cleans_up_source_when_enqueue_fails(client: httpx.AsyncClient) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    class Boom:
+        async def enqueue(self, *a: Any) -> None:
+            raise OperationalError("x", {}, Exception("locked"))
+
+    _, h = await actor("a")
+    tid = (await client.post("/api/v1/targets", json=TARGET, headers=h)).json()["id"]
+    client._transport.app.state.supervisor = Boom()  # type: ignore[attr-defined]
+    with pytest.raises(OperationalError):
+        await client.post("/api/v1/rip", json={"url": SRC["url"], "target_id": tid}, headers=h)
+    async with session_scope() as s:
+        assert (await s.execute(select(Source))).first() is None
+
+
+async def test_cancel_requires_jobs_write(client: httpx.AsyncClient) -> None:
+    uid, h = await actor("a")
+    sid = await _src(client, h)
+    jid = (await client.post(f"/api/v1/sources/{sid}/run", headers=h)).json()["id"]
+    ro = await headers_for(uid, ["jobs:read"])
+    assert (await client.post(f"/api/v1/jobs/{jid}/cancel", headers=ro)).status_code == 403
+
+
+async def test_rip_with_foreign_private_credential_403(client: httpx.AsyncClient) -> None:
+    _, ha = await actor("a")
+    _, hb = await actor("b")
+    cid = (
+        await client.post(
+            "/api/v1/credentials",
+            json={"name": "c", "site": "reddit", "kind": "cookies", "secret": "s3"},
+            headers=ha,
+        )
+    ).json()["id"]
+    tid = (await client.post("/api/v1/targets", json=TARGET, headers=hb)).json()["id"]
+    r = await client.post(
+        "/api/v1/rip",
+        json={"url": SRC["url"], "target_id": tid, "credential_id": cid},
+        headers=hb,
+    )
+    assert r.status_code == 403
+
+
+async def test_retry_invisible_job_404(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    _, hx = await actor("x")
+    sid = await _src(client, h)
+    jid = (await client.post(f"/api/v1/sources/{sid}/run", headers=h)).json()["id"]
+    await _finish(jid)
+    assert (await client.post(f"/api/v1/jobs/{jid}/retry", headers=hx)).status_code == 404
+
+
+async def test_lists_are_newest_first(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    sid = await _src(client, h)
+    j1 = (await client.post(f"/api/v1/sources/{sid}/run", headers=h)).json()["id"]
+    await _finish(j1)
+    j2 = (await client.post(f"/api/v1/sources/{sid}/run", headers=h)).json()["id"]
+    r = await client.get("/api/v1/jobs?limit=1", headers=h)
+    assert [j["id"] for j in r.json()["items"]] == [j2] and r.json()["next_cursor"]
+    r = await client.get(f"/api/v1/jobs?limit=1&cursor={r.json()['next_cursor']}", headers=h)
+    assert [j["id"] for j in r.json()["items"]] == [j1]
+    async with session_scope() as s:
+        for i in range(3):
+            s.add(JobItem(job_id=j2, url=f"u{i}", outcome="uploaded"))
+            s.add(JobEvent(job_id=j2, level="info", type="t", data={}))
+    for kind in ("items", "events"):
+        r = await client.get(f"/api/v1/jobs/{j2}/{kind}?limit=2", headers=h)
+        ids = [i["id"] for i in r.json()["items"]]
+        assert ids == sorted(ids, reverse=True) and r.json()["next_cursor"]
+        r = await client.get(
+            f"/api/v1/jobs/{j2}/{kind}?limit=2&cursor={r.json()['next_cursor']}", headers=h
+        )
+        assert len(r.json()["items"]) == 1

@@ -496,3 +496,15 @@ async def test_status_never_leaves_terminal_state(env: Any) -> None:
     async with sf() as s:
         job = await s.get(Job, 1)
     assert job is not None and job.status == JobStatus.succeeded
+
+
+async def test_log_levels_normalised(env: Any) -> None:
+    _, sf = env
+    w = JobWriter(sf, EventBus())
+    w.start()
+    for lv in ("warning", "critical", "fatal", "bogus", "debug"):
+        w.submit(("event", 1, {"type": "log", "level": lv, "msg": "m"}))
+    await w.stop()
+    async with sf() as s:
+        got = (await s.execute(select(JobEvent.level).order_by(JobEvent.id))).scalars().all()
+    assert list(got) == ["warn", "error", "error", "info", "debug"]

@@ -185,6 +185,7 @@ class Source(Ownable, Timestamps, Base):
 class Job(Timestamps, Base):
     __tablename__ = "jobs"
     __table_args__ = (
+        Index("ix_jobs_status", "status"),
         Index(
             "uq_jobs_active_source",
             "source_id",
@@ -208,8 +209,9 @@ class Job(Timestamps, Base):
 
 class JobEvent(Base):
     __tablename__ = "job_events"
+    __table_args__ = (Index("ix_job_events_job_id_id", "job_id", "id"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"))
     ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     level: Mapped[str] = mapped_column(String(16))
     type: Mapped[str] = mapped_column(String(64))
@@ -218,8 +220,9 @@ class JobEvent(Base):
 
 class JobItem(Base):
     __tablename__ = "job_items"
+    __table_args__ = (Index("ix_job_items_job_id_id", "job_id", "id"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"))
     url: Mapped[str] = mapped_column(String(2048))
     outcome: Mapped[str] = mapped_column(String(32))
     reason: Mapped[str | None] = mapped_column(Text)
