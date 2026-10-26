@@ -125,3 +125,14 @@ def test_secret_file_strips_line_ending(
     monkeypatch.setenv("IH_SESSION_SECRET", "s" * 32)
     monkeypatch.setenv("IH_PUBLIC_URL", "http://x")
     assert Settings().master_key.get_secret_value() == "m" * 40
+
+
+def test_database_url_file(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    f = tmp_path / "dbu"
+    f.write_bytes(b"postgresql://u:p@db/h\r\n")
+    monkeypatch.delenv("IH_DATABASE_URL", raising=False)
+    monkeypatch.setenv("IH_DATABASE_URL_FILE", str(f))
+    monkeypatch.setenv("IH_MASTER_KEY", "k" * 32)
+    monkeypatch.setenv("IH_SESSION_SECRET", "s" * 32)
+    monkeypatch.setenv("IH_PUBLIC_URL", "http://x")
+    assert Settings().database_url == "postgresql://u:p@db/h"
