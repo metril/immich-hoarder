@@ -27,3 +27,9 @@ The web UI lives in `frontend/` (Vite, React, TanStack Router). Use Node 24.21.0
 - E2E: `pnpm build && pnpm exec playwright install chromium && pnpm e2e`. It starts `backend/tests/e2e_server.py` (test-only auto-login on port 8090, never shipped in the image).
 - Lighthouse (desktop performance and accessibility >= 0.95): with that server running, `CHROME_PATH=<playwright chromium> pnpm lhci`.
 - The Docker image builds the bundle in a `node` stage and serves it from `/srv/web`.
+
+## Docs
+The documentation site is built with MkDocs Material from `docs/`.
+- Preview: `uv run --only-group docs mkdocs serve`. Check as CI does with `uv run --only-group docs mkdocs build --strict`.
+- `docs/reference/configuration.md` is generated from the settings models. Regenerate it with `uv run python -m app.configdoc`; CI fails when it is stale.
+- Screenshots in `docs/assets/screenshots/` are generated with `pnpm screenshots` (run from `frontend/`, Playwright).
