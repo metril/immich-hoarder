@@ -1,0 +1,53 @@
+site_name: immich-hoarder
+site_url: https://metril.github.io/immich-hoarder/
+repo_url: https://github.com/metril/immich-hoarder
+docs_dir: docs
+exclude_docs: |
+  superpowers/
+theme:
+  name: material
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  features:
+    - navigation.sections
+    - content.code.copy
+    - search.highlight
+markdown_extensions:
+  - admonition
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.details
+  - tables
+  - toc:
+      permalink: true
+validation:
+  links:
+    absolute_links: relative_to_docs
+    anchors: warn
+    unrecognized_links: warn
+nav:
+  - Home: index.md
+  - Install (Iris + Traefik): install.md
+  - Authentik OIDC: authentik.md
+  - Using:
+      - gui.md
+      - sources.md
+      - notifications.md
+      - egress.md
+      - api.md
+  - Operations:
+      - backups.md
+      - postgres.md
+      - security.md
+      - troubleshooting.md
+  - Reference:
+      - reference/configuration.md
+      - API (OpenAPI): https://hoarder.example.com/api/docs
