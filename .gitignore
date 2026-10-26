@@ -18,3 +18,4 @@ frontend/.lighthouseci/
 frontend/test-results/
 frontend/playwright-report/
 frontend/coverage/
+site/
