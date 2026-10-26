@@ -17,6 +17,7 @@ jobs:
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
       tag_name: ${{ steps.rp.outputs.tag_name }}
+      pr: ${{ steps.rp.outputs.pr }}
     steps:
       - id: rp
         uses: googleapis/release-please-action@v4
@@ -24,14 +25,26 @@ jobs:
           token: ${{ github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  # Best-effort and independent of publish: a failure here never blocks a release.
+  ci-ok:
+    needs: release-please
+    if: needs.release-please.outputs.pr != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
       # PRs opened with GITHUB_TOKEN do not trigger ci.yml, so post ci-ok directly.
       - name: Post ci-ok on release PR
-        if: steps.rp.outputs.pr != ''
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ fromJSON(steps.rp.outputs.pr).number }}
+          PR_JSON: ${{ needs.release-please.outputs.pr }}
         run: |
+          PR_NUMBER=$(jq -r '.number // empty' <<< "$PR_JSON")
+          [[ -z "$PR_NUMBER" ]] && { echo "::notice::No release PR number; skipping"; exit 0; }
           allowed='CHANGELOG.md .release-please-manifest.json backend/app/_version.py version.txt'
           while IFS= read -r f; do
             [[ -z "$f" ]] && continue

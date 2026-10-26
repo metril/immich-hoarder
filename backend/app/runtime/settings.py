@@ -27,11 +27,30 @@ async def load_model[M: BaseModel](session: AsyncSession, key: str, model: type[
 
 
 class RuntimeSettings(BaseModel, extra="forbid"):
-    retention_days: int = Field(default=30, ge=1, le=3650)
-    backup_cron: str = "0 3 * * *"
-    backup_keep: int = Field(default=7, ge=0, le=365)
-    max_concurrent_jobs: int | None = Field(default=None, ge=1, le=64)
-    cancel_grace_s: int = Field(default=10, ge=0, le=300)
+    retention_days: int = Field(
+        default=30, ge=1, le=3650, description="Days that finished job records are kept."
+    )
+    backup_cron: str = Field(
+        default="0 3 * * *", description="Five-field cron expression for scheduled backups."
+    )
+    backup_keep: int = Field(
+        default=7, ge=0, le=365, description="Number of most recent backups to keep."
+    )
+    max_concurrent_jobs: int | None = Field(
+        default=None,
+        ge=1,
+        le=64,
+        description=(
+            "Override for the maximum number of simultaneous jobs; "
+            "unset uses the IH_MAX_CONCURRENT_JOBS value."
+        ),
+    )
+    cancel_grace_s: int = Field(
+        default=10,
+        ge=0,
+        le=300,
+        description="Seconds a cancelled job gets to stop before it is killed.",
+    )
 
     @field_validator("backup_cron")
     @classmethod
@@ -58,8 +77,10 @@ def _apprise_ok(url: str) -> bool:
 
 
 class NotifySettings(BaseModel, extra="forbid"):
-    urls: list[str] = []
-    on: list[Literal["success", "failure", "new_items"]] = ["failure"]
+    urls: list[str] = Field(default=[], description="Apprise notification URLs.")
+    on: list[Literal["success", "failure", "new_items"]] = Field(
+        default=["failure"], description="Events that trigger a notification."
+    )
 
     @field_validator("urls")
     @classmethod
