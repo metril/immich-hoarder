@@ -115,6 +115,8 @@ def mount_spa(app: FastAPI, web_dir: Path) -> None:
             return api_404()
         accept = request.headers.get("accept-encoding", "")
         not_found = PlainTextResponse("Not Found", status_code=404, headers=_SECURITY)
+        if any(seg.startswith(".") for seg in path.split("/")):
+            return not_found
         try:
             target = (root / path).resolve()
             is_file = target.is_file()

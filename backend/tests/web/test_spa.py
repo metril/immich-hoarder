@@ -21,6 +21,9 @@ def dist(tmp_path: Path) -> Path:
     (d / "assets").mkdir(parents=True)
     (d / "index.html").write_bytes(INDEX)
     (d / "favicon.svg").write_bytes(b"<svg/>")
+    (d / ".env").write_bytes(b"SECRET=1")
+    (d / ".hidden").mkdir()
+    (d / ".hidden" / "x.txt").write_bytes(b"x")
     (d / "assets" / "app-abc123.js").write_bytes(JS)
     (d / "assets" / "app-abc123.js.br").write_bytes(JS_BR)
     (d / "assets" / "app-abc123.js.gz").write_bytes(JS_GZ)
@@ -219,3 +222,10 @@ async def test_no_web_dir_api_only(settings: Settings, tmp_path: Path) -> None:
         r = await c.get("/")
         assert r.status_code == 404
         assert r.json() == {"detail": "Not Found"}
+
+
+async def test_dotfile_segments_404(web: httpx.AsyncClient) -> None:
+    for path in ("/.env", "/.hidden/x.txt", "/jobs/.git", "/assets/.x"):
+        r = await web.get(path)
+        assert r.status_code == 404, path
+        assert b"SECRET" not in r.content and b"<!doctype" not in r.content
