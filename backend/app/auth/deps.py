@@ -38,6 +38,9 @@ async def current_principal(
     settings: Settings = request.app.state.settings
 
     raw_key = request.headers.get("X-API-Key")
+    auth = request.headers.get("Authorization", "")
+    if not raw_key and auth.lower().startswith("bearer ") and auth[7:].strip().startswith("ih_"):
+        raw_key = auth[7:].strip()  # API key presented as a bearer token; never tried as a JWT
     if raw_key:
         key = await verify_api_key(session, raw_key)
         user = await session.get(User, key.user_id) if key else None
@@ -48,7 +51,6 @@ async def current_principal(
             p = Principal(p.user_id, p.role, p.groups, p.scopes and p.scopes - {"admin"})
         return p
 
-    auth = request.headers.get("Authorization", "")
     if auth.lower().startswith("bearer "):
         verifier: BearerVerifier = request.app.state.verifier
         try:

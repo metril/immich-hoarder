@@ -88,6 +88,10 @@ class JobSupervisor:
         writer.add_done_listener(self._on_done)
 
     # -- public ----------------------------------------------------------
+    @property
+    def alive(self) -> bool:
+        return self._loop_task is not None and not self._loop_task.done()
+
     async def start(self) -> None:
         async with self._sf() as s, s.begin():
             await s.execute(
