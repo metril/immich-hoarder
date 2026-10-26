@@ -129,10 +129,13 @@ async def export_config(session: AsyncSession, box: SecretBox | None) -> dict[st
     for t in targets:
         d: dict[str, Any] = {
             "name": t.name,
-            "url": t.url,
             "visibility": t.visibility.value,
             "owner": subs.get(t.owner_id),
         }
+        if not _has_userinfo(t.url):
+            d["url"] = t.url
+        elif box is not None:
+            d["url_enc"] = _enc(box, t.url)
         if box is not None:
             d["api_key_enc"] = base64.b64encode(t.api_key_enc).decode()
         t_out.append(d)
@@ -307,8 +310,9 @@ class _Importer:
             await self.settings()
             await self.targets()
             await self.credentials()
+            await self.shares(sources=False)
             await self.sources()
-            await self.shares()
+            await self.shares(sources=True)
         except _Abort:
             pass
         return self.res
@@ -367,7 +371,7 @@ class _Importer:
                 key_enc = self._ciphertext(e, "api_key", "api_key_enc")
                 body = TargetIn(
                     name=e.get("name"),
-                    url=e.get("url"),
+                    url=_dec(self.box, e["url_enc"]) if "url_enc" in e else e.get("url"),
                     api_key="x",
                     visibility=e.get("visibility", Visibility.private),
                 )
@@ -504,9 +508,16 @@ class _Importer:
             data["proxy"] = e["proxy"]
         return data
 
-    async def shares(self) -> None:
+    async def shares(self, *, sources: bool) -> None:
+        """Target/credential shares run before sources (owners may see them only via a
+        share); source shares run after. Unknown resource types are reported once."""
         for i, e in self._items("shares"):
             where = f"shares[{i}]"
+            known = e.get("resource_type") in SHARE_MODELS
+            if known and (e.get("resource_type") == "source") != sources:
+                continue
+            if not known and sources:
+                continue
             try:
                 model = SHARE_MODELS.get(str(e.get("resource_type")))
                 if model is None:

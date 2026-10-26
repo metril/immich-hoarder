@@ -12,7 +12,7 @@ from app.auth.principal import SCOPES
 from app.core.config import Settings
 from app.core.crypto import SecretBox
 from app.db.engine import session_scope
-from app.db.models import Credential, ImmichTarget, Role, Source, User
+from app.db.models import Credential, ImmichTarget, Role, Setting, Share, Source, User
 from app.main import create_app
 
 U = "/api/v1/admin"
@@ -212,3 +212,112 @@ async def test_import_admin_only(client: httpx.AsyncClient) -> None:
     _, h = await actor("u")
     assert (await client.get(f"{U}/export", headers=h)).status_code == 403
     assert (await client.post(f"{U}/import", content="version: 1\n", headers=h)).status_code == 403
+
+
+async def _wipe() -> None:
+    async with session_scope() as s:
+        await s.execute(delete(Share))
+        await s.execute(delete(Source))
+        await s.execute(delete(Credential))
+        await s.execute(delete(ImmichTarget))
+
+
+async def test_roundtrip_shared_target_two_users(client: httpx.AsyncClient) -> None:
+    _, ha = await actor("adm", Role.admin)
+    ua, hua = await actor("a")
+    ub, hub = await actor("b")
+    t = await client.post(
+        "/api/v1/targets", json={"name": "tt", "url": "http://immich", "api_key": "k"}, headers=hua
+    )
+    tid = t.json()["id"]
+    sh = {
+        "visibility": "restricted",
+        "shares": [{"principal_type": "user", "principal_id": str(ub), "perm": "use"}],
+    }
+    assert (
+        await client.put(f"/api/v1/targets/{tid}/shares", json=sh, headers=hua)
+    ).status_code == 200
+    r = await client.post(
+        "/api/v1/sources", json={"name": "sb", "url": SRC_URL, "target_id": tid}, headers=hub
+    )
+    assert r.status_code == 201
+    exp = (await client.get(f"{U}/export?secrets=encrypted", headers=ha)).text
+    await _wipe()
+    out = (await client.post(f"{U}/import", content=exp, headers=ha)).json()
+    assert out["errors"] == [] and out["created"]["sources"] == 1
+    assert out["created"]["shares"] == 1
+
+
+async def test_target_url_userinfo_omit_and_encrypted(client: httpx.AsyncClient) -> None:
+    _, h = await actor("adm", Role.admin)
+    await client.post(
+        "/api/v1/targets",
+        json={"name": "tu", "url": "http://user:PW123@immich", "api_key": "k"},
+        headers=h,
+    )
+    omit = (await client.get(f"{U}/export", headers=h)).text
+    assert "PW123" not in omit and "url_enc" not in omit
+    enc = (await client.get(f"{U}/export?secrets=encrypted", headers=h)).text
+    assert "PW123" not in enc and "url_enc" in enc
+    await _wipe()
+    out = (await client.post(f"{U}/import", content=enc, headers=h)).json()
+    assert out["errors"] == []
+    async with session_scope() as s:
+        tgt = (await s.execute(select(ImmichTarget))).scalars().one()
+        assert tgt.url == "http://user:PW123@immich"
+
+
+async def test_owner_fallback_to_importing_admin(client: httpx.AsyncClient) -> None:
+    aid, h = await actor("adm", Role.admin)
+    doc = (
+        "version: 1\ntargets:\n- {name: n, url: 'http://immich', api_key: k, owner: nobody}\n"
+        "- {name: m, url: 'http://immich', api_key: k}\n"
+    )
+    out = (await client.post(f"{U}/import", content=doc, headers=h)).json()
+    assert out["errors"] == []
+    async with session_scope() as s:
+        owners = {t.owner_id for t in (await s.execute(select(ImmichTarget))).scalars()}
+        assert owners == {aid}
+
+
+async def test_roundtrip_notify_urls_and_source_proxy_enc(client: httpx.AsyncClient) -> None:
+    _, h = await actor("adm", Role.admin)
+    r = await client.put(
+        "/api/v1/settings",
+        json={"notify": {"urls": ["json://notify.example/hook"], "on": ["success"]}},
+        headers=h,
+    )
+    assert r.status_code == 200
+    tid = (
+        await client.post(
+            "/api/v1/targets",
+            json={"name": "t", "url": "http://immich", "api_key": "k"},
+            headers=h,
+        )
+    ).json()["id"]
+    r = await client.post(
+        "/api/v1/sources",
+        json={
+            "name": "sp",
+            "url": SRC_URL,
+            "target_id": tid,
+            "proxy": "http://pu:PROXYPW@proxy.example:8080",
+        },
+        headers=h,
+    )
+    assert r.status_code == 201, r.text
+    omit = (await client.get(f"{U}/export", headers=h)).text
+    assert "PROXYPW" not in omit and "notify.example/hook" not in omit
+    enc = (await client.get(f"{U}/export?secrets=encrypted", headers=h)).text
+    assert "PROXYPW" not in enc and "notify.example" not in enc
+    assert "urls_enc" in enc and "proxy_enc" in enc
+    await _wipe()
+    async with session_scope() as s:
+        await s.execute(delete(Setting))
+    out = (await client.post(f"{U}/import", content=enc, headers=h)).json()
+    assert out["errors"] == [], out
+    async with session_scope() as s:
+        src = (await s.execute(select(Source))).scalars().one()
+        assert src.proxy == "http://pu:PROXYPW@proxy.example:8080"
+        row = await s.get(Setting, "notify")
+        assert row and row.value["urls"] == ["json://notify.example/hook"]
