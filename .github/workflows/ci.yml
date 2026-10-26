@@ -75,6 +75,8 @@ jobs:
               - 'frontend/**'
               - 'pyproject.toml'
               - 'uv.lock'
+              - 'compose.example.yml'
+              - 'deploy/**'
               - '.github/workflows/ci.yml'
 
   backend-lint:
@@ -251,6 +253,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Validate compose files
+        run: |
+          mkdir -p secrets && for s in ih_master_key ih_session_secret ih_oidc_client_secret ih_db_url ih_pg_password; do echo x > secrets/$s; done
+          docker network create traefik
+          export VPN_SERVICE_PROVIDER=custom
+          docker compose -f compose.example.yml config -q
+          docker compose -f compose.example.yml -f deploy/compose.postgres.yml config -q
+          docker compose -f compose.example.yml -f deploy/compose.gluetun.yml config -q
+          docker compose -f compose.example.yml -f deploy/compose.postgres.yml -f deploy/compose.gluetun.yml config -q
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v6
         with:
