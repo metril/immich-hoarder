@@ -13,6 +13,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      statuses: write
     outputs:
       release_created: ${{ steps.rp.outputs.release_created }}
       tag_name: ${{ steps.rp.outputs.tag_name }}
@@ -20,9 +21,29 @@ jobs:
       - id: rp
         uses: googleapis/release-please-action@v4
         with:
-          token: ${{ secrets.RELEASE_PLEASE_TOKEN || github.token }}
+          token: ${{ github.token }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
+      # PRs opened with GITHUB_TOKEN do not trigger ci.yml, so post ci-ok directly.
+      - name: Post ci-ok on release PR
+        if: steps.rp.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ fromJSON(steps.rp.outputs.pr).number }}
+        run: |
+          allowed='CHANGELOG.md .release-please-manifest.json backend/app/_version.py version.txt'
+          while IFS= read -r f; do
+            [[ -z "$f" ]] && continue
+            if ! grep -qxF -- "$f" <<< "${allowed// /$'\n'}"; then
+              echo "::notice::Release PR touches $f outside the version-file allowlist; not posting ci-ok"
+              exit 0
+            fi
+          done < <(gh pr diff "$PR_NUMBER" --name-only)
+          sha=$(gh pr view "$PR_NUMBER" --json headRefOid -q .headRefOid)
+          gh api "repos/${GH_REPO}/statuses/${sha}" \
+            -f state=success -f context=ci-ok \
+            -f description="release PR: version files only"
 
   publish:
     needs: release-please
