@@ -1,6 +1,7 @@
 import re
 import secrets
 import string
+from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
 
 from anyio import to_thread
@@ -29,7 +30,7 @@ async def create_api_key(
     session: AsyncSession,
     user: User,
     name: str,
-    scopes: list[str],
+    scopes: Sequence[str],
     expires_at: datetime | None,
 ) -> tuple[ApiKey, str]:
     secret = secrets.token_urlsafe(24)[:32]  # 32 urlsafe characters

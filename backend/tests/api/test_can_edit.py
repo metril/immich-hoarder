@@ -92,3 +92,26 @@ async def test_can_use_matches_perm_use(
     for h in (ho, hu, hadm):
         assert (await client.get(f"/api/v1/{kind}", headers=h)).json()["items"][0]["can_use"]
         assert (await client.get(f"/api/v1/{kind}/{oid}", headers=h)).json()["can_use"] is True
+
+
+async def test_source_can_use_and_run_gate(client: httpx.AsyncClient) -> None:
+    _, ho = await actor("srcowner")
+    _, hv = await actor("srcviewer")
+    t = (await client.post("/api/v1/targets", json=TARGET, headers=ho)).json()
+    r = await client.post(
+        "/api/v1/sources",
+        json={"name": "s", "url": "https://www.reddit.com/r/pics/", "target_id": t["id"]},
+        headers=ho,
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["can_use"] is True
+    sid = r.json()["id"]
+    assert (await client.get(f"/api/v1/sources/{sid}", headers=ho)).json()["can_use"] is True
+    assert (await client.get("/api/v1/sources", headers=ho)).json()["items"][0]["can_use"] is True
+    await client.put(
+        f"/api/v1/sources/{sid}/shares",
+        json={"visibility": "everyone", "shares": []},
+        headers=ho,
+    )
+    item = (await client.get("/api/v1/sources", headers=hv)).json()["items"][0]
+    assert item["can_use"] is True and item["can_edit"] is False

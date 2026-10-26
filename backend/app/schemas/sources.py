@@ -158,8 +158,9 @@ class SourceOut(BaseModel):
     owner_id: int
     visibility: Visibility
     can_edit: bool  # output-only: caller may PATCH
+    can_use: bool  # output-only: caller may run it
 
     @classmethod
-    def of(cls, s: Source, can_edit: bool) -> "SourceOut":
-        data = {f: getattr(s, f) for f in cls.model_fields if f != "can_edit"}
-        return cls.model_validate(data | {"can_edit": can_edit})
+    def of(cls, s: Source, can_edit: bool, can_use: bool) -> "SourceOut":
+        data = {f: getattr(s, f) for f in cls.model_fields if f not in ("can_edit", "can_use")}
+        return cls.model_validate(data | {"can_edit": can_edit, "can_use": can_use})

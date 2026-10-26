@@ -8,12 +8,11 @@ from app.api.common import get_obj, secret_box
 from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
 from app.api.v1.shares import delete_shares, shares_router
 from app.auth.authz import (
+    access_flags,
     can_edit,
     can_use,
-    editable_ids,
     require_owner_or_admin,
     require_scope,
-    usable_ids,
     visible_to,
 )
 from app.auth.deps import current_principal
@@ -40,8 +39,7 @@ async def list_targets(
     rows, nxt = await paginate(
         session, visible_to(select(ImmichTarget), ImmichTarget, p), cursor, limit
     )
-    ed = await editable_ids(session, ImmichTarget, p, [r.id for r in rows])
-    us = await usable_ids(session, ImmichTarget, p, [r.id for r in rows])
+    ed, us = await access_flags(session, ImmichTarget, p, [r.id for r in rows])
     return Page(items=[TargetOut.of(r, r.id in ed, r.id in us) for r in rows], next_cursor=nxt)
 
 

@@ -1,7 +1,7 @@
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import ColumnElement, Select, and_, exists, false, or_, select, true
+from sqlalchemy import ColumnElement, Select, and_, case, exists, false, or_, select, true
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.principal import Principal
@@ -55,26 +55,20 @@ async def can_edit(session: AsyncSession, obj: Ownable, p: Principal) -> bool:
     return await _allowed(session, obj, p, Perm.edit)
 
 
-async def editable_ids(
+async def access_flags(
     session: AsyncSession, model: type[Ownable], p: Principal, ids: list[int]
-) -> set[int]:
-    """Ids (of `ids`) the principal may PATCH; one query, same predicate as require_perm."""
+) -> tuple[set[int], set[int]]:
+    """(editable, usable) subsets of `ids` in one query (same predicates as require_perm)."""
     if not ids:
-        return set()
+        return set(), set()
     m: Any = model
-    stmt = select(m.id).where(m.id.in_(ids), _predicate(model, p, Perm.edit))
-    return {r[0] for r in (await session.execute(stmt)).all()}
-
-
-async def usable_ids(
-    session: AsyncSession, model: type[Ownable], p: Principal, ids: list[int]
-) -> set[int]:
-    """Ids (of `ids`) the principal may `use`; same predicate as check_refs."""
-    if not ids:
-        return set()
-    m: Any = model
-    stmt = select(m.id).where(m.id.in_(ids), _predicate(model, p, Perm.use))
-    return {r[0] for r in (await session.execute(stmt)).all()}
+    stmt = select(
+        m.id,
+        case((_predicate(model, p, Perm.edit), True), else_=False),
+        case((_predicate(model, p, Perm.use), True), else_=False),
+    ).where(m.id.in_(ids))
+    rows = (await session.execute(stmt)).all()
+    return {r[0] for r in rows if r[1]}, {r[0] for r in rows if r[2]}
 
 
 async def can_use(session: AsyncSession, obj: Ownable, p: Principal) -> bool:

@@ -1478,6 +1478,8 @@ export interface components {
             backfill_value: string | null;
             /** Can Edit */
             can_edit: boolean;
+            /** Can Use */
+            can_use: boolean;
             /** Credential Id */
             credential_id: number | null;
             /** Enabled */

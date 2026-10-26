@@ -14,8 +14,9 @@ from app.api.common import get_obj, secret_box
 from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
 from app.api.v1.shares import delete_shares, shares_router
 from app.auth.authz import (
+    access_flags,
     can_edit,
-    editable_ids,
+    can_use,
     require_owner_or_admin,
     require_scope,
     visible_to,
@@ -93,8 +94,8 @@ async def list_sources(
     if not include_ephemeral:
         stmt = stmt.where(Source.ephemeral.is_(False))
     rows, nxt = await paginate(session, stmt, cursor, limit)
-    ed = await editable_ids(session, Source, p, [r.id for r in rows])
-    return Page(items=[SourceOut.of(r, r.id in ed) for r in rows], next_cursor=nxt)
+    ed, us = await access_flags(session, Source, p, [r.id for r in rows])
+    return Page(items=[SourceOut.of(r, r.id in ed, r.id in us) for r in rows], next_cursor=nxt)
 
 
 async def build_source(
@@ -125,7 +126,7 @@ async def create_source(
 ) -> SourceOut:
     require_scope(p, "sources:write")
     s = await build_source(session, p, body, box)
-    out = SourceOut.of(s, True)
+    out = SourceOut.of(s, True, True)
     await _sync(request, session, s.id)
     return out
 
@@ -213,7 +214,7 @@ async def get_source(
 ) -> SourceOut:
     require_scope(p, "sources:read")
     s: Source = await get_obj(session, Source, obj_id, p)
-    return SourceOut.of(s, await can_edit(session, s, p))
+    return SourceOut.of(s, await can_edit(session, s, p), await can_use(session, s, p))
 
 
 @router.patch("/{obj_id}", response_model=SourceOut)
@@ -261,7 +262,7 @@ async def patch_source(
     await check_refs(session, s.owner_id, s.target_id, s.credential_id)
     await check_notify_refs(session, s.owner_id, s.notify, box)
     await session.flush()
-    out = SourceOut.of(s, True)
+    out = SourceOut.of(s, True, True)
     await _sync(request, session, obj_id)
     return out
 

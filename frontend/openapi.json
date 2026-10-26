@@ -2310,6 +2310,10 @@
             "title": "Can Edit",
             "type": "boolean"
           },
+          "can_use": {
+            "title": "Can Use",
+            "type": "boolean"
+          },
           "credential_id": {
             "anyOf": [
               {
@@ -2599,7 +2603,8 @@
           "ephemeral",
           "owner_id",
           "visibility",
-          "can_edit"
+          "can_edit",
+          "can_use"
         ],
         "title": "SourceOut",
         "type": "object"
