@@ -30,7 +30,7 @@ from app.runtime.metrics import Metrics
 from app.runtime.scheduler import SourceScheduler
 from app.runtime.supervisor import JobSupervisor
 from app.runtime.writer import IpcBridge, JobWriter, make_ipc_queue
-from app.web.spa import mount_spa
+from app.web.spa import ApiHeaders, mount_spa
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -101,6 +101,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         same_site="lax",
         https_only=settings.public_url.startswith("https"),
     )
+    app.add_middleware(ApiHeaders)
     app.include_router(auth_api.router)
     app.include_router(api_router)
 

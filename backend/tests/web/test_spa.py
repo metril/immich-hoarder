@@ -144,11 +144,65 @@ async def test_path_traversal_404(web: httpx.AsyncClient) -> None:
     for p in ("/..%2f..%2fsecret.txt", "/assets/../../secret.txt", "/%2e%2e/secret.txt"):
         r = await web.get(p)
         assert b"top-secret" not in r.content
-        assert r.status_code in (200, 404)
-        if r.status_code == 200:
-            assert r.content == INDEX  # normalised to an in-root path
-    r = await web.get("/..%2f..%2fsecret.txt")
+        assert r.status_code == 404, p
+
+
+async def test_nul_byte_404(web: httpx.AsyncClient) -> None:
+    r = await web.get("/a%00b")
     assert r.status_code == 404
+
+
+async def test_symlink_escape_404(web: httpx.AsyncClient, dist: Path) -> None:
+    (dist / "leak.txt").symlink_to(dist.parent / "secret.txt")
+    r = await web.get("/leak.txt")
+    assert r.status_code == 404
+    assert b"top-secret" not in r.content
+
+
+async def test_post_unknown_api_is_json_404_with_headers(web: httpx.AsyncClient) -> None:
+    r = await web.post("/api/v1/nope")
+    assert r.status_code == 404
+    assert r.json() == {"detail": "Not Found"}
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert r.headers["content-security-policy"] == CSP
+
+
+async def test_post_non_api_is_405(web: httpx.AsyncClient) -> None:
+    assert (await web.post("/jobs/1")).status_code == 405
+
+
+async def test_api_get_404_has_security_headers(web: httpx.AsyncClient) -> None:
+    _secure(await web.get("/api/v1/nope"))
+
+
+async def test_api_docs_not_shadowed(web: httpx.AsyncClient) -> None:
+    r = await web.get("/api/docs")
+    assert r.status_code == 200
+    assert "swagger" in r.text.lower()
+    assert "content-security-policy" not in r.headers
+    o = await web.get("/api/openapi.json")
+    assert o.status_code == 200
+    assert "content-security-policy" not in o.headers
+    assert o.headers["x-content-type-options"] == "nosniff"
+
+
+async def test_api_responses_get_nosniff_and_frame_ancestors(web: httpx.AsyncClient) -> None:
+    r = await web.get("/api/v1/jobs")
+    assert r.headers["x-content-type-options"] == "nosniff"
+    assert r.headers["content-security-policy"] == "frame-ancestors 'none'"
+
+
+async def test_direct_precompressed_hit_404(web: httpx.AsyncClient) -> None:
+    assert (await web.get("/assets/app-abc123.js.br")).status_code == 404
+    assert (await web.get("/assets/app-abc123.js.gz")).status_code == 404
+
+
+async def test_accept_encoding_star(web: httpx.AsyncClient) -> None:
+    r, body = await _raw(web, "/assets/app-abc123.js", **{"Accept-Encoding": "*"})
+    assert r.headers["content-encoding"] == "br"
+    assert body == JS_BR
+    r, body = await _raw(web, "/assets/app-abc123.js", **{"Accept-Encoding": "br;q=0, *"})
+    assert r.headers["content-encoding"] == "gzip"
 
 
 async def test_head_supported(web: httpx.AsyncClient) -> None:
