@@ -1,0 +1,20 @@
+{
+  "interactiveLogin": false,
+  "tokenCallbacks": [
+    {
+      "issuerId": "default",
+      "requestMappings": [
+        {
+          "requestParam": "client_id",
+          "match": "immich-hoarder",
+          "claims": {
+            "sub": "e2e-admin",
+            "aud": ["immich-hoarder"],
+            "email": "admin@e2e.test",
+            "groups": ["hoarder-admins"]
+          }
+        }
+      ]
+    }
+  ]
+}

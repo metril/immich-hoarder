@@ -1,0 +1,39 @@
+# Postgres instead of the default SQLite. Use with the base file:
+#   docker compose -f compose.example.yml -f deploy/compose.postgres.yml up -d
+# Create secrets/ih_pg_password (the password) and secrets/ih_db_url, e.g.
+#   postgresql://hoarder:<password>@postgres:5432/hoarder
+services:
+  postgres:
+    image: postgres:17.11-alpine@sha256:266d3c257594e195b309ae9d1805e54c788f1d7b375f56bf6c367aac6c917e7b
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hoarder
+      POSTGRES_DB: hoarder
+      POSTGRES_PASSWORD_FILE: /run/secrets/ih_pg_password
+    secrets:
+      - ih_pg_password
+    volumes:
+      - ih_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hoarder -d hoarder"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  immich-hoarder:
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      IH_DATABASE_URL_FILE: /run/secrets/ih_db_url
+    secrets:
+      - ih_db_url
+
+secrets:
+  ih_pg_password:
+    file: ./secrets/ih_pg_password
+  ih_db_url:
+    file: ./secrets/ih_db_url
+
+volumes:
+  ih_pg:
