@@ -26,6 +26,12 @@ Set `IH_E2E_IMAGE` to test another image tag and `IH_E2E_LOG_DIR` to keep the co
 
 The only setup needed is Settings → Actions → General → Workflow permissions: enable "Allow GitHub Actions to create and approve pull requests". Release PRs opened with `GITHUB_TOKEN` do not trigger `ci.yml`, so the release workflow posts a `ci-ok` commit status on them, only when they touch nothing but version files (CHANGELOG.md, manifest, backend/app/_version.py, version.txt).
 
+## Load test
+`backend/loadtest/dedupe.py` seeds `assets_seen` and times the real `DedupeStore` lookups (`url_seen`, `match_sha1`, `match_phash` with max distance 3, half hits and half misses). It is not part of pytest or `ci.yml`; the only workflow is the manual `loadtest.yml` (Actions → Load test → Run workflow, `rows` input, default 5,000,000). It exits 1 if any p99 is >= `--p99-ms` (default 5).
+- Quick run (about 1 min): `cd backend && uv run python -m loadtest.dedupe --rows 1000000 --db /tmp/lt.db`
+- Full run: `cd backend && uv run python -m loadtest.dedupe --rows 100000000 --db /fast/disk/lt.db`. Needs about 25 GB free (roughly 210 bytes per row) and an SSD; expect 1-3 h of seeding. Add `--keep` to retain the DB.
+- Pass criterion: p99 < 5 ms for all three lookups.
+
 ## Frontend
 The web UI lives in `frontend/` (Vite, React, TanStack Router). Use Node 24.21.0 and pnpm 12.12.1 (`corepack enable`).
 - `pnpm install --frozen-lockfile`, then `pnpm dev` (proxies `/api` to `127.0.0.1:8080`).
