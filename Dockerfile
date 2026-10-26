@@ -1,15 +1,15 @@
 # Plan 4 adds a node build stage for the web frontend here.
 
-FROM ghcr.io/astral-sh/uv:0.10.9 AS uv
+FROM ghcr.io/astral-sh/uv:0.10.9@sha256:10902f58a1606787602f303954cea099626a4adb02acbac4c69920fe9d278f82 AS uv
 
-FROM python:3.12-slim AS builder
+FROM python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704 AS builder
 COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /build
-ENV UV_PROJECT_ENVIRONMENT=/opt/venv UV_COMPILE_BYTECODE=0 UV_LINK_MODE=copy
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 COPY pyproject.toml uv.lock README.md LICENSE ./
 RUN uv sync --frozen --no-dev --no-editable --no-install-project
 
-FROM python:3.12-slim
+FROM python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
 LABEL org.opencontainers.image.source="https://github.com/metril/immich-hoarder" \
       org.opencontainers.image.licenses="LicenseRef-Proprietary"
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
@@ -20,6 +20,7 @@ RUN useradd --uid 10001 --no-create-home --shell /usr/sbin/nologin hoarder \
 COPY --from=builder /opt/venv /opt/venv
 # backend/ keeps alembic.ini and alembic/ next to the app package (see app/db/migrate.py)
 COPY backend/ /srv/backend/
+RUN python -m compileall -q /srv/backend
 WORKDIR /srv/backend
 USER 10001
 VOLUME /data

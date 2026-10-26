@@ -1,6 +1,6 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +9,7 @@ from app.auth.authz import require_owner_or_admin, require_scope
 from app.auth.deps import current_principal
 from app.auth.principal import Principal
 from app.db.engine import get_session
-from app.db.models import Share
+from app.db.models import PrincipalType, Share, User
 from app.schemas.shares import ShareEntry, SharesBody
 
 
@@ -17,6 +17,12 @@ async def delete_shares(session: AsyncSession, share_type: str, obj_id: int) -> 
     await session.execute(
         delete(Share).where(Share.resource_type == share_type, Share.resource_id == obj_id)
     )
+
+
+async def _user_exists(session: AsyncSession, principal_id: str) -> bool:
+    if not principal_id.isascii() or not principal_id.isdigit():
+        return False
+    return await session.get(User, int(principal_id)) is not None
 
 
 def shares_router(model: type[Any], resource: str) -> APIRouter:
@@ -27,7 +33,7 @@ def shares_router(model: type[Any], resource: str) -> APIRouter:
     async def get_shares(
         obj_id: int,
         p: Principal = Depends(current_principal),
-        session: AsyncSession = Depends(get_session),
+        session: AsyncSession = Depends(get_session, scope="function"),
     ) -> SharesBody:
         require_scope(p, f"{resource}:read")
         obj = await get_obj(session, model, obj_id, p)
@@ -54,7 +60,7 @@ def shares_router(model: type[Any], resource: str) -> APIRouter:
         obj_id: int,
         body: SharesBody,
         p: Principal = Depends(current_principal),
-        session: AsyncSession = Depends(get_session),
+        session: AsyncSession = Depends(get_session, scope="function"),
     ) -> SharesBody:
         require_scope(p, f"{resource}:write")
         obj = await get_obj(session, model, obj_id, p)
@@ -63,6 +69,11 @@ def shares_router(model: type[Any], resource: str) -> APIRouter:
         seen: dict[tuple[str, str], ShareEntry] = {}
         for e in body.shares:  # last entry wins per principal
             seen[(e.principal_type.value, e.principal_id)] = e
+        for e in seen.values():
+            if e.principal_type == PrincipalType.user and not await _user_exists(
+                session, e.principal_id
+            ):
+                raise HTTPException(422, "unknown user")
         for e in seen.values():
             session.add(
                 Share(

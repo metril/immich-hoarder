@@ -26,7 +26,7 @@ async def list_targets(
     cursor: str | None = None,
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Page[TargetOut]:
     require_scope(p, "targets:read")
     rows, nxt = await paginate(
@@ -40,7 +40,7 @@ async def create_target(
     body: TargetIn,
     p: Principal = Depends(current_principal),
     box: SecretBox = Depends(secret_box),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> TargetOut:
     require_scope(p, "targets:write")
     t = ImmichTarget(
@@ -59,7 +59,7 @@ async def create_target(
 async def get_target(
     obj_id: int,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> TargetOut:
     require_scope(p, "targets:read")
     return TargetOut.of(await get_obj(session, ImmichTarget, obj_id, p))
@@ -71,7 +71,7 @@ async def patch_target(
     body: TargetPatch,
     p: Principal = Depends(current_principal),
     box: SecretBox = Depends(secret_box),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> TargetOut:
     require_scope(p, "targets:write")
     t: ImmichTarget = await get_obj(session, ImmichTarget, obj_id, p, Perm.edit)
@@ -88,7 +88,7 @@ async def patch_target(
 async def delete_target(
     obj_id: int,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Response:
     require_scope(p, "targets:write")
     t: ImmichTarget = await get_obj(session, ImmichTarget, obj_id, p)
@@ -132,7 +132,7 @@ async def test_target(
     request: Request,
     p: Principal = Depends(current_principal),
     box: SecretBox = Depends(secret_box),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> TargetTestOut:
     require_scope(p, "targets:read")
     t: ImmichTarget = await get_obj(session, ImmichTarget, obj_id, p, Perm.use)
@@ -146,7 +146,7 @@ async def target_albums(
     request: Request,
     p: Principal = Depends(current_principal),
     box: SecretBox = Depends(secret_box),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> AlbumList:
     require_scope(p, "targets:read")
     t: ImmichTarget = await get_obj(session, ImmichTarget, obj_id, p, Perm.use)

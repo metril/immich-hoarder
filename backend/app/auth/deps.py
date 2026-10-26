@@ -33,7 +33,7 @@ def check_csrf(request: Request) -> None:
 
 
 async def current_principal(
-    request: Request, session: AsyncSession = Depends(get_session)
+    request: Request, session: AsyncSession = Depends(get_session, scope="function")
 ) -> Principal:
     settings: Settings = request.app.state.settings
 

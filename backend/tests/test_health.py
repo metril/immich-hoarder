@@ -20,3 +20,7 @@ async def test_startup_applies_migrations(client: httpx.AsyncClient) -> None:
     async with session_scope() as s:
         rows = (await s.execute(text("SELECT name FROM sqlite_master WHERE name='users'"))).all()
     assert rows
+
+
+async def test_docs_served(client: httpx.AsyncClient) -> None:
+    assert (await client.get("/api/docs")).status_code == 200

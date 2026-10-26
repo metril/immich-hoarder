@@ -137,3 +137,48 @@ async def test_unknown_kid_refetches_after_window(
         tok = idp.make_token("ivy", ["hoarder-users"], kid=kid)
         assert (await client.get("/api/v1/auth/me", headers=bearer(tok))).status_code == 401
     assert idp.jwks_calls == 3
+
+
+async def test_upsert_user_recovers_from_concurrent_first_login(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from sqlalchemy.ext.asyncio import AsyncSession
+
+    from app.auth.principal import upsert_user
+    from app.core.config import Settings
+
+    settings: Settings = client._transport.app.state.settings  # type: ignore[attr-defined]
+    real = AsyncSession.execute
+    raced = False
+
+    async def racing(self: AsyncSession, *a: object, **k: object) -> object:
+        nonlocal raced
+        res = await real(self, *a, **k)  # type: ignore[arg-type]
+        if not raced:
+            raced = True  # the user appears right after our SELECT found nothing
+            async with session_scope() as winner:
+                winner.add(User(sub="racer", groups=["hoarder-users"]))
+        return res
+
+    monkeypatch.setattr(AsyncSession, "execute", racing)
+    async with session_scope() as s:
+        user = await upsert_user(s, {"sub": "racer", "groups": ["hoarder-users"]}, settings)
+        assert user.sub == "racer" and user.id
+    monkeypatch.undo()
+    async with session_scope() as s:
+        rows = (await s.execute(select(User).where(User.sub == "racer"))).scalars().all()
+        assert len(rows) == 1
+
+
+async def test_logout_requires_csrf_when_logged_in(
+    client: httpx.AsyncClient, idp: fake_idp.FakeIdp
+) -> None:
+    assert (await client.post("/api/v1/auth/logout")).status_code == 204  # no session
+    await do_login(client, idp, "frank", ["hoarder-users"])
+    assert (await client.post("/api/v1/auth/logout")).status_code == 403
+    assert (await client.get("/api/v1/auth/me")).status_code == 200
+    tok = client.cookies["ih_csrf"]
+    assert (
+        await client.post("/api/v1/auth/logout", headers={"X-CSRF-Token": tok})
+    ).status_code == 204
+    assert (await client.get("/api/v1/auth/me")).status_code == 401

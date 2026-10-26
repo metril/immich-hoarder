@@ -44,7 +44,7 @@ async def list_uploads(
     cursor: str | None = None,
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Page[UploadOut]:
     require_scope(p, "jobs:read")
     visible = visible_jobs_stmt(p).with_only_columns(Job.id)
@@ -109,7 +109,7 @@ async def thumbnail(
     size: Literal["thumbnail", "preview"] = "thumbnail",
     p: Principal = Depends(current_principal),
     box: SecretBox = Depends(secret_box),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Response:
     require_scope(p, "targets:read")
     try:

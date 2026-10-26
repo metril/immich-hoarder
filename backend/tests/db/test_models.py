@@ -111,10 +111,6 @@ async def test_fk_policies(session: AsyncSession) -> None:
     seen = (await session.execute(select(AssetSeen))).scalars().all()
     assert len(seen) == 1 and seen[0].source_id is None
     await session.rollback()
-    await _seed_again(session)
-
-
-async def _seed_again(session: AsyncSession) -> None:
     target_id, _ = await _seed(session)
     with pytest.raises(IntegrityError):
         await session.execute(text("DELETE FROM immich_targets WHERE id = :i"), {"i": target_id})

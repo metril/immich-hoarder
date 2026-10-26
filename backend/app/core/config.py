@@ -41,8 +41,11 @@ class Settings(BaseSettings):
             var = f"{_ENV_PREFIX}{name.upper()}"
             path = os.environ.get(f"{var}_FILE")
             if path and name not in data and var not in os.environ:
-                text = Path(path).read_text()
-                data[name] = text.removesuffix("\n")
+                try:
+                    text = Path(path).read_text()
+                except OSError as e:
+                    raise ValueError(f"{var}_FILE: cannot read {path}: {e.strerror}") from None
+                data[name] = text.rstrip("\r\n")
         return data
 
     @field_validator("master_key", "session_secret")

@@ -87,6 +87,7 @@ class Timestamps:
 
 class Ownable:
     share_type: ClassVar[str]
+    id: Mapped[int]
     visibility: Mapped[Visibility] = mapped_column(
         _enum(Visibility), default=Visibility.private, server_default=Visibility.private.value
     )
@@ -127,6 +128,7 @@ class ApiKey(Timestamps, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(255))
+    # String(8) is intentional: the 8-char lowercase-alphanumeric lookup prefix of the raw key
     prefix: Mapped[str] = mapped_column(String(8), unique=True)
     hash: Mapped[str] = mapped_column(String(255))
     scopes: Mapped[list[str]] = mapped_column(JSON, default=list)
@@ -231,6 +233,8 @@ class JobItem(Base):
 
 
 class AssetSeen(Base):
+    # Rows outlive their source (source_id -> NULL on delete): intentional, since dedupe
+    # is per target via sha1 and phash, not per source.
     __tablename__ = "assets_seen"
     __table_args__ = (
         UniqueConstraint("source_id", "url_hash", name="uq_assets_seen_source_url"),

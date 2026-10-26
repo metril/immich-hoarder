@@ -29,7 +29,8 @@ async def _all(session: AsyncSession) -> dict[str, Any]:
 
 @router.get("")
 async def get_settings(
-    _p: Principal = Depends(require_admin), session: AsyncSession = Depends(get_session)
+    _p: Principal = Depends(require_admin),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> dict[str, Any]:
     return await _all(session)
 
@@ -39,7 +40,7 @@ async def put_settings(
     body: dict[str, Any],
     request: Request,
     _p: Principal = Depends(require_admin),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> dict[str, Any]:
     unknown = sorted(set(body) - SCHEMAS.keys())
     if unknown:

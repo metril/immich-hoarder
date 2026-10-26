@@ -53,7 +53,7 @@ async def test_bad_album_template_field_422(client: httpx.AsyncClient) -> None:
 
 
 async def test_scope_enforced(client: httpx.AsyncClient) -> None:
-    from helpers import headers_for, make_user
+    from helpers import headers_for
 
     uid, full = await actor("a")
     tid = await _target(client, full)
@@ -63,7 +63,6 @@ async def test_scope_enforced(client: httpx.AsyncClient) -> None:
     assert (await client.get("/api/v1/sources", headers=h)).status_code == 200
     ok = await client.post("/api/v1/sources", json={**SRC, "target_id": tid}, headers=full)
     assert ok.status_code == 201
-    _ = make_user
 
 
 async def test_disabled_owner_blocks_source_update(client: httpx.AsyncClient) -> None:

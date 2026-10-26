@@ -83,3 +83,11 @@ async def test_csrf_required_for_cookie_mutations(
     fresh = httpx.AsyncClient(transport=client._transport, base_url="http://testserver")
     assert (await fresh.post("/_t/echo", headers={"X-API-Key": raw})).status_code == 200
     await fresh.aclose()
+
+
+def test_api_key_regex_requires_exactly_32() -> None:
+    from app.auth.apikeys import _RAW_RE
+
+    assert _RAW_RE.match("ih_abcd1234_" + "A" * 32)
+    assert _RAW_RE.match("ih_abcd1234_" + "A" * 33) is None
+    assert _RAW_RE.match("ih_abcd1234_" + "A" * 31) is None

@@ -74,3 +74,23 @@ async def test_delete_removes_shares(client: httpx.AsyncClient) -> None:
     assert (await client.delete(f"/api/v1/targets/{tid}", headers=ha)).status_code == 204
     async with session_scope() as s:
         assert (await s.execute(select(Share))).first() is None
+
+
+async def test_share_unknown_user_principal_422(client: httpx.AsyncClient) -> None:
+    _, ha = await actor("a")
+    tid = (await client.post("/api/v1/targets", json=TARGET, headers=ha)).json()["id"]
+    for pid in ("99999", "not-a-number"):
+        r = await client.put(f"/api/v1/targets/{tid}/shares", json=_body_pid(pid), headers=ha)
+        assert r.status_code == 422 and r.json() == {"detail": "unknown user"}
+    g = _body_pid("any-free-form-group") | {}
+    g["shares"][0]["principal_type"] = "group"  # type: ignore[index]
+    assert (
+        await client.put(f"/api/v1/targets/{tid}/shares", json=g, headers=ha)
+    ).status_code == 200
+
+
+def _body_pid(pid: str) -> dict[str, object]:
+    return {
+        "visibility": "restricted",
+        "shares": [{"principal_type": "user", "principal_id": pid, "perm": "use"}],
+    }

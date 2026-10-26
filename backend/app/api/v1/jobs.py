@@ -61,7 +61,7 @@ async def run_source(
     request: Request,
     body: RunIn | None = None,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> JobOut:
     require_scope(p, "sources:run")
     sup = _supervisor(request)
@@ -74,7 +74,7 @@ async def adhoc_rip(
     body: RipIn,
     request: Request,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
     box: SecretBox = Depends(secret_box),
 ) -> JobOut:
     require_scope(p, "sources:run")
@@ -104,7 +104,7 @@ async def list_jobs(
     cursor: str | None = None,
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Page[JobOut]:
     require_scope(p, "jobs:read")
     stmt = visible_jobs_stmt(p)
@@ -121,7 +121,7 @@ async def list_jobs(
 async def get_job(
     job_id: int,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> JobOut:
     require_scope(p, "jobs:read")
     return await _out(session, await _visible_job(session, p, job_id))
@@ -134,7 +134,7 @@ async def job_items(
     cursor: str | None = None,
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Page[ItemOut]:
     require_scope(p, "jobs:read")
     await _visible_job(session, p, job_id)
@@ -152,7 +152,7 @@ async def job_events(
     cursor: str | None = None,
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Page[EventOut]:
     require_scope(p, "jobs:read")
     if min_level is not None and min_level not in LOG_LEVELS:
@@ -170,7 +170,7 @@ async def cancel_job(
     job_id: int,
     request: Request,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> JobOut:
     require_scope(p, "jobs:write")
     sup = _supervisor(request)
@@ -188,7 +188,7 @@ async def retry_job(
     job_id: int,
     request: Request,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> JobOut:
     require_scope(p, "sources:run")
     sup = _supervisor(request)

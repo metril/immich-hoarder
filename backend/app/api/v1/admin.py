@@ -31,7 +31,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 async def create_backup(
     request: Request,
     _p: Principal = Depends(require_admin),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> dict[str, str]:
     settings: Settings = request.app.state.settings
     rt = await load_runtime_settings(session)
@@ -59,7 +59,8 @@ async def get_backups(
 
 @router.post("/maintenance/prune")
 async def run_prune(
-    _p: Principal = Depends(require_admin), session: AsyncSession = Depends(get_session)
+    _p: Principal = Depends(require_admin),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> dict[str, int]:
     rt = await load_runtime_settings(session)
     jobs = await prune_jobs(session, rt.retention_days)
@@ -79,7 +80,7 @@ async def _actor(session: AsyncSession, p: Principal) -> str:
 async def export_yaml(
     secrets: Literal["omit", "encrypted"] = "omit",
     p: Principal = Depends(require_admin),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
     box: SecretBox = Depends(secret_box),
 ) -> Response:
     doc = await export_config(session, box if secrets == "encrypted" else None)
@@ -106,7 +107,7 @@ async def import_yaml(
     request: Request,
     dry_run: bool = False,
     p: Principal = Depends(require_admin),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
     box: SecretBox = Depends(secret_box),
 ) -> dict[str, Any]:
     raw = await _read_limited(request)

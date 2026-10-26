@@ -47,8 +47,7 @@ def visible_to(
 
 async def _allowed(session: AsyncSession, obj: Ownable, p: Principal, perm: Perm) -> bool:
     m: Any = type(obj)
-    oid = obj.id  # type: ignore[attr-defined]
-    stmt = visible_to(select(m.id).where(m.id == oid), m, p, perm)
+    stmt = visible_to(select(m.id).where(m.id == obj.id), m, p, perm)
     return (await session.execute(stmt)).first() is not None
 
 

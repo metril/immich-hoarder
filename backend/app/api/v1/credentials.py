@@ -34,7 +34,7 @@ async def list_credentials(
     cursor: str | None = None,
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Page[CredentialOut]:
     require_scope(p, "credentials:read")
     rows, nxt = await paginate(
@@ -48,7 +48,7 @@ async def create_credential(
     body: CredentialIn,
     p: Principal = Depends(current_principal),
     box: SecretBox = Depends(secret_box),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> CredentialOut:
     require_scope(p, "credentials:write")
     if body.kind == CredentialKind.apprise:
@@ -70,7 +70,7 @@ async def create_credential(
 async def get_credential(
     obj_id: int,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> CredentialOut:
     require_scope(p, "credentials:read")
     return CredentialOut.of(await get_obj(session, Credential, obj_id, p))
@@ -82,7 +82,7 @@ async def patch_credential(
     body: CredentialPatch,
     p: Principal = Depends(current_principal),
     box: SecretBox = Depends(secret_box),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> CredentialOut:
     require_scope(p, "credentials:write")
     c: Credential = await get_obj(session, Credential, obj_id, p, Perm.edit)
@@ -101,7 +101,7 @@ async def patch_credential(
 async def delete_credential(
     obj_id: int,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Response:
     require_scope(p, "credentials:write")
     c: Credential = await get_obj(session, Credential, obj_id, p)

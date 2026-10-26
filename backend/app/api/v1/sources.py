@@ -78,7 +78,7 @@ async def list_sources(
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     include_ephemeral: bool = False,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Page[SourceOut]:
     require_scope(p, "sources:read")
     stmt = visible_to(select(Source), Source, p)
@@ -111,7 +111,7 @@ async def create_source(
     body: SourceIn,
     request: Request,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
     box: SecretBox = Depends(secret_box),
 ) -> SourceOut:
     require_scope(p, "sources:write")
@@ -134,7 +134,7 @@ async def preview_source(
     body: PreviewIn,
     request: Request,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
     box: SecretBox = Depends(secret_box),
 ) -> PreviewOut:
     require_scope(p, "sources:read")
@@ -196,7 +196,7 @@ async def preview_source(
 async def get_source(
     obj_id: int,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> SourceOut:
     require_scope(p, "sources:read")
     return SourceOut.of(await get_obj(session, Source, obj_id, p))
@@ -208,7 +208,7 @@ async def patch_source(
     body: SourcePatch,
     request: Request,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
     box: SecretBox = Depends(secret_box),
 ) -> SourceOut:
     require_scope(p, "sources:write")
@@ -257,7 +257,7 @@ async def delete_source(
     obj_id: int,
     request: Request,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Response:
     require_scope(p, "sources:write")
     s: Source = await get_obj(session, Source, obj_id, p)

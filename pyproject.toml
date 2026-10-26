@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = "LicenseRef-Proprietary"
 license-files = ["LICENSE"]
+classifiers = ["Private :: Do Not Upload"]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
@@ -31,6 +32,7 @@ dependencies = [
     "apscheduler>=3.11,<4",
     "sse-starlette>=3.6.0",
     "pyyaml>=6.0.3",
+    "prometheus-client>=0.26.0",
 ]
 
 [dependency-groups]
