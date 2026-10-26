@@ -321,3 +321,41 @@ async def test_roundtrip_notify_urls_and_source_proxy_enc(client: httpx.AsyncCli
         assert src.proxy == "http://pu:PROXYPW@proxy.example:8080"
         row = await s.get(Setting, "notify")
         assert row and row.value["urls"] == ["json://notify.example/hook"]
+
+
+async def test_share_principals_portable_by_sub(client: httpx.AsyncClient) -> None:
+    _, ha = await actor("adm", Role.admin)
+    await actor("pad1")
+    await actor("pad2")
+    ub, _hb = await actor("b")
+    r = "- {resource_type: target, resource: t, "
+    doc = (
+        "version: 1\ntargets:\n- {name: t, url: 'http://immich', api_key: k}\nshares:\n"
+        + r
+        + "principal_type: user, principal_sub: b, perm: use}\n"
+        + r
+        + "principal_type: user, principal_sub: gone, perm: use}\n"
+        + r
+        + "principal_type: group, principal_id: g, perm: edit}\n"
+    )
+    out = (await client.post(f"{U}/import", content=doc, headers=ha)).json()
+    assert out["errors"] == [], out
+    assert out["created"]["shares"] == 2 and out["skipped"]["shares"] == 1
+    async with session_scope() as s:
+        rows = {
+            (r.principal_type.value, r.principal_id)
+            for r in (await s.execute(select(Share))).scalars()
+        }
+    assert rows == {("user", str(ub)), ("group", "g")}
+    exp = yaml.safe_load((await client.get(f"{U}/export", headers=ha)).text)
+    users = [x for x in exp["shares"] if x["principal_type"] == "user"]
+    assert users == [
+        {
+            "resource_type": "target",
+            "resource": "t",
+            "owner": "adm",
+            "principal_type": "user",
+            "principal_sub": "b",
+            "perm": "use",
+        }
+    ]

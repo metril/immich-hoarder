@@ -20,6 +20,7 @@ from app.db.models import (
     Credential,
     CredentialKind,
     ImmichTarget,
+    PrincipalType,
     Setting,
     Share,
     Source,
@@ -178,16 +179,21 @@ async def export_config(session: AsyncSession, box: SecretBox | None) -> dict[st
         res = names.get(sh.resource_type, {}).get(sh.resource_id)
         if res is None:
             continue
-        sh_out.append(
-            {
-                "resource_type": sh.resource_type,
-                "resource": res[0],
-                "owner": res[1],
-                "principal_type": sh.principal_type.value,
-                "principal_id": sh.principal_id,
-                "perm": sh.perm.value,
-            }
-        )
+        d = {
+            "resource_type": sh.resource_type,
+            "resource": res[0],
+            "owner": res[1],
+            "principal_type": sh.principal_type.value,
+        }
+        if sh.principal_type == PrincipalType.user:  # ids are not portable; use the oidc sub
+            sub = subs.get(int(sh.principal_id)) if sh.principal_id.isdigit() else None
+            if sub is None:
+                continue
+            d["principal_sub"] = sub
+        else:
+            d["principal_id"] = sh.principal_id
+        d["perm"] = sh.perm.value
+        sh_out.append(d)
     return {
         "version": VERSION,
         "settings": settings,
@@ -522,8 +528,24 @@ class _Importer:
                 model = SHARE_MODELS.get(str(e.get("resource_type")))
                 if model is None:
                     raise ValueError("unknown resource_type")
+                pid = e.get("principal_id")
+                if e.get("principal_type") == PrincipalType.user.value:
+                    sub = e.get("principal_sub")
+                    if not isinstance(sub, str) or not sub:
+                        raise ValueError("user share needs principal_sub")
+                    user = (
+                        await self.s.execute(select(User).where(User.sub == sub))
+                    ).scalar_one_or_none()
+                    if user is None:  # no such local user: skip, not an error
+                        self.res.skipped["shares"] += 1
+                        continue
+                    pid = str(user.id)
                 entry = ShareEntry.model_validate(
-                    {k: e.get(k) for k in ("principal_type", "principal_id", "perm")}
+                    {
+                        "principal_type": e.get("principal_type"),
+                        "principal_id": pid,
+                        "perm": e.get("perm"),
+                    }
                 )
                 owner_id = await self.owner(e)
                 name = e.get("resource")
