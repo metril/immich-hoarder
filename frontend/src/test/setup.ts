@@ -87,6 +87,8 @@ beforeAll(() => {
   // jsdom has no layout; give virtualizers a viewport.
   Object.defineProperty(HTMLElement.prototype, "offsetHeight", { configurable: true, value: 800 });
   Object.defineProperty(HTMLElement.prototype, "offsetWidth", { configurable: true, value: 1024 });
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", { configurable: true, value: 800 });
+  Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, value: 1024 });
   HTMLElement.prototype.getBoundingClientRect = () =>
     ({ width: 1024, height: 800, top: 0, left: 0, right: 1024, bottom: 800, x: 0, y: 0, toJSON: () => ({}) });
   Element.prototype.scrollIntoView = () => {};

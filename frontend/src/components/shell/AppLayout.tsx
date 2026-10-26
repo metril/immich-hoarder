@@ -57,7 +57,7 @@ function Shell({ me }: { me: MeOut }) {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3 sm:px-4">
           <MobileNav admin={admin} />
-          <h1 className="truncate text-base font-semibold">{title}</h1>
+          <p className="truncate text-base font-semibold">{title}</p>
           <div className="ml-auto flex items-center gap-1">
             <button
               type="button"

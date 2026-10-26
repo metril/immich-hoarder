@@ -36,6 +36,7 @@ export default function JobsPage() {
 
   return (
     <div className="grid gap-3">
+      <h1 className="sr-only">Jobs</h1>
       <div className="flex flex-wrap items-center gap-2">
         <div role="group" aria-label="Status filter" className="flex flex-wrap gap-1">
           {(["all", ...JOB_STATUSES] as const).map((s) => {
