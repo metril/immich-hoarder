@@ -4,6 +4,8 @@ from typing import Any
 
 import yaml
 
+from app.core.config import Settings
+
 ROOT = Path(__file__).parents[2]
 BASE = ROOT / "compose.example.yml"
 PG = ROOT / "deploy" / "compose.postgres.yml"
@@ -27,6 +29,7 @@ def test_compose_invariants() -> None:
     assert s["read_only"] is True
     assert s["stop_grace_period"] == "30s"
     assert "/scratch:size=4g,uid=10001,gid=10001" in s["tmpfs"]
+    assert Settings.model_fields["scratch_max_bytes"].default == 4 * 1024**3
     assert "/tmp" in s["tmpfs"]
     assert "ports" not in s
     assert "healthcheck" not in s
@@ -96,5 +99,5 @@ def test_images_pinned_by_digest() -> None:
         for name, svc in _load(path)["services"].items():
             image = svc.get("image")
             if image is None or name == SVC:
-                continue  # our own image is pinned by release tag, not digest
+                continue  # our own image is not digest-pinned (floating tag)
             assert re.search(r"@sha256:[0-9a-f]{64}$", image), f"{path.name}:{name}"

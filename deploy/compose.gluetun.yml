@@ -23,4 +23,5 @@ services:
 
   immich-hoarder:
     depends_on:
-      - gluetun
+      gluetun:
+        condition: service_healthy
