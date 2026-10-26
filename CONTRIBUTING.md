@@ -13,6 +13,13 @@ Tests run in parallel (pytest-xdist `-n auto` is the default via `addopts`) and 
 - Frontend: `pnpm test` (vitest threads); a CI shard: `pnpm test --shard=1/2`.
 - CI splits backend tests into 4 shards and frontend tests into 2; all feed the single `ci-ok` check.
 
+## E2E with real Immich
+Needs Docker; skipped unless `IH_E2E_IMMICH=1`. It starts a real Immich (plus Postgres, Valkey, a mock OIDC provider and a fixture site) on random host ports, runs the full upload, link, re-run and Immich-delete cycle, and removes the stack afterwards. The first run pulls the large Immich image.
+```
+docker build -t immich-hoarder:e2e . && IH_E2E_IMMICH=1 uv run pytest backend/tests/e2e_immich -n 0 -q
+```
+Set `IH_E2E_IMAGE` to test another image tag and `IH_E2E_LOG_DIR` to keep the compose logs. CI runs this as the `e2e-immich` job.
+
 ## Releases
 1. Merges to `main` update a release-please PR (version bump + `CHANGELOG.md`).
 2. Merging that PR creates the tag and GitHub release, then the `publish` workflow builds and pushes the multi-arch image to `ghcr.io/metril/immich-hoarder`. It can also be run manually with a `tag` input.
