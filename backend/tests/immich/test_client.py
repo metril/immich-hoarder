@@ -322,3 +322,13 @@ def test_client_thumbnail(client: ImmichClient) -> None:
     )
     with pytest.raises(ImmichError):
         client.thumbnail("big", "thumbnail", max_bytes=10)
+
+
+def test_thumbnail_content_length_rejected_early(client: ImmichClient) -> None:
+    respx.get(f"{BASE}/assets/big/thumbnail").mock(
+        return_value=httpx.Response(
+            200, content=b"x", headers={"content-type": "image/png", "content-length": "999"}
+        )
+    )
+    with pytest.raises(ImmichError):
+        client.thumbnail("big", "thumbnail", max_bytes=10)

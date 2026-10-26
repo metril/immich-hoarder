@@ -59,7 +59,9 @@ def _thumb_handler(
     def handler(req: httpx.Request) -> httpx.Response:
         assert req.url.path == f"/api/assets/{A1}/thumbnail"
         assert req.url.params["size"] == "preview"
-        return httpx.Response(status, content=body, headers={"content-type": ctype})
+        return httpx.Response(
+            status, stream=httpx.ByteStream(body), headers={"content-type": ctype}
+        )
 
     return httpx.MockTransport(handler)
 
@@ -113,3 +115,58 @@ async def test_thumbnail_upstream_errors(client: httpx.AsyncClient) -> None:
     mount(client, _thumb_handler(status=401))
     r = await client.get(url, headers=h)
     assert r.status_code == 502 and r.json() == {"detail": "immich unauthorized"}
+
+
+async def test_thumbnail_svg_rejected_and_params_stripped(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    tid, sid = await _setup(client, h)
+    await _items(sid, [("uploaded", A1)])
+    url = f"/api/v1/targets/{tid}/assets/{A1}/thumbnail?size=preview"
+    mount(client, _thumb_handler(ctype="image/svg+xml"))
+    assert (await client.get(url, headers=h)).status_code == 502
+    mount(client, _thumb_handler(ctype="Image/JPEG; charset=x"))
+    r = await client.get(url, headers=h)
+    assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
+
+
+async def test_thumbnail_uppercase_id_finds_stored(client: httpx.AsyncClient) -> None:
+    aid = "abcdefab-1111-1111-1111-111111111111"
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        assert req.url.path == f"/api/assets/{aid}/thumbnail"
+        return httpx.Response(
+            200, stream=httpx.ByteStream(b"J"), headers={"content-type": "image/jpeg"}
+        )
+
+    mount(client, httpx.MockTransport(handler))
+    _, h = await actor("a")
+    tid, sid = await _setup(client, h)
+    await _items(sid, [("uploaded", aid)])
+    r = await client.get(f"/api/v1/targets/{tid}/assets/{aid.upper()}/thumbnail", headers=h)
+    assert r.status_code == 200
+
+
+async def test_thumbnail_unshared_source_job_404(client: httpx.AsyncClient) -> None:
+    mount(client, _thumb_handler())
+    _, ha = await actor("a")
+    ub, hb = await actor("b")
+    tid, sid = await _setup(client, ha)
+    body = {
+        "visibility": "restricted",
+        "shares": [{"principal_type": "user", "principal_id": str(ub), "perm": "use"}],
+    }
+    await client.put(f"/api/v1/targets/{tid}/shares", json=body, headers=ha)
+    await _items(sid, [("uploaded", A1)])
+    url = f"/api/v1/targets/{tid}/assets/{A1}/thumbnail?size=preview"
+    assert (await client.get(url, headers=hb)).status_code == 404
+    assert (await client.get(url, headers=ha)).status_code == 200
+
+
+async def test_thumbnail_asset_from_other_target_404(client: httpx.AsyncClient) -> None:
+    mount(client, _thumb_handler())
+    _, h = await actor("a")
+    t1, _ = await _setup(client, h)
+    _, s2 = await _setup(client, h)
+    await _items(s2, [("uploaded", A1)])
+    r = await client.get(f"/api/v1/targets/{t1}/assets/{A1}/thumbnail?size=preview", headers=h)
+    assert r.status_code == 404

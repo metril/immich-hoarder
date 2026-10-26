@@ -6,6 +6,7 @@ import logging
 import queue
 import threading
 import time
+import uuid
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -205,7 +206,7 @@ class JobWriter:
                             url=str(ev.get("url", ""))[:URL_MAX],
                             outcome=outcome,
                             reason=None if reason is None else str(reason)[:REASON_MAX],
-                            immich_asset_id=ev.get("immich_asset_id"),
+                            immich_asset_id=_canon_id(ev.get("immich_asset_id")),
                         )
                     )
                 elif typ in ("log", "phase"):
@@ -228,6 +229,15 @@ class JobWriter:
                 .where(Job.id == job_id, Job.status.notin_(_TERMINAL))
                 .values(status=JobStatus(status), **vals)
             )
+
+
+def _canon_id(v: Any) -> str | None:
+    if v is None:
+        return None
+    try:
+        return str(uuid.UUID(str(v)))
+    except ValueError:
+        return str(v)[:64]
 
 
 _TERMINAL = (JobStatus.succeeded, JobStatus.failed, JobStatus.cancelled)

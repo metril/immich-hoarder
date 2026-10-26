@@ -21,6 +21,8 @@ from app.immich.client import ImmichClient
 from app.immich.errors import AssetGone, ImmichAuthError, ImmichError, ImmichUnavailable
 from app.runtime.visibility import visible_jobs_stmt
 
+_IMAGE_TYPES = {"image/jpeg", "image/webp", "image/png", "image/avif", "image/gif"}
+
 router = APIRouter(tags=["uploads"])
 
 
@@ -45,7 +47,7 @@ async def list_uploads(
     session: AsyncSession = Depends(get_session),
 ) -> Page[UploadOut]:
     require_scope(p, "jobs:read")
-    visible = visible_jobs_stmt(p).with_only_columns(Job.id).where(Source.id == Job.source_id)
+    visible = visible_jobs_stmt(p).with_only_columns(Job.id)
     stmt = select(JobItem).where(
         JobItem.outcome.in_(("uploaded", "linked")), JobItem.job_id.in_(visible)
     )
@@ -111,7 +113,7 @@ async def thumbnail(
 ) -> Response:
     require_scope(p, "targets:read")
     try:
-        uuid.UUID(asset_id)
+        asset_id = str(uuid.UUID(asset_id))
     except ValueError:
         raise HTTPException(422, "invalid asset id") from None
     t: ImmichTarget = await get_obj(session, ImmichTarget, obj_id, p, Perm.use)
@@ -132,10 +134,11 @@ async def thumbnail(
         raise HTTPException(502, "immich unauthorized") from e
     except (ImmichUnavailable, ImmichError) as e:
         raise HTTPException(502, "immich unavailable") from e
-    if not ctype.lower().startswith("image/"):
+    media_type = ctype.split(";")[0].strip().lower()
+    if media_type not in _IMAGE_TYPES:
         raise HTTPException(502, "immich unavailable")
     return Response(
         data,
-        media_type=ctype,
+        media_type=media_type,
         headers={"Cache-Control": "private, max-age=86400", "X-Content-Type-Options": "nosniff"},
     )

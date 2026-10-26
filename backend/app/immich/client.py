@@ -25,6 +25,7 @@ _RETRY_STATUSES = {429, 502, 503, 504}
 _CONNECT_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
 _BACKOFF = (0.5, 1.0, 2.0)
 _RETRY_AFTER_CAP = 10.0
+_ERROR_BODY_MAX = 64 * 1024
 THUMBNAIL_MAX_BYTES = 5 * 1024 * 1024
 
 
@@ -276,20 +277,34 @@ class ImmichClient:
 
         resp = self._send(do)
         try:
-            if resp.status_code in (400, 404):
-                resp.read()
-                raise AssetGone(resp.status_code, _message(resp))
             if not resp.is_success:
-                resp.read()
+                resp = self._bounded_error(resp)
+                if resp.status_code in (400, 404):
+                    raise AssetGone(resp.status_code, _message(resp))
                 self._check(resp)
+            try:
+                declared = int(resp.headers.get("content-length", "0"))
+            except ValueError:
+                declared = 0
+            if declared > max_bytes:
+                raise ImmichError(resp.status_code, "thumbnail too large")
             buf = bytearray()
-            for chunk in resp.iter_bytes():
+            for chunk in resp.iter_raw():
                 buf += chunk
                 if len(buf) > max_bytes:
                     raise ImmichError(resp.status_code, "thumbnail too large")
             return bytes(buf), resp.headers.get("content-type", "")
         finally:
             resp.close()
+
+    @staticmethod
+    def _bounded_error(resp: httpx.Response) -> httpx.Response:
+        body = bytearray()
+        for chunk in resp.iter_raw():
+            body += chunk
+            if len(body) >= _ERROR_BODY_MAX:
+                break
+        return httpx.Response(resp.status_code, content=bytes(body[:_ERROR_BODY_MAX]))
 
     @_shaped
     def list_albums(self) -> list[Album]:
