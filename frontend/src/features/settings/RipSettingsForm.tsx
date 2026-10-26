@@ -6,9 +6,9 @@ import { useApiForm } from "../../components/common/useApiForm";
 import { SaveBar } from "./fields";
 import { num, str } from "./setValue";
 import { useSaveSettings, type SettingsDoc } from "./hooks";
-import { RateLimitsEditor } from "./RateLimitsEditor";
+import { RateLimitsEditor, type RateLimitErrors } from "./RateLimitsEditor";
 
-const rl = z.object({ sleep_request: z.number().min(0), sleep: z.number().min(0), retries: z.number().int().min(0) });
+const rl = z.object({ sleep_request: z.number("Required").min(0, "Min 0"), sleep: z.number("Required").min(0, "Min 0"), retries: z.number("Required").int().min(0, "Min 0") });
 const schema = z.object({
   rip: z.object({
     upload_concurrency: z.number("Required").int().min(1, "Min 1").max(16, "Max 16"),
@@ -55,7 +55,7 @@ export function RipSettingsForm({ value }: { value?: SettingsDoc["rip"] }) {
       <Controller
         control={form.control}
         name="rip.rate_limits"
-        render={({ field }) => <RateLimitsEditor value={field.value} onChange={field.onChange} />}
+        render={({ field }) => <RateLimitsEditor value={field.value} onChange={field.onChange} errors={e?.rate_limits} />}
       />
       <SaveBar root={form.rootError} busy={form.formState.isSubmitting} />
     </form>

@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { ApiError } from "../../api/errors";
 import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { RelativeTime } from "../../components/common/RelativeTime";
+import { useMediaQuery } from "../../components/common/useMediaQuery";
 import { fmtBytes } from "../sources/schema";
 import { downloadExport, importYaml, useBackup, useBackups, usePrune, type ImportResult } from "./hooks";
 
@@ -12,6 +13,7 @@ const btn = "rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible
 function Backups() {
   const list = useBackups();
   const backup = useBackup();
+  const narrow = useMediaQuery("(max-width: 767px)");
   const run = () =>
     backup.mutate(undefined, {
       onSuccess: (r) => toast.success(`Backup created: ${r.file}`),
@@ -34,6 +36,17 @@ function Backups() {
         <p role="alert" className="text-sm text-destructive">{list.error.message}</p>
       ) : (list.data?.items.length ?? 0) === 0 ? (
         <p className="text-sm text-muted-foreground">{list.isPending ? "Loading…" : "No backups yet."}</p>
+      ) : narrow ? (
+        <ul className="grid gap-2">
+          {list.data?.items.map((b) => (
+            <li key={b.file} className="grid gap-0.5 rounded-md border p-3 text-sm">
+              <span className="break-all font-mono">{b.file}</span>
+              <span className="text-xs text-muted-foreground">
+                <RelativeTime iso={b.mtime} /> · {fmtBytes(b.size)}
+              </span>
+            </li>
+          ))}
+        </ul>
       ) : (
         <table className="w-full text-sm">
           <thead>

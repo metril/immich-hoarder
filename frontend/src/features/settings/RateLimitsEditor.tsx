@@ -11,7 +11,9 @@ const FIELDS = [
   ["retries", "Retries"],
 ] as const;
 
-export function RateLimitsEditor({ value, onChange }: { value: RateLimits; onChange: (v: RateLimits) => void }) {
+export type RateLimitErrors = Record<string, Partial<Record<(typeof FIELDS)[number][0], { message?: string }>> | undefined> | undefined;
+
+export function RateLimitsEditor({ value, onChange, errors }: { value: RateLimits; onChange: (v: RateLimits) => void; errors?: RateLimitErrors }) {
   const [name, setName] = useState("");
   const [error, setError] = useState<string>();
   const add = () => {
@@ -30,7 +32,9 @@ export function RateLimitsEditor({ value, onChange }: { value: RateLimits; onCha
       {entries.map(([cat, rl]) => (
         <div key={cat} className="grid gap-2 rounded-md border p-2 sm:grid-cols-[1fr_repeat(3,7rem)_auto] sm:items-end">
           <span className="font-mono text-sm">{cat}</span>
-          {FIELDS.map(([k, label]) => (
+          {FIELDS.map(([k, label]) => {
+            const msg = errors?.[cat]?.[k]?.message;
+            return (
             <label key={k} className="grid gap-1 text-xs">
               <span>
                 {label}
@@ -41,11 +45,14 @@ export function RateLimitsEditor({ value, onChange }: { value: RateLimits; onCha
                 step={k === "retries" ? 1 : 0.1}
                 min={0}
                 className={inputClass}
-                value={rl[k]}
-                onChange={(ev) => onChange({ ...value, [cat]: { ...rl, [k]: ev.target.valueAsNumber || 0 } })}
+                value={Number.isNaN(rl[k]) ? "" : rl[k]}
+                aria-invalid={msg ? true : undefined}
+                onChange={(ev) => onChange({ ...value, [cat]: { ...rl, [k]: ev.target.valueAsNumber } })}
               />
+              {msg && <span role="alert" className="text-destructive">{msg}</span>}
             </label>
-          ))}
+            );
+          })}
           <button
             type="button"
             aria-label={`Remove ${cat}`}

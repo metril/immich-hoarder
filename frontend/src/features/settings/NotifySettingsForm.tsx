@@ -108,6 +108,7 @@ export function NotifySettingsForm({ value }: { value?: SettingsDoc["notify"] })
                 onRemove={() => field.onChange(field.value.filter((_, j) => j !== i))}
               />
             ))}
+            {e?.urls?.message && <p role="alert" className="text-sm text-destructive">{e.urls.message}</p>}
             <div>
               <button
                 type="button"

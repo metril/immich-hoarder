@@ -167,4 +167,55 @@ describe("settings", () => {
     expect(q).toBe("encrypted");
     expect(await blob!.text()).toBe("sources: []\n");
   });
+
+  it("backup 507 shows disk error", async () => {
+    server.use(
+      http.get("*/api/v1/admin/backups", () => HttpResponse.json({ items: [] })),
+      http.post("*/api/v1/admin/backup", () => HttpResponse.json({ detail: "disk" }, { status: 507 })),
+    );
+    open("admin");
+    await userEvent.click(await screen.findByRole("button", { name: "Back up now" }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Backup failed: disk error or no space left"));
+  });
+
+  it("422 on notify urls list shows under the list", async () => {
+    server.use(
+      doc({ notify: { on: ["failure"], urls: ["discord://a/b"] } }),
+      http.put("*/api/v1/settings", () =>
+        HttpResponse.json({ detail: [{ loc: ["body", "notify", "urls"], msg: "too many urls", type: "x" }] }, { status: 422 }),
+      ),
+    );
+    open("notify");
+    await screen.findByLabelText("Notification URL 1");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("too many urls")).toBeInTheDocument();
+  });
+
+  it("rate limit field errors show per row", async () => {
+    server.use(
+      doc({ rip: { rate_limits: { reddit: { sleep_request: 2, sleep: 0, retries: 4 } } } }),
+      http.put("*/api/v1/settings", () =>
+        HttpResponse.json({ detail: [{ loc: ["body", "rip", "rate_limits", "reddit", "retries"], msg: "too high", type: "x" }] }, { status: 422 }),
+      ),
+    );
+    open("rip");
+    const retries = await screen.findByLabelText(/Retries/);
+    await userEvent.clear(retries);
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Required")).toBeInTheDocument();
+    expect(retries).toHaveAttribute("aria-invalid", "true");
+    await userEvent.type(retries, "9");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("too high")).toBeInTheDocument();
+  });
+
+  it("tabs move with arrow keys", async () => {
+    server.use(doc());
+    const { router } = open("rip");
+    const tab = await screen.findByRole("tab", { name: "Rip" });
+    tab.focus();
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(router.state.location.search).toMatchObject({ tab: "runtime" }));
+    expect(screen.getByRole("tab", { name: "Rip" })).toHaveAttribute("tabindex", "-1");
+  });
 });

@@ -65,6 +65,6 @@ export async function downloadExport(secrets: "omit" | "encrypted"): Promise<voi
     a.click();
     a.remove();
   } finally {
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 }
