@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from sqlalchemy import func, select
+from sqlalchemy import event, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.crypto import SecretBox
@@ -124,3 +124,31 @@ def test_backup_rejects_odd_dir(tmp_path: Path) -> None:
 def test_backup_skipped_on_postgres_url(tmp_path: Path) -> None:
     assert backup_sqlite("postgresql://u:p@h/db", tmp_path / "bk", keep=3) is None
     assert not (tmp_path / "bk").exists()
+
+
+def test_failed_vacuum_leaves_no_partial_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.runtime.maintenance as m
+
+    db = tmp_path / "live.db"
+    sqlite3.connect(db).close()
+    bdir = tmp_path / "bk"
+    bdir.mkdir()
+    orig = m.make_sync_engine
+
+    def patched(url: str) -> Any:
+        eng = orig(url)
+
+        @event.listens_for(eng, "before_cursor_execute")
+        def _fail(conn: Any, cur: Any, stmt: str, *a: Any) -> None:
+            if stmt.startswith("VACUUM INTO"):
+                (bdir / stmt.split("/")[-1].rstrip("'")).write_text("partial")
+                raise sqlite3.OperationalError("disk full")
+
+        return eng
+
+    monkeypatch.setattr(m, "make_sync_engine", patched)
+    with pytest.raises(Exception, match="disk full"):
+        backup_sqlite(f"sqlite+aiosqlite:///{db}", bdir, keep=1)
+    assert list(bdir.iterdir()) == []

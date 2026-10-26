@@ -105,7 +105,12 @@ class SourceScheduler:
         if self._settings is None:
             return
         async with self._sf() as s:
-            cron = (await load_runtime_settings(s)).backup_cron
+            rt = await load_runtime_settings(s)
+        if rt.backup_keep == 0:
+            if self._sched.get_job("maintenance-backup") is not None:
+                self._sched.remove_job("maintenance-backup")
+            return
+        cron = rt.backup_cron
         self._sched.add_job(
             self._backup,
             CroniterTrigger(cron),

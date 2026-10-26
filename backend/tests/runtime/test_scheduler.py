@@ -206,3 +206,29 @@ async def test_maintenance_jobs_registered(
         assert got["maintenance-backup"] == "croniter[30 2 * * *]"
     finally:
         sched.shutdown()
+
+
+async def test_backup_keep_zero_registers_no_backup_job(
+    sf: async_sessionmaker[AsyncSession], tmp_path: Path
+) -> None:
+    from pydantic import SecretStr
+
+    from app.core.config import Settings
+    from app.db.models import Setting
+
+    async with sf() as s:
+        s.add(Setting(key="runtime", value={"backup_keep": 0}))
+        await s.commit()
+    cfg = Settings(
+        database_url=f"sqlite+aiosqlite:///{tmp_path / 's.db'}",
+        master_key=SecretStr(KEY),
+        session_secret=SecretStr("test-session-secret-0123456789abcdef"),
+        public_url="http://t",
+    )
+    sched = SourceScheduler(FakeSup(), sf, cfg)  # type: ignore[arg-type]
+    await sched.start()
+    try:
+        ids = {j.id for j in sched._sched.get_jobs()}
+        assert "maintenance-prune" in ids and "maintenance-backup" not in ids
+    finally:
+        sched.shutdown()

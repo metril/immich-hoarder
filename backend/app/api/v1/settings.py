@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -12,6 +13,7 @@ from app.db.models import Setting
 from app.rip.settings import RipSettings
 from app.runtime.settings import NotifySettings, RuntimeSettings
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 SCHEMAS: dict[str, type[BaseModel]] = {
@@ -59,5 +61,8 @@ async def put_settings(
     await session.commit()
     sched = getattr(request.app.state, "scheduler", None)
     if sched is not None and "runtime" in body:
-        await sched.sync_maintenance()
+        try:
+            await sched.sync_maintenance()
+        except Exception as e:
+            log.error("maintenance reschedule failed: %s", type(e).__name__)
     return await _all(session)

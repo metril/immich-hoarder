@@ -5,7 +5,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from sqlalchemy import delete, exists, select
+from sqlalchemy import delete, exists
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,19 +35,13 @@ async def prune_jobs(session: AsyncSession, retention_days: int) -> int:
 
 async def prune_ephemeral_sources(session: AsyncSession) -> int:
     """Delete ephemeral sources that no longer have any job."""
-    has_job = exists().where(Job.source_id == Source.id)
-    ids = (
-        await session.scalars(
-            select(Source.id).where(
-                Source.ephemeral.is_(True),
-                Source.created_at < _utcnow() - _EPHEMERAL_GRACE,
-                ~has_job,
-            )
+    res = await session.execute(
+        delete(Source).where(
+            Source.ephemeral.is_(True),
+            Source.created_at < _utcnow() - _EPHEMERAL_GRACE,
+            ~exists().where(Job.source_id == Source.id),
         )
-    ).all()
-    if not ids:
-        return 0
-    res = await session.execute(delete(Source).where(Source.id.in_(ids)))
+    )
     return int(res.rowcount or 0)  # type: ignore[attr-defined]
 
 
@@ -74,10 +68,15 @@ def backup_sqlite(db_url: str, backup_dir: Path, keep: int) -> Path | None:
     try:
         with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
             conn.exec_driver_sql(f"VACUUM INTO '{quoted}'")
+    except BaseException:
+        dest.unlink(missing_ok=True)
+        raise
     finally:
         engine.dispose()
     if keep > 0:
-        files = sorted(backup_dir.glob(f"{_PREFIX}*{_SUFFIX}"), key=lambda p: p.name)
+        files = sorted(
+            backup_dir.glob(f"{_PREFIX}*{_SUFFIX}"), key=lambda p: (p.stat().st_mtime, p.name)
+        )
         for old in files[:-keep]:
             old.unlink(missing_ok=True)
     return dest

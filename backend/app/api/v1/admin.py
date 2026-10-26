@@ -1,6 +1,8 @@
 import asyncio
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.deps import require_admin
@@ -15,6 +17,7 @@ from app.runtime.maintenance import (
 )
 from app.runtime.settings import load_runtime_settings
 
+log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
 
 
@@ -32,6 +35,9 @@ async def create_backup(
         )
     except ValueError as e:
         raise HTTPException(500, str(e)) from None
+    except (OSError, DBAPIError) as e:
+        log.error("backup failed: %s", type(e).__name__)
+        raise HTTPException(507, "backup failed") from None
     if path is None:
         raise HTTPException(409, "backups are not supported for this database")
     return {"file": path.name}
