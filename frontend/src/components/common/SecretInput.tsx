@@ -1,4 +1,4 @@
-import { forwardRef, useState, type InputHTMLAttributes } from "react";
+import { forwardRef, useId, useState, type InputHTMLAttributes } from "react";
 import { Eye, EyeOff } from "lucide-react";
 import { inputClass } from "./FormField";
 
@@ -11,6 +11,7 @@ export const SecretInput = forwardRef<HTMLInputElement, Props>(function SecretIn
   void _v;
   void _d;
   const [show, setShow] = useState(false);
+  const hintId = useId();
   return (
     <div className="relative">
       <input
@@ -18,9 +19,15 @@ export const SecretInput = forwardRef<HTMLInputElement, Props>(function SecretIn
         ref={ref}
         type={show ? "text" : "password"}
         autoComplete="off"
+        aria-describedby={saved ? hintId : rest["aria-describedby"]}
         placeholder={saved ? "Saved — enter a new value to replace" : rest.placeholder}
         className={`${inputClass} pr-10 ${className ?? ""}`}
       />
+      {saved && (
+        <span id={hintId} className="sr-only">
+          Saved — enter a new value to replace
+        </span>
+      )}
       <button
         type="button"
         aria-label={show ? "Hide value" : "Show value"}

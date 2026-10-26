@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Dialog } from "radix-ui";
+import { toast } from "sonner";
 
 export function ConfirmDialog({
   title,
@@ -39,12 +40,14 @@ export function ConfirmDialog({
                   try {
                     await onConfirm();
                     setOpen(false);
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Action failed");
                   } finally {
                     setBusy(false);
                   }
                 })();
               }}
-              className={`rounded-md px-3 py-1.5 text-sm text-white focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50 ${destructive ? "bg-destructive" : "bg-primary text-primary-foreground"}`}
+              className={`rounded-md px-3 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50 ${destructive ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground"}`}
             >
               {confirmLabel}
             </button>

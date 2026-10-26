@@ -53,6 +53,14 @@ function UserPicker({ onPick }: { onPick: (u: { id: number; name: string | null 
     queryFn: async () => unwrap(await api.GET("/api/v1/users/directory", { params: { query: { q: dq } } })),
   });
   const results = dq.length >= 2 ? (res.data ?? []) : [];
+  const [active, setActive] = useState(-1);
+  const activeIdx = active >= 0 && active < results.length ? active : -1;
+  const optId = (i: number) => `${listId}-o${i}`;
+  const pick = (u: { id: number; name: string | null }) => {
+    onPick(u);
+    setQ("");
+    setActive(-1);
+  };
   return (
     <div className="relative">
       <input
@@ -60,32 +68,44 @@ function UserPicker({ onPick }: { onPick: (u: { id: number; name: string | null 
         aria-label="Add user"
         aria-expanded={results.length > 0}
         aria-controls={listId}
+        aria-activedescendant={activeIdx >= 0 ? optId(activeIdx) : undefined}
         aria-autocomplete="list"
         autoComplete="off"
         placeholder="Search users (name or exact email)"
         value={q}
-        onChange={(e) => setQ(e.target.value)}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setActive(-1);
+        }}
+        onKeyDown={(e) => {
+          if (results.length === 0) return;
+          if (e.key === "ArrowDown") {
+            e.preventDefault();
+            setActive((activeIdx + 1) % results.length);
+          } else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            setActive((activeIdx - 1 + results.length) % results.length);
+          } else if (e.key === "Enter" && activeIdx >= 0) {
+            e.preventDefault();
+            const u = results[activeIdx];
+            if (u) pick(u);
+          } else if (e.key === "Escape") {
+            setQ("");
+          }
+        }}
         className={inputClass}
       />
       {results.length > 0 && (
         <ul id={listId} role="listbox" aria-label="Users" className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md">
-          {results.map((u) => (
+          {results.map((u, i) => (
             <li
               key={u.id}
+              id={optId(i)}
               role="option"
-              aria-selected={false}
-              tabIndex={0}
-              className="cursor-pointer rounded px-2 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-              onClick={() => {
-                onPick(u);
-                setQ("");
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  onPick(u);
-                  setQ("");
-                }
-              }}
+              aria-selected={i === activeIdx}
+              className={`cursor-pointer rounded px-2 py-1.5 text-sm hover:bg-accent ${i === activeIdx ? "bg-accent" : ""}`}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => pick(u)}
             >
               {u.name ?? `User #${u.id}`}
             </li>
@@ -127,7 +147,9 @@ function Editor({ resource, id, onDone }: { resource: ShareResource; id: number;
     setEntries([...list, e]);
   };
   const label = (e: Entry) =>
-    e.principal_type === "user" ? (names[e.principal_id] ?? `User #${e.principal_id}`) : `Group: ${e.principal_id}`;
+    e.principal_type === "user"
+      ? (names[e.principal_id] ?? e.principal_name ?? `User #${e.principal_id}`)
+      : `Group: ${e.principal_name ?? e.principal_id}`;
 
   if (q.isPending) return <p className="text-sm text-muted-foreground">Loading…</p>;
   if (q.isError) return <p role="alert" className="text-sm text-destructive">Failed to load sharing.</p>;

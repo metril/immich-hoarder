@@ -673,7 +673,7 @@ export interface paths {
         };
         /**
          * User Directory
-         * @description Minimal id/name lookup (name substring or exact email) for sharing; any authenticated principal.
+         * @description Minimal id/name lookup (name substring or exact email); any authenticated user.
          */
         get: operations["user_directory_api_v1_users_directory_get"];
         put?: never;
@@ -1352,6 +1352,8 @@ export interface components {
             perm: components["schemas"]["Perm"];
             /** Principal Id */
             principal_id: string;
+            /** Principal Name */
+            principal_name?: string | null;
             principal_type: components["schemas"]["PrincipalType"];
         };
         /** SharesBody */

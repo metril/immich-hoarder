@@ -38,5 +38,14 @@ export function FormField({
   );
 }
 
+export function FormRootError({ message }: { message?: string }) {
+  if (!message) return null;
+  return (
+    <p role="alert" className="rounded-md border border-destructive p-2 text-sm text-destructive">
+      {message}
+    </p>
+  );
+}
+
 export const inputClass =
   "h-9 w-full rounded-md border bg-background px-3 text-sm focus-visible:outline-2 focus-visible:outline-ring aria-[invalid=true]:border-destructive";

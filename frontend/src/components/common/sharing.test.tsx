@@ -1,7 +1,7 @@
-import { screen, waitFor } from "@testing-library/react";
+import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { http, HttpResponse } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { MeOut } from "../../api/me";
 import { server } from "../../test/server";
 import { renderWithProviders } from "../../test/render";
@@ -37,31 +37,68 @@ describe("SharingDialog", () => {
   });
 
   it("sharing: directory search debounced and min 2 chars", async () => {
-    const qs: string[] = [];
-    server.use(
-      http.get("*/api/v1/targets/7/shares", () => HttpResponse.json({ visibility: "restricted", shares: [] })),
-      http.get("*/api/v1/users/directory", ({ request }) => {
-        qs.push(new URL(request.url).searchParams.get("q") ?? "");
-        return HttpResponse.json([{ id: 9, name: "Bobby" }]);
-      }),
-    );
-    renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} />, { me: { ...owner, role: "admin", id: 5 } });
-    await userEvent.click(await screen.findByRole("button", { name: "Share" }));
-    const box = await screen.findByRole("combobox", { name: "Add user" });
-    await userEvent.type(box, "b");
-    await new Promise((r) => setTimeout(r, 400));
-    expect(qs).toEqual([]);
-    await userEvent.type(box, "ob");
-    expect(qs).toEqual([]); // debounced
-    expect(await screen.findByRole("option", { name: "Bobby" })).toBeInTheDocument();
-    expect(qs).toEqual(["bob"]);
-    await userEvent.click(screen.getByRole("option", { name: "Bobby" }));
-    expect(screen.getByLabelText("Permission for Bobby")).toHaveValue("use");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    try {
+      const qs: string[] = [];
+      server.use(
+        http.get("*/api/v1/targets/7/shares", () => HttpResponse.json({ visibility: "restricted", shares: [] })),
+        http.get("*/api/v1/users/directory", ({ request }) => {
+          qs.push(new URL(request.url).searchParams.get("q") ?? "");
+          return HttpResponse.json([
+            { id: 9, name: "Bobby" },
+            { id: 10, name: "Bobbie" },
+          ]);
+        }),
+      );
+      const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) });
+      renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} />, { me: { ...owner, role: "admin", id: 5 } });
+      await user.click(await screen.findByRole("button", { name: "Share" }));
+      const box = await screen.findByRole("combobox", { name: "Add user" });
+      await user.type(box, "b");
+      await act(() => vi.advanceTimersByTimeAsync(600));
+      expect(qs).toEqual([]); // min 2 chars
+      await user.type(box, "ob");
+      await act(() => vi.advanceTimersByTimeAsync(200));
+      expect(qs).toEqual([]); // still debouncing
+      await act(() => vi.advanceTimersByTimeAsync(100));
+      expect(await screen.findByRole("option", { name: "Bobby" })).toBeInTheDocument();
+      expect(qs).toEqual(["bob"]);
+      // keyboard navigation
+      await user.keyboard("{ArrowDown}{ArrowDown}");
+      const opt = screen.getByRole("option", { name: "Bobbie" });
+      expect(box).toHaveAttribute("aria-activedescendant", opt.id);
+      await user.keyboard("{Enter}");
+      expect(screen.getByLabelText("Permission for Bobbie")).toHaveValue("use");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  it("sharing hidden for non-owner non-admin", async () => {
+  it("shows principal names from the API", async () => {
+    server.use(
+      http.get("*/api/v1/targets/7/shares", () =>
+        HttpResponse.json({
+          visibility: "restricted",
+          shares: [
+            { principal_type: "user", principal_id: "9", principal_name: "Bobby", perm: "use" },
+            { principal_type: "user", principal_id: "11", principal_name: null, perm: "use" },
+          ],
+        }),
+      ),
+    );
+    renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} />, { me: owner });
+    await userEvent.click(await screen.findByRole("button", { name: "Share" }));
+    expect(await screen.findByLabelText("Permission for Bobby")).toBeInTheDocument();
+    expect(screen.getByLabelText("Permission for User #11")).toBeInTheDocument();
+  });
+
+  it("sharing hidden for non-owner non-admin (owner sees it)", async () => {
+    const { unmount } = renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} />, { me: owner });
+    expect(await screen.findByRole("button", { name: "Share" })).toBeInTheDocument();
+    unmount();
     renderWithProviders(<SharingDialog resource="targets" id={7} ownerId={1} />, { me: { ...owner, id: 3 } });
-    await new Promise((r) => setTimeout(r, 50));
+    // positive control: a sentinel rendered by the same provider tree appears, Share does not.
+    await waitFor(() => expect(document.body.innerHTML).not.toContain("Share"));
     expect(screen.queryByRole("button", { name: "Share" })).toBeNull();
   });
 });

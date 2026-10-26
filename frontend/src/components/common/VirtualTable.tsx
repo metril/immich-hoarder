@@ -45,9 +45,13 @@ export function VirtualTable<T>({
   });
   const items = v.getVirtualItems();
   const last = items.at(-1)?.index ?? -1;
+  const endRef = useRef(onEndReached);
   useEffect(() => {
-    if (onEndReached && rows.length > 0 && last >= rows.length - 20) onEndReached();
-  }, [last, rows.length, onEndReached]);
+    endRef.current = onEndReached;
+  });
+  useEffect(() => {
+    if (rows.length > 0 && last >= rows.length - 20) endRef.current?.();
+  }, [last, rows.length]);
 
   if (rows.length === 0 && empty) return <>{empty}</>;
 
@@ -65,7 +69,7 @@ export function VirtualTable<T>({
       : {};
 
   return (
-    <div role="table" aria-label={label} aria-rowcount={rows.length + 1} className="flex h-full min-h-0 flex-col rounded-md border">
+    <div role="table" aria-label={label} aria-rowcount={mobile ? rows.length : rows.length + 1} className="flex h-full min-h-0 flex-col rounded-md border">
       {!mobile && (
         <div role="rowgroup" className="sticky top-0 z-10 border-b bg-muted">
           <div role="row" className="grid px-3 py-2 text-xs font-medium text-muted-foreground" style={{ gridTemplateColumns: template }}>
@@ -84,7 +88,7 @@ export function VirtualTable<T>({
             if (r === undefined) return null;
             const pos = { position: "absolute", top: 0, left: 0, width: "100%", height: vi.size, transform: `translateY(${vi.start}px)` } as const;
             return mobile ? (
-              <div key={getRowId(r)} role="row" aria-rowindex={vi.index + 2} style={pos} className="p-1">
+              <div key={getRowId(r)} role="row" aria-rowindex={vi.index + 1} style={pos} className="p-1">
                 <div
                   className={cn("flex h-full flex-col gap-1 overflow-hidden rounded-md border bg-card p-3 text-sm", onRowClick && "cursor-pointer focus-visible:outline-2 focus-visible:outline-ring")}
                   {...clickable(r)}

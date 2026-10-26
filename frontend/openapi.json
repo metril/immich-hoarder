@@ -1913,6 +1913,17 @@
             "title": "Principal Id",
             "type": "string"
           },
+          "principal_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principal Name"
+          },
           "principal_type": {
             "$ref": "#/components/schemas/PrincipalType"
           }
@@ -5611,7 +5622,7 @@
     },
     "/api/v1/users/directory": {
       "get": {
-        "description": "Minimal id/name lookup (name substring or exact email) for sharing; any authenticated principal.",
+        "description": "Minimal id/name lookup (name substring or exact email); any authenticated user.",
         "operationId": "user_directory_api_v1_users_directory_get",
         "parameters": [
           {

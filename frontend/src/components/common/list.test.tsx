@@ -13,7 +13,7 @@ const cols = [{ id: "id", header: "ID", cell: (r: Row) => String(r.id) }];
 const mk = (from: number, n: number): Row[] => Array.from({ length: n }, (_, i) => ({ id: from + i }));
 
 function Harness() {
-  const q = useCursorList<Row>("targets", { q: "x" });
+  const q = useCursorList("targets", "/api/v1/targets", {});
   const rows = flatItems(q);
   return (
     <VirtualTable
@@ -52,6 +52,18 @@ describe("virtual table", () => {
     const n = (await screen.findAllByRole("row")).length;
     expect(n).toBeGreaterThan(0);
     expect(n).toBeLessThan(100);
+  });
+
+  it("mobile cards: aria-rowcount matches rows", async () => {
+    const orig = window.matchMedia.bind(window);
+    window.matchMedia = (q: string) => ({ ...orig(q), matches: true });
+    try {
+      renderWithProviders(<VirtualTable rows={mk(0, 10)} columns={cols} getRowId={(r) => r.id} />);
+      expect(await screen.findByRole("table")).toHaveAttribute("aria-rowcount", "10");
+      expect(screen.getAllByRole("row")[0]).toHaveAttribute("aria-rowindex", "1");
+    } finally {
+      window.matchMedia = orig;
+    }
   });
 
   it("calls onEndReached near the end", async () => {

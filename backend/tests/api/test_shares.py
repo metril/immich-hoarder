@@ -1,7 +1,8 @@
 import httpx
 from helpers import TARGET, actor, make_user
 
-from app.db.models import Role
+from app.db.engine import session_scope
+from app.db.models import Role, User
 
 
 def _body(uid: int, perm: str) -> dict[str, object]:
@@ -94,3 +95,24 @@ def _body_pid(pid: str) -> dict[str, object]:
         "visibility": "restricted",
         "shares": [{"principal_type": "user", "principal_id": pid, "perm": "use"}],
     }
+
+
+async def test_shares_output_includes_principal_name(client: httpx.AsyncClient) -> None:
+    ua, ha = await actor("a")
+    ub, _ = await actor("b")
+    async with session_scope() as sess:
+        (await sess.get(User, ub)).name = "Bobby"  # type: ignore[union-attr]
+    tid = (await client.post("/api/v1/targets", json=TARGET, headers=ha)).json()["id"]
+    body = {
+        "visibility": "restricted",
+        "shares": [
+            {"principal_type": "user", "principal_id": str(ub), "perm": "use"},
+            {"principal_type": "group", "principal_id": "ops", "perm": "edit"},
+        ],
+    }
+    put = await client.put(f"/api/v1/targets/{tid}/shares", json=body, headers=ha)
+    get = await client.get(f"/api/v1/targets/{tid}/shares", headers=ha)
+    for r in (put, get):
+        by_type = {e["principal_type"]: e for e in r.json()["shares"]}
+        assert by_type["group"]["principal_name"] == "ops"
+        assert by_type["user"]["principal_name"] == "Bobby"
