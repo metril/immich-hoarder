@@ -1,6 +1,8 @@
 import httpx
 from sqlalchemy import text
 
+from app import __version__
+
 
 async def test_healthz_ok(client: httpx.AsyncClient) -> None:
     r = await client.get("/healthz")
@@ -11,7 +13,7 @@ async def test_healthz_ok(client: httpx.AsyncClient) -> None:
 async def test_openapi_served(client: httpx.AsyncClient) -> None:
     r = await client.get("/api/openapi.json")
     assert r.status_code == 200
-    assert r.json()["info"]["version"] == "0.1.0"
+    assert r.json()["info"]["version"] == __version__
 
 
 async def test_startup_applies_migrations(client: httpx.AsyncClient) -> None:
