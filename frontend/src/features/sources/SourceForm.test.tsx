@@ -83,12 +83,10 @@ describe("SourceForm", () => {
     );
     renderWithProviders(<SourceForm initial={src} onSaved={vi.fn()} />);
     await screen.findByRole("option", { name: "Home" });
-    await user.click(screen.getByRole("button", { name: "Hourly" }));
+    await user.selectOptions(screen.getByLabelText("Frequency"), "hourly");
     await user.click(screen.getByRole("button", { name: "Save" }));
-    const input = screen.getByLabelText("Schedule (cron)");
-    await waitFor(() => expect(input).toHaveAttribute("aria-invalid", "true"));
-    expect(screen.getByText("invalid cron expression")).toBeInTheDocument();
-    expect(input).toHaveValue("0 * * * *");
+    expect(await screen.findByText("invalid cron expression")).toBeInTheDocument();
+    expect(screen.getByLabelText("Frequency")).toHaveValue("hourly");
   });
 
   it("pickers list only usable items; credential select excludes apprise", async () => {
