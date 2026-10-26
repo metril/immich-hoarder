@@ -74,7 +74,8 @@ describe("sources page", () => {
     const { toast } = await import("sonner");
     setup();
     server.use(http.delete("*/api/v1/sources/3", () => HttpResponse.json({ detail: "source has an active job" }, { status: 409 })));
-    await user.click(await screen.findByRole("button", { name: "Delete Cats" }));
+    await user.click(await screen.findByRole("button", { name: "More actions for Cats" }));
+    await user.click(screen.getByRole("menuitem", { name: "Delete Cats" }));
     await user.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("source has an active job"));
   });
@@ -113,7 +114,8 @@ describe("sources page", () => {
     const { queryClient } = setup();
     server.use(http.delete("*/api/v1/sources/3", () => new HttpResponse(null, { status: 204 })));
     const spy = vi.spyOn(queryClient, "invalidateQueries");
-    await user.click(await screen.findByRole("button", { name: "Delete Cats" }));
+    await user.click(await screen.findByRole("button", { name: "More actions for Cats" }));
+    await user.click(screen.getByRole("menuitem", { name: "Delete Cats" }));
     await user.click(screen.getByRole("button", { name: "Delete" }));
     await waitFor(() => {
       const ks = spy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey));

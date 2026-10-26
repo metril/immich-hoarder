@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
-import { Dialog } from "radix-ui";
 import { toast } from "sonner";
+import { Button } from "../ui/button";
+import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
 
 export function ConfirmDialog({
   title,
@@ -9,51 +10,58 @@ export function ConfirmDialog({
   destructive,
   onConfirm,
   trigger,
+  open: openProp,
+  onOpenChange,
 }: {
   title: string;
   body: ReactNode;
   confirmLabel: string;
   destructive?: boolean;
   onConfirm: () => Promise<void> | void;
-  trigger: ReactNode;
+  /** Omit when controlling `open` from outside (e.g. from a menu item). */
+  trigger?: ReactNode;
+  open?: boolean;
+  onOpenChange?: (o: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [inner, setInner] = useState(false);
+  const open = openProp ?? inner;
+  const setOpen = onOpenChange ?? setInner;
   const [busy, setBusy] = useState(false);
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border bg-popover p-4 text-popover-foreground shadow-xl">
-          <Dialog.Title className="text-base font-semibold">{title}</Dialog.Title>
-          <Dialog.Description className="mt-2 text-sm text-muted-foreground">{body}</Dialog.Description>
-          <div className="mt-4 flex justify-end gap-2">
-            <Dialog.Close className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring">
-              Cancel
-            </Dialog.Close>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                setBusy(true);
-                void (async () => {
-                  try {
-                    await onConfirm();
-                    setOpen(false);
-                  } catch (e) {
-                    toast.error(e instanceof Error ? e.message : "Action failed");
-                  } finally {
-                    setBusy(false);
-                  }
-                })();
-              }}
-              className={`rounded-md px-3 py-1.5 text-sm focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50 ${destructive ? "bg-destructive text-destructive-foreground" : "bg-primary text-primary-foreground"}`}
-            >
-              {confirmLabel}
-            </button>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Dialog open={open} onOpenChange={setOpen}>
+      {trigger ? <DialogTrigger asChild>{trigger}</DialogTrigger> : null}
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <DialogBody>
+          <DialogDescription>{body}</DialogDescription>
+        </DialogBody>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <Button
+            variant={destructive ? "destructive" : "primary"}
+            loading={busy}
+            onClick={() => {
+              setBusy(true);
+              void (async () => {
+                try {
+                  await onConfirm();
+                  setOpen(false);
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Action failed");
+                } finally {
+                  setBusy(false);
+                }
+              })();
+            }}
+          >
+            {confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

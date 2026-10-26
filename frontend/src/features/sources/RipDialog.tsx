@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Dialog } from "radix-ui";
 import { useNavigate } from "@tanstack/react-router";
-import { inputClass } from "../../components/common/FormField";
+import { Button } from "../../components/ui/button";
+import { Dialog, DialogBody, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { Select } from "../../components/ui/select";
 import { jobNav, useRip, type RipIn } from "./hooks";
 import { useUsableCredentials, useUsableTargets } from "./pickers";
-
-const btn = "rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring";
 
 function Body({ onDone }: { onDone: () => void }) {
   const [url, setUrl] = useState("");
@@ -18,15 +19,15 @@ function Body({ onDone }: { onDone: () => void }) {
   const navigate = useNavigate();
   const fe = (rip.error as { fieldErrors?: Record<string, string> } | null)?.fieldErrors ?? {};
   const field = (id: string, label: string, key: string, el: (p: { id: string; "aria-invalid"?: true; "aria-describedby"?: string }) => React.ReactNode) => (
-    <div className="grid gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium">{label}</label>
+    <div className="grid gap-2">
+      <Label htmlFor={id}>{label}</Label>
       {el({ id, "aria-invalid": fe[key] ? true : undefined, "aria-describedby": fe[key] ? `${id}-err` : undefined })}
       {fe[key] && <p id={`${id}-err`} role="alert" className="text-sm text-destructive">{fe[key]}</p>}
     </div>
   );
   return (
     <form
-      className="mt-3 grid gap-3"
+      className="flex min-h-0 flex-1 flex-col"
       noValidate
       onSubmit={(e) => {
         e.preventDefault();
@@ -46,42 +47,42 @@ function Body({ onDone }: { onDone: () => void }) {
         );
       }}
     >
-      {field("rip-url", "URL", "url", (p) => <input {...p} className={inputClass} inputMode="url" value={url} onChange={(e) => setUrl(e.target.value)} />)}
-      {field(
-        "rip-target",
-        "Target",
-        "target_id",
-        (p) => <select {...p} className={inputClass} value={target} onChange={(e) => setTarget(e.target.value)}>
-          <option value="">Select a target…</option>
-          {targets.map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
-        </select>,
-      )}
-      {field(
-        "rip-cred",
-        "Credential (optional)",
-        "credential_id",
-        (p) => <select {...p} className={inputClass} value={cred} onChange={(e) => setCred(e.target.value)}>
-          <option value="">None</option>
-          {creds.map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>,
-      )}
-      {field("rip-album", "Album template (optional)", "album_template", (p) => <input {...p} className={inputClass} value={album} onChange={(e) => setAlbum(e.target.value)} />)}
-      <p className="text-xs text-muted-foreground">Ad-hoc rips are always private to you.</p>
-      {rip.isError && !Object.keys(fe).length && <p role="alert" className="text-sm text-destructive">{rip.error.message}</p>}
-      <div className="flex justify-end gap-2">
-        <Dialog.Close type="button" className={btn}>Cancel</Dialog.Close>
-        <button
-          type="submit"
-          disabled={rip.isPending || !url.trim() || !target}
-          className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
-        >
+      <DialogBody className="grid gap-4">
+        {field("rip-url", "URL", "url", (p) => <Input {...p} inputMode="url" value={url} onChange={(e) => setUrl(e.target.value)} />)}
+        {field(
+          "rip-target",
+          "Target",
+          "target_id",
+          (p) => <Select {...p} value={target} onChange={(e) => setTarget(e.target.value)}>
+            <option value="">Select a target…</option>
+            {targets.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </Select>,
+        )}
+        {field(
+          "rip-cred",
+          "Credential (optional)",
+          "credential_id",
+          (p) => <Select {...p} value={cred} onChange={(e) => setCred(e.target.value)}>
+            <option value="">None</option>
+            {creds.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </Select>,
+        )}
+        {field("rip-album", "Album template (optional)", "album_template", (p) => <Input {...p} className="font-mono" value={album} onChange={(e) => setAlbum(e.target.value)} />)}
+        <p className="text-xs text-muted-foreground">Ad-hoc rips are always private to you.</p>
+        {rip.isError && !Object.keys(fe).length && <p role="alert" className="text-sm text-destructive">{rip.error.message}</p>}
+      </DialogBody>
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button variant="outline">Cancel</Button>
+        </DialogClose>
+        <Button type="submit" loading={rip.isPending} disabled={!url.trim() || !target}>
           Start rip
-        </button>
-      </div>
+        </Button>
+      </DialogFooter>
     </form>
   );
 }
@@ -89,15 +90,14 @@ function Body({ onDone }: { onDone: () => void }) {
 /** Controlled dialog (opened from the page header and the command palette). */
 export function RipDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-lg border bg-popover p-4 text-popover-foreground shadow-xl">
-          <Dialog.Title className="text-base font-semibold">Ad-hoc rip</Dialog.Title>
-          <Dialog.Description className="text-sm text-muted-foreground">Download a URL once, without saving a source.</Dialog.Description>
-          <Body onDone={() => onOpenChange(false)} />
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Ad-hoc rip</DialogTitle>
+          <DialogDescription>Download a URL once, without saving a source.</DialogDescription>
+        </DialogHeader>
+        <Body onDone={() => onOpenChange(false)} />
+      </DialogContent>
+    </Dialog>
   );
 }

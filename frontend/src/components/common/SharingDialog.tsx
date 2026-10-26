@@ -1,5 +1,4 @@
 import { useEffect, useId, useState } from "react";
-import { Dialog } from "radix-ui";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { api } from "../../api/client";
@@ -7,7 +6,11 @@ import { ApiError, unwrap } from "../../api/errors";
 import { keys, type Resource } from "../../api/keys";
 import { isAdmin, useMe } from "../../api/me";
 import type { components } from "../../api/schema";
-import { inputClass } from "./FormField";
+import { Button } from "../ui/button";
+import { Dialog, DialogBody, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "../ui/dialog";
+import { Input } from "../ui/input";
+import { Select } from "../ui/select";
+import { Truncate } from "../ui/truncate";
 
 type Visibility = components["schemas"]["Visibility"];
 type Entry = components["schemas"]["ShareEntry"];
@@ -63,7 +66,7 @@ function UserPicker({ onPick }: { onPick: (u: { id: number; name: string | null 
   };
   return (
     <div className="relative">
-      <input
+      <Input
         role="combobox"
         aria-label="Add user"
         aria-expanded={results.length > 0}
@@ -93,21 +96,20 @@ function UserPicker({ onPick }: { onPick: (u: { id: number; name: string | null 
             setQ("");
           }
         }}
-        className={inputClass}
       />
       {results.length > 0 && (
-        <ul id={listId} role="listbox" aria-label="Users" className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-md border bg-popover p-1 shadow-md">
+        <ul id={listId} role="listbox" aria-label="Users" className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border bg-popover p-1 shadow-md">
           {results.map((u, i) => (
             <li
               key={u.id}
               id={optId(i)}
               role="option"
               aria-selected={i === activeIdx}
-              className={`cursor-pointer rounded px-2 py-1.5 text-sm hover:bg-accent ${i === activeIdx ? "bg-accent" : ""}`}
+              className={`cursor-pointer rounded-md px-2.5 py-2 text-sm hover:bg-accent ${i === activeIdx ? "bg-accent" : ""}`}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => pick(u)}
             >
-              {u.name ?? `User #${u.id}`}
+              <Truncate>{u.name ?? `User #${u.id}`}</Truncate>
             </li>
           ))}
         </ul>
@@ -151,129 +153,128 @@ function Editor({ resource, id, onDone }: { resource: ShareResource; id: number;
       ? (names[e.principal_id] ?? e.principal_name ?? `User #${e.principal_id}`)
       : `Group: ${e.principal_name ?? e.principal_id}`;
 
-  if (q.isPending) return <p className="text-sm text-muted-foreground">Loading…</p>;
-  if (q.isError) return <p role="alert" className="text-sm text-destructive">Failed to load sharing.</p>;
+  if (q.isPending) return <DialogBody><p className="text-sm text-muted-foreground">Loading…</p></DialogBody>;
+  if (q.isError) return <DialogBody><p role="alert" className="text-sm text-destructive">Failed to load sharing.</p></DialogBody>;
 
   return (
-    <div className="grid gap-4">
-      <fieldset className="grid gap-1">
-        <legend className="mb-1 text-sm font-medium">Visibility</legend>
-        {VIS.map((o) => (
-          <label key={o.v} className="flex items-center gap-2 text-sm">
-            <input type="radio" name={`vis-${id}`} checked={visibility === o.v} onChange={() => setVis(o.v)} />
-            {o.label}
-          </label>
-        ))}
-      </fieldset>
+    <>
+      <DialogBody className="grid gap-6">
+        <fieldset className="grid gap-2">
+          <legend className="mb-2 text-sm font-medium">Visibility</legend>
+          {VIS.map((o) => (
+            <label key={o.v} className="flex items-center gap-2 text-sm">
+              <input type="radio" name={`vis-${id}`} checked={visibility === o.v} onChange={() => setVis(o.v)} />
+              {o.label}
+            </label>
+          ))}
+        </fieldset>
 
-      <fieldset disabled={!restricted} className="grid gap-3 disabled:opacity-50">
-        <legend className="mb-1 text-sm font-medium">Shared with</legend>
-        <UserPicker
-          onPick={(u) => {
-            setNames((n) => ({ ...n, [String(u.id)]: u.name ?? `User #${u.id}` }));
-            add({ principal_type: "user", principal_id: String(u.id), perm: "use" });
-          }}
-        />
-        <form
-          className="flex gap-2"
-          onSubmit={(ev) => {
-            ev.preventDefault();
-            const g = group.trim();
-            if (g) add({ principal_type: "group", principal_id: g, perm: "use" });
-            setGroup("");
-          }}
-        >
-          <input
-            aria-label="Add group"
-            list={groupList}
-            placeholder="Group name"
-            value={group}
-            onChange={(e) => setGroup(e.target.value)}
-            className={inputClass}
+        <fieldset disabled={!restricted} className="grid gap-4 disabled:opacity-50">
+          <legend className="mb-2 text-sm font-medium">Shared with</legend>
+          <UserPicker
+            onPick={(u) => {
+              setNames((n) => ({ ...n, [String(u.id)]: u.name ?? `User #${u.id}` }));
+              add({ principal_type: "user", principal_id: String(u.id), perm: "use" });
+            }}
           />
-          <datalist id={groupList}>
-            {(me?.groups ?? []).map((g) => (
-              <option key={g} value={g} />
-            ))}
-          </datalist>
-          <button type="submit" className="rounded-md border px-3 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring">
-            Add
-          </button>
-        </form>
-        <ul className="grid gap-1">
-          {list.map((e) => {
-            const name = label(e);
-            return (
-              <li key={`${e.principal_type}:${e.principal_id}`} className="flex items-center gap-2 text-sm">
-                <span className="min-w-0 flex-1 truncate">{name}</span>
-                <select
-                  aria-label={`Permission for ${name}`}
-                  value={e.perm}
-                  onChange={(ev) =>
-                    setEntries(
-                      list.map((x) => (x === e ? { ...x, perm: ev.target.value as Entry["perm"] } : x)),
-                    )
-                  }
-                  className="h-8 rounded-md border bg-background px-2 text-sm"
-                >
-                  <option value="use">use</option>
-                  <option value="edit">edit</option>
-                </select>
-                <button
-                  type="button"
-                  aria-label={`Remove ${name}`}
-                  onClick={() => setEntries(list.filter((x) => x !== e))}
-                  className="rounded-md border px-2 py-1 text-xs hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring"
-                >
-                  Remove
-                </button>
-              </li>
-            );
-          })}
-          {list.length === 0 && <li className="text-sm text-muted-foreground">Nobody yet.</li>}
-        </ul>
-      </fieldset>
+          <form
+            className="flex gap-2"
+            onSubmit={(ev) => {
+              ev.preventDefault();
+              const g = group.trim();
+              if (g) add({ principal_type: "group", principal_id: g, perm: "use" });
+              setGroup("");
+            }}
+          >
+            <Input aria-label="Add group" list={groupList} placeholder="Group name" value={group} onChange={(e) => setGroup(e.target.value)} />
+            <datalist id={groupList}>
+              {(me?.groups ?? []).map((g) => (
+                <option key={g} value={g} />
+              ))}
+            </datalist>
+            <Button type="submit" variant="outline">
+              Add
+            </Button>
+          </form>
+          <ul className="grid gap-2">
+            {list.map((e) => {
+              const name = label(e);
+              return (
+                <li key={`${e.principal_type}:${e.principal_id}`} className="flex items-center gap-2 text-sm">
+                  <Truncate className="flex-1">{name}</Truncate>
+                  <Select
+                    aria-label={`Permission for ${name}`}
+                    value={e.perm}
+                    onChange={(ev) => setEntries(list.map((x) => (x === e ? { ...x, perm: ev.target.value as Entry["perm"] } : x)))}
+                    className="h-8 w-24 shrink-0"
+                  >
+                    <option value="use">use</option>
+                    <option value="edit">edit</option>
+                  </Select>
+                  <Button variant="ghost" size="sm" aria-label={`Remove ${name}`} onClick={() => setEntries(list.filter((x) => x !== e))}>
+                    Remove
+                  </Button>
+                </li>
+              );
+            })}
+            {list.length === 0 && <li className="text-sm text-muted-foreground">Nobody yet.</li>}
+          </ul>
+        </fieldset>
 
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-      <div className="flex justify-end gap-2">
-        <Dialog.Close className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring">
-          Cancel
-        </Dialog.Close>
-        <button
-          type="button"
-          disabled={save.isPending}
+        {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      </DialogBody>
+      <DialogFooter>
+        <DialogClose asChild>
+          <Button variant="outline">Cancel</Button>
+        </DialogClose>
+        <Button
+          loading={save.isPending}
           onClick={() => {
             setError(null);
             save.mutate();
           }}
-          className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50"
         >
           Save
-        </button>
-      </div>
-    </div>
+        </Button>
+      </DialogFooter>
+    </>
   );
 }
 
-export function SharingDialog({ resource, id, ownerId }: { resource: Extract<Resource, ShareResource>; id: number; ownerId: number }) {
+export function SharingDialog({
+  resource,
+  id,
+  ownerId,
+  open: openProp,
+  onOpenChange,
+  hideTrigger,
+}: {
+  resource: Extract<Resource, ShareResource>;
+  id: number;
+  ownerId: number;
+  /** Controlled mode (e.g. opened from a menu item); set hideTrigger to drop the built-in button. */
+  open?: boolean;
+  onOpenChange?: (o: boolean) => void;
+  hideTrigger?: boolean;
+}) {
   const { data: me } = useMe();
-  const [open, setOpen] = useState(false);
+  const [inner, setInner] = useState(false);
+  const open = openProp ?? inner;
+  const setOpen = onOpenChange ?? setInner;
   if (!me || !(me.id === ownerId || isAdmin(me))) return null;
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger className="rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring">
-        Share
-      </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
-        <Dialog.Content
-          aria-describedby={undefined}
-          className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 -translate-y-1/2 overflow-auto rounded-lg border bg-popover p-4 text-popover-foreground shadow-xl"
-        >
-          <Dialog.Title className="mb-3 text-base font-semibold">Sharing</Dialog.Title>
-          <Editor resource={resource} id={id} onDone={() => setOpen(false)} />
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+    <Dialog open={open} onOpenChange={setOpen}>
+      {hideTrigger ? null : (
+        <DialogTrigger asChild>
+          <Button variant="outline" size="sm">Share</Button>
+        </DialogTrigger>
+      )}
+      <DialogContent aria-describedby={undefined}>
+        <DialogHeader>
+          <DialogTitle>Sharing</DialogTitle>
+        </DialogHeader>
+        <Editor resource={resource} id={id} onDone={() => setOpen(false)} />
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -1,7 +1,14 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import { Controller } from "react-hook-form";
-import { FormField, FormRootError, inputClass } from "../../components/common/FormField";
+import { FormField, FormRootError } from "../../components/common/FormField";
 import { useApiForm } from "../../components/common/useApiForm";
+import { Button } from "../../components/ui/button";
+import { DialogBody, DialogFooter } from "../../components/ui/dialog";
+import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { Select } from "../../components/ui/select";
+import { Switch } from "../../components/ui/switch";
+import { Textarea } from "../../components/ui/textarea";
 import { AlbumTemplateField } from "./AlbumTemplateField";
 import { BackfillField } from "./BackfillField";
 import { CronField } from "./CronField";
@@ -28,9 +35,25 @@ function dirtyPatch(next: SourceFormOutput, base: SourceFormOutput): SourcePatch
   return out;
 }
 
-const btn = "rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring";
+function Section({ title, description, children }: { title: string; description?: string; children: ReactNode }) {
+  return (
+    <div className="grid gap-5 rounded-xl border bg-card p-5 text-card-foreground">
+      <div className="grid gap-1">
+        <h3 className="font-display text-base font-semibold">{title}</h3>
+        {description ? <p className="text-sm text-muted-foreground">{description}</p> : null}
+      </div>
+      {children}
+    </div>
+  );
+}
 
-export function SourceForm({ initial, onSaved, onCancel, onDraft }: { initial?: SourceOut; onSaved: (s: SourceOut) => void; onCancel?: () => void; onDraft?: (d: SourceIn | null) => void }) {
+const TOGGLES = [
+  { key: "enabled", label: "Enabled", hint: "Scheduled runs happen only while enabled." },
+  { key: "allow_animated", label: "Allow animated", hint: "Also grab GIFs and videos." },
+  { key: "ephemeral", label: "Ephemeral", hint: "Remove the source after it finishes once." },
+] as const;
+
+export function SourceForm({ initial, onSaved, onCancel, onDraft, extra }: { initial?: SourceOut; onSaved: (s: SourceOut) => void; onCancel?: () => void; onDraft?: (d: SourceIn | null) => void; extra?: ReactNode }) {
   const create = useCreateSource();
   const update = useUpdateSource(initial?.id ?? 0);
   const targets = useUsableTargets(initial?.target_id);
@@ -62,105 +85,123 @@ export function SourceForm({ initial, onSaved, onCancel, onDraft }: { initial?: 
   }, [draftKey]);
 
   return (
-    <form onSubmit={form.submit} className="grid gap-4" noValidate aria-label={initial ? `Edit ${initial.name}` : "New source"}>
-      <FormField label="Name" error={e.name?.message}>
-        <input className={inputClass} {...form.register("name")} />
-      </FormField>
-      <div className="grid gap-1">
-        <FormField label="URL" error={e.url?.message}>
-          <input className={inputClass} inputMode="url" {...form.register("url")} />
-        </FormField>
-        <ExtractorHint url={url} />
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FormField label="Target" error={e.target_id?.message}>
-          <select className={inputClass} {...form.register("target_id")}>
-            <option value="">Select a target…</option>
-            {targets.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
+    <form onSubmit={form.submit} className="flex min-h-0 flex-1 flex-col" noValidate aria-label={initial ? `Edit ${initial.name}` : "New source"}>
+      <DialogBody className="grid content-start gap-6 pt-1">
+        <Section title="General">
+          <FormField label="Name" error={e.name?.message}>
+            <Input {...form.register("name")} />
+          </FormField>
+          <div className="grid gap-2">
+            <FormField label="URL" error={e.url?.message}>
+              <Input inputMode="url" {...form.register("url")} />
+            </FormField>
+            <ExtractorHint url={url} />
+          </div>
+          <div className="grid gap-5 sm:grid-cols-2">
+            <FormField label="Target" error={e.target_id?.message}>
+              <Select {...form.register("target_id")}>
+                <option value="">Select a target…</option>
+                {targets.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </Select>
+            </FormField>
+            <FormField label="Credential" error={e.credential_id?.message}>
+              <Select {...form.register("credential_id")}>
+                <option value="">None</option>
+                {credentials.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </Select>
+            </FormField>
+          </div>
+          <Controller control={form.control} name="album_template" render={({ field }) => (
+            <AlbumTemplateField value={field.value} onChange={field.onChange} error={e.album_template?.message} />
+          )} />
+        </Section>
+        <Section title="Schedule" description="When and how far back to collect.">
+          <Controller control={form.control} name="schedule_cron" render={({ field }) => (
+            <CronField value={field.value} onChange={field.onChange} error={e.schedule_cron?.message} />
+          )} />
+          <Controller control={form.control} name="backfill_mode" render={({ field: mode }) => (
+            <Controller control={form.control} name="backfill_value" render={({ field: val }) => (
+              <BackfillField
+                mode={mode.value}
+                value={val.value}
+                error={e.backfill_value?.message ?? e.backfill_mode?.message}
+                onModeChange={(m) => {
+                  mode.onChange(m);
+                  val.onChange("");
+                }}
+                onValueChange={val.onChange}
+              />
+            )} />
+          )} />
+        </Section>
+        <Section title="Filters" description="Skip items that do not match.">
+          <Controller control={form.control} name="filters" render={({ field }) => (
+            <FilterBuilder value={field.value} onChange={field.onChange} errors={filterErrors} error={e.filters?.message} />
+          )} />
+        </Section>
+        <Section title="Notifications">
+          <Controller control={form.control} name="notify" render={({ field }) => (
+            <NotifyField value={field.value} onChange={field.onChange} keep={initial?.notify.credential_ids} error={(e.notify)?.message} />
+          )} />
+        </Section>
+        <Section title="Options">
+          <div className="grid gap-4">
+            {TOGGLES.map((t) => (
+              <div key={t.key} className="flex items-center justify-between gap-4">
+                <div className="grid min-w-0 gap-0.5">
+                  <Label htmlFor={`src-${t.key}`}>{t.label}</Label>
+                  <p className="text-xs text-muted-foreground">{t.hint}</p>
+                </div>
+                <Controller control={form.control} name={t.key} render={({ field }) => (
+                  <Switch id={`src-${t.key}`} checked={field.value} onCheckedChange={field.onChange} />
+                )} />
+              </div>
             ))}
-          </select>
-        </FormField>
-        <FormField label="Credential" error={e.credential_id?.message}>
-          <select className={inputClass} {...form.register("credential_id")}>
-            <option value="">None</option>
-            {credentials.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </FormField>
-      </div>
-      <Controller control={form.control} name="album_template" render={({ field }) => (
-        <AlbumTemplateField value={field.value} onChange={field.onChange} error={e.album_template?.message} />
-      )} />
-      <Controller control={form.control} name="schedule_cron" render={({ field }) => (
-        <CronField value={field.value} onChange={field.onChange} error={e.schedule_cron?.message} />
-      )} />
-      <Controller control={form.control} name="backfill_mode" render={({ field: mode }) => (
-        <Controller control={form.control} name="backfill_value" render={({ field: val }) => (
-          <BackfillField
-            mode={mode.value}
-            value={val.value}
-            error={e.backfill_value?.message ?? e.backfill_mode?.message}
-            onModeChange={(m) => {
-              mode.onChange(m);
-              val.onChange("");
-            }}
-            onValueChange={val.onChange}
-          />
-        )} />
-      )} />
-      <Controller control={form.control} name="filters" render={({ field }) => (
-        <FilterBuilder value={field.value} onChange={field.onChange} errors={filterErrors} error={e.filters?.message} />
-      )} />
-      <Controller control={form.control} name="notify" render={({ field }) => (
-        <NotifyField value={field.value} onChange={field.onChange} keep={initial?.notify.credential_ids} error={(e.notify)?.message} />
-      )} />
-      <details className="rounded-md border p-3">
-        <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
-        <div className="mt-3 grid gap-4">
-          <FormField label="gallery-dl options (JSON)" error={e.gdl_options?.message} hint="Allow-listed options only; the server validates.">
-            <textarea className={`${inputClass} h-28 py-2 font-mono`} spellCheck={false} {...form.register("gdl_options")} />
-          </FormField>
-          <FormField label="Proxy" error={e.proxy?.message}>
-            <input className={inputClass} placeholder="socks5h://host:1080" {...form.register("proxy")} />
-          </FormField>
-          <FormField label="Log level" error={e.log_level?.message}>
-            <select className={inputClass} {...form.register("log_level")}>
-              <option value="">Default</option>
-              {LOG_LEVELS.map((l) => (
-                <option key={l} value={l}>{l}</option>
-              ))}
-            </select>
-          </FormField>
-        </div>
-      </details>
-      {!initial && (
-        <FormField label="Visibility" error={e.visibility?.message} hint="Change later via Share.">
-          <select className={inputClass} {...form.register("visibility")}>
-            <option value="private">Private</option>
-            <option value="everyone">Everyone</option>
-            <option value="restricted">Restricted</option>
-          </select>
-        </FormField>
-      )}
-      <div className="flex flex-wrap gap-4">
-        {(["enabled", "allow_animated", "ephemeral"] as const).map((k) => (
-          <label key={k} className="flex items-center gap-1.5 text-sm">
-            <input type="checkbox" {...form.register(k)} />
-            {k === "enabled" ? "Enabled" : k === "allow_animated" ? "Allow animated" : "Ephemeral"}
-          </label>
-        ))}
-      </div>
-      <FormRootError message={form.rootError} />
-      <div className="flex justify-end gap-2">
+          </div>
+          {!initial && (
+            <FormField label="Visibility" error={e.visibility?.message} hint="Change later via Share.">
+              <Select {...form.register("visibility")}>
+                <option value="private">Private</option>
+                <option value="everyone">Everyone</option>
+                <option value="restricted">Restricted</option>
+              </Select>
+            </FormField>
+          )}
+          <details className="rounded-lg border p-4">
+            <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
+            <div className="mt-4 grid gap-5">
+              <FormField label="gallery-dl options (JSON)" error={e.gdl_options?.message} hint="Allow-listed options only; the server validates.">
+                <Textarea className="h-28 font-mono" spellCheck={false} {...form.register("gdl_options")} />
+              </FormField>
+              <FormField label="Proxy" error={e.proxy?.message}>
+                <Input placeholder="socks5h://host:1080" {...form.register("proxy")} />
+              </FormField>
+              <FormField label="Log level" error={e.log_level?.message}>
+                <Select {...form.register("log_level")}>
+                  <option value="">Default</option>
+                  {LOG_LEVELS.map((l) => (
+                    <option key={l} value={l}>{l}</option>
+                  ))}
+                </Select>
+              </FormField>
+            </div>
+          </details>
+        </Section>
+        {extra}
+        <FormRootError message={form.rootError} />
+      </DialogBody>
+      <DialogFooter>
         {onCancel && (
-          <button type="button" className={btn} onClick={onCancel}>Cancel</button>
+          <Button variant="outline" onClick={onCancel}>Cancel</Button>
         )}
-        <button type="submit" disabled={form.formState.isSubmitting} className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground focus-visible:outline-2 focus-visible:outline-ring disabled:opacity-50">
+        <Button type="submit" loading={form.formState.isSubmitting}>
           Save
-        </button>
-      </div>
+        </Button>
+      </DialogFooter>
     </form>
   );
 }
