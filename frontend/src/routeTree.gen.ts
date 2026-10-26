@@ -14,11 +14,12 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
 import { Route as AppApiKeysRouteImport } from './routes/_app/api-keys'
 import { Route as AppCredentialsRouteImport } from './routes/_app/credentials'
-import { Route as AppJobsRouteImport } from './routes/_app/jobs'
 import { Route as AppSettingsRouteImport } from './routes/_app/settings'
 import { Route as AppSourcesRouteImport } from './routes/_app/sources'
 import { Route as AppTargetsRouteImport } from './routes/_app/targets'
 import { Route as AppUsersRouteImport } from './routes/_app/users'
+import { Route as AppJobsIndexRouteImport } from './routes/_app/jobs.index'
+import { Route as AppJobsJobIdRouteImport } from './routes/_app/jobs.$jobId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -44,11 +45,6 @@ const AppCredentialsRoute = AppCredentialsRouteImport.update({
   path: '/credentials',
   getParentRoute: () => AppRoute,
 } as any)
-const AppJobsRoute = AppJobsRouteImport.update({
-  id: '/jobs',
-  path: '/jobs',
-  getParentRoute: () => AppRoute,
-} as any)
 const AppSettingsRoute = AppSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -69,28 +65,40 @@ const AppUsersRoute = AppUsersRouteImport.update({
   path: '/users',
   getParentRoute: () => AppRoute,
 } as any)
+const AppJobsIndexRoute = AppJobsIndexRouteImport.update({
+  id: '/jobs/',
+  path: '/jobs/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppJobsJobIdRoute = AppJobsJobIdRouteImport.update({
+  id: '/jobs/$jobId',
+  path: '/jobs/$jobId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
   '/api-keys': typeof AppApiKeysRoute
   '/credentials': typeof AppCredentialsRoute
-  '/jobs': typeof AppJobsRoute
   '/settings': typeof AppSettingsRoute
   '/sources': typeof AppSourcesRoute
   '/targets': typeof AppTargetsRoute
   '/users': typeof AppUsersRoute
+  '/jobs/$jobId': typeof AppJobsJobIdRoute
+  '/jobs/': typeof AppJobsIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/api-keys': typeof AppApiKeysRoute
   '/credentials': typeof AppCredentialsRoute
-  '/jobs': typeof AppJobsRoute
   '/settings': typeof AppSettingsRoute
   '/sources': typeof AppSourcesRoute
   '/targets': typeof AppTargetsRoute
   '/users': typeof AppUsersRoute
   '/': typeof AppIndexRoute
+  '/jobs/$jobId': typeof AppJobsJobIdRoute
+  '/jobs': typeof AppJobsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -98,12 +106,13 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_app/api-keys': typeof AppApiKeysRoute
   '/_app/credentials': typeof AppCredentialsRoute
-  '/_app/jobs': typeof AppJobsRoute
   '/_app/settings': typeof AppSettingsRoute
   '/_app/sources': typeof AppSourcesRoute
   '/_app/targets': typeof AppTargetsRoute
   '/_app/users': typeof AppUsersRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/jobs/$jobId': typeof AppJobsJobIdRoute
+  '/_app/jobs/': typeof AppJobsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -112,34 +121,37 @@ export interface FileRouteTypes {
     | '/login'
     | '/api-keys'
     | '/credentials'
-    | '/jobs'
     | '/settings'
     | '/sources'
     | '/targets'
     | '/users'
+    | '/jobs/$jobId'
+    | '/jobs/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
     | '/api-keys'
     | '/credentials'
-    | '/jobs'
     | '/settings'
     | '/sources'
     | '/targets'
     | '/users'
     | '/'
+    | '/jobs/$jobId'
+    | '/jobs'
   id:
     | '__root__'
     | '/_app'
     | '/login'
     | '/_app/api-keys'
     | '/_app/credentials'
-    | '/_app/jobs'
     | '/_app/settings'
     | '/_app/sources'
     | '/_app/targets'
     | '/_app/users'
     | '/_app/'
+    | '/_app/jobs/$jobId'
+    | '/_app/jobs/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -184,13 +196,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppCredentialsRouteImport
       parentRoute: typeof AppRoute
     }
-    '/_app/jobs': {
-      id: '/_app/jobs'
-      path: '/jobs'
-      fullPath: '/jobs'
-      preLoaderRoute: typeof AppJobsRouteImport
-      parentRoute: typeof AppRoute
-    }
     '/_app/settings': {
       id: '/_app/settings'
       path: '/settings'
@@ -219,29 +224,45 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppUsersRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/jobs/': {
+      id: '/_app/jobs/'
+      path: '/jobs'
+      fullPath: '/jobs/'
+      preLoaderRoute: typeof AppJobsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/jobs/$jobId': {
+      id: '/_app/jobs/$jobId'
+      path: '/jobs/$jobId'
+      fullPath: '/jobs/$jobId'
+      preLoaderRoute: typeof AppJobsJobIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppApiKeysRoute: typeof AppApiKeysRoute
   AppCredentialsRoute: typeof AppCredentialsRoute
-  AppJobsRoute: typeof AppJobsRoute
   AppSettingsRoute: typeof AppSettingsRoute
   AppSourcesRoute: typeof AppSourcesRoute
   AppTargetsRoute: typeof AppTargetsRoute
   AppUsersRoute: typeof AppUsersRoute
   AppIndexRoute: typeof AppIndexRoute
+  AppJobsJobIdRoute: typeof AppJobsJobIdRoute
+  AppJobsIndexRoute: typeof AppJobsIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppApiKeysRoute: AppApiKeysRoute,
   AppCredentialsRoute: AppCredentialsRoute,
-  AppJobsRoute: AppJobsRoute,
   AppSettingsRoute: AppSettingsRoute,
   AppSourcesRoute: AppSourcesRoute,
   AppTargetsRoute: AppTargetsRoute,
   AppUsersRoute: AppUsersRoute,
   AppIndexRoute: AppIndexRoute,
+  AppJobsJobIdRoute: AppJobsJobIdRoute,
+  AppJobsIndexRoute: AppJobsIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

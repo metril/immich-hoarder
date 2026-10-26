@@ -101,9 +101,9 @@ export function useRip() {
   });
 }
 
-/** Navigation target for a job page (typed route lands with the jobs task). */
+/** Navigation target for a job page. */
 export function jobNav(jobId: number) {
-  return { to: "/jobs/$jobId", params: { jobId: String(jobId) } } as never;
+  return { to: "/jobs/$jobId", params: { jobId: String(jobId) } } as const;
 }
 
 export const RUN_LOG_LEVELS = ["trace", "debug", "info", "warn", "error"] as const;

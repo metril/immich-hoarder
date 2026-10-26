@@ -45,7 +45,7 @@ export function RunDialog({ sourceId, name }: { sourceId: number; name?: string 
           {activeId !== null ? (
             <p role="alert" className="mt-3 text-sm text-destructive">
               A job for this source is already queued or running.{" "}
-              <Link to={"/jobs/$jobId" as never} params={{ jobId: String(activeId) } as never} className="underline">
+              <Link to="/jobs/$jobId" params={{ jobId: String(activeId) }} className="underline">
                 View job #{activeId}
               </Link>
             </p>

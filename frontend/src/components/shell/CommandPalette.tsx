@@ -22,10 +22,14 @@ export default function CommandPalette({ open, onOpenChange, me }: { open: boole
   const { theme, setTheme } = useTheme();
   const signOut = useSignOut();
 
-  // TODO(T11): drop the `as never` cast once /targets?new and /jobs/$jobId exist as typed routes.
+  // TODO(T10): drop the `as never` cast once /targets?new exists as a typed route.
   const go = (to: string, search?: Record<string, unknown>) => {
     onOpenChange(false);
     void navigate({ to, search } as never);
+  };
+  const goJob = (id: string) => {
+    onOpenChange(false);
+    void navigate({ to: "/jobs/$jobId", params: { jobId: id } });
   };
   const goSources = (search: { new?: boolean; q?: string }) => {
     onOpenChange(false);
@@ -60,7 +64,7 @@ export default function CommandPalette({ open, onOpenChange, me }: { open: boole
         <Command.Empty className="px-3 py-6 text-center text-sm text-muted-foreground">No results.</Command.Empty>
         {jobId && (
           <Command.Group heading="Jobs" className={groupCls}>
-            <Command.Item forceMount value={`go to job ${jobId}`} className={itemCls} onSelect={() => go(`/jobs/${jobId}`)}>
+            <Command.Item forceMount value={`go to job ${jobId}`} className={itemCls} onSelect={() => goJob(jobId)}>
               Go to job #{jobId}
             </Command.Item>
           </Command.Group>

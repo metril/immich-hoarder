@@ -16,6 +16,8 @@ export interface JobStreamState {
   items: Item[];
   counters: Record<string, number>;
   rate: number | undefined;
+  total: number | undefined;
+  scratchBytes: number | undefined;
   phase: string | undefined;
   status: JobStatus | undefined;
   truncated: boolean;
@@ -27,6 +29,8 @@ const EMPTY: JobStreamState = {
   items: [],
   counters: {},
   rate: undefined,
+  total: undefined,
+  scratchBytes: undefined,
   phase: undefined,
   status: undefined,
   truncated: false,
@@ -43,6 +47,8 @@ export function useJobStream(jobId: number): JobStreamState {
     const seen = new Set<string>();
     let counters: Record<string, number> = {};
     let rate: number | undefined;
+    let total: number | undefined;
+    let scratchBytes: number | undefined;
     let phase: string | undefined;
     let status: JobStatus | undefined;
     let truncated = false;
@@ -65,7 +71,7 @@ export function useJobStream(jobId: number): JobStreamState {
       items = trim(items, MAX_ITEMS, "i");
       setSnap({
         jobId,
-        s: { log: [...log], items: [...items], counters, rate, phase, status, truncated, connected },
+        s: { log: [...log], items: [...items], counters, rate, total, scratchBytes, phase, status, truncated, connected },
       });
       qc.setQueryData<JobOut>(keys.detail("jobs", jobId), (old) =>
         old
@@ -97,6 +103,8 @@ export function useJobStream(jobId: number): JobStreamState {
         case "progress":
           counters = { ...counters, ...ev.counters };
           if (ev.rate_bps !== undefined) rate = ev.rate_bps;
+          if (ev.total !== undefined) total = ev.total;
+          if (ev.scratch_bytes !== undefined) scratchBytes = ev.scratch_bytes;
           break;
         case "status":
           status = ev.status;
