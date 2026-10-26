@@ -348,7 +348,6 @@ class _Rip:
             self.emit({"type": "item.deleted_in_immich", "url": url, "immich_asset_id": asset_id})
             return
         if outcome == "failed":
-            self._record(key, info.sha1, info.phash, asset_id)
             self._fail(url, "failed", "link_failed")
             return
         if fresh:

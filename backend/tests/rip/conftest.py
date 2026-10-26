@@ -40,6 +40,7 @@ class _Handler(BaseHTTPRequestHandler):
         routes = {
             "/img/a.jpg": ("image/jpeg", a),
             "/img/a2.jpg": ("image/jpeg", a),
+            "/img/corrupt.jpg": ("image/jpeg", a[:20] + b"garbage" * 5),
             "/img/b.png": ("image/png", _img("PNG", (10, 200, 10))),
             "/vid/c.mp4": ("video/mp4", b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64),
             "/html/fake.jpg": ("text/html", b"<html>not an image</html>"),

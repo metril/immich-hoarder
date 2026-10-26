@@ -12,11 +12,11 @@ import httpx
 import pytest
 import respx
 from pydantic import SecretStr
-from sqlalchemy import Engine
+from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
 from app.db.engine import make_sync_engine
-from app.db.models import BackfillMode, Base, ImmichTarget, Source, User
+from app.db.models import AssetSeen, BackfillMode, Base, ImmichTarget, Source, User
 from app.immich.client import ImmichClient
 from app.rip.dedupe import DedupeStore
 from app.rip.filters import FilterSpec
@@ -260,15 +260,25 @@ def test_album_add_not_found_then_gone_is_deleted_in_immich(env: Env) -> None:
     assert "item.deleted_in_immich" in env.types()
 
 
-def test_album_add_error_not_gone_fails_but_records_asset(env: Env) -> None:
+def test_album_add_error_not_gone_fails_and_records_nothing(env: Env, engine: Engine) -> None:
     env.add_error = "no_permission"
     env.router.get(url__regex=rf"{BASE}/assets/.+").mock(
         return_value=httpx.Response(200, json={"id": ASSET, "isTrashed": False})
     )
     r = env.run("/img/a.jpg")
     assert r.counters["failed"] == 1 and r.status == "succeeded"
-    sha1 = hashlib.sha1(fetch(env, "/img/a.jpg")).digest()
-    assert env.store.match_sha1(1, sha1) is not None
+    with engine.connect() as c:
+        assert c.execute(select(func.count()).select_from(AssetSeen)).scalar() == 0
+
+
+def test_corrupt_image_filtered_not_an_image_key_only(env: Env, engine: Engine) -> None:
+    r = env.run("/img/corrupt.jpg")
+    ev = [e for e in env.events if e["type"] == "item.filtered"]
+    assert r.counters["filtered"] == 1 and ev[0]["reason"] == "not_an_image"
+    assert env.uploads == [] and not any(env.scratch.iterdir())
+    with engine.connect() as c:
+        rows = c.execute(select(AssetSeen.sha1, AssetSeen.phash, AssetSeen.immich_asset_id)).all()
+    assert len(rows) == 1 and tuple(rows[0]) == (None, None, None)
 
 
 def test_filtered_records_key_only_and_not_redownloaded_next_run(env: Env) -> None:
