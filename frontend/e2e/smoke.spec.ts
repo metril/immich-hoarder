@@ -28,7 +28,9 @@ test("nav to every admin page via sidebar", async ({ page }) => {
   const nav = page.getByRole("navigation", { name: "Main" });
   for (const name of PAGES) {
     await nav.getByRole("link", { name, exact: true }).click();
-    await expect(page.getByRole("heading", { level: 1, name })).toBeVisible();
+    // Exactly one h1 per page; the document title tracks the route.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    await expect(page).toHaveTitle(new RegExp(`^${name} · |^${name}$`));
   }
 });
 
