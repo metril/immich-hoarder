@@ -1,6 +1,7 @@
 """Media analysis and perceptual-hash helpers."""
 
 import hashlib
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -8,6 +9,8 @@ import numpy as np
 from PIL import Image, ImageOps
 
 Image.MAX_IMAGE_PIXELS = 178_956_970
+# _check_pixels rejects oversized images explicitly; the warning (1x-2x the limit) is noise.
+warnings.filterwarnings("ignore", category=Image.DecompressionBombWarning)
 
 ALLOWED_FORMATS = frozenset({"JPEG", "PNG", "GIF", "WEBP", "BMP", "TIFF", "AVIF"})
 _ANIMATABLE = frozenset({"GIF", "WEBP", "PNG", "AVIF"})
@@ -97,13 +100,15 @@ def analyze(path: Path) -> MediaInfo:
                 getattr(img, "is_animated", False) or getattr(img, "n_frames", 1) > 1
             )
             width, height = img.size
-            if img.getexif().get(0x0112) in (5, 6, 7, 8):
-                width, height = height, width
             img.seek(0)
             if fmt == "JPEG":
                 img.draft("RGB", (256, 256))
             img.load()
-            phash = _phash(ImageOps.exif_transpose(img))
+            upright = ImageOps.exif_transpose(img)
+            # draft() shrinks the image; only the swap (honouring EXIF and XMP) is trusted
+            if upright.size != img.size and img.width != img.height:
+                width, height = height, width
+            phash = _phash(upright)
     except NotAnImage:
         raise
     except Image.DecompressionBombError as e:

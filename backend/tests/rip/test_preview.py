@@ -383,3 +383,122 @@ async def test_preview_429_when_busy(
     release.set()
     assert r3.status_code == 429 and r3.json() == {"detail": "too many previews"}
     assert (await t1).status_code == 200 and (await t2).status_code == 200
+
+
+def _raise_preview() -> None:
+    from app.rip.preview import PreviewError
+
+    raise PreviewError("boom")
+
+
+def test_preview_error_message_has_no_doubled_prefix() -> None:
+    from app.rip.preview import PreviewError
+
+    with pytest.raises(PreviewError) as ei:
+        run_in_subprocess(_raise_preview, timeout=30)
+    assert str(ei.value) == "boom"
+    with pytest.raises(PreviewError) as ei2:
+        run_in_subprocess(int, "x", timeout=30)
+    assert str(ei2.value).startswith("ValueError: ")
+
+
+async def test_preview_rmtree_runs_off_the_event_loop(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import shutil
+
+    threads: list[str] = []
+    real = shutil.rmtree
+
+    def spy(path: object, *a: object, **k: object) -> None:
+        threads.append(threading.current_thread().name)
+        real(path, *a, **k)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(sources_api, "run_in_subprocess", lambda *a, **k: [])
+    monkeypatch.setattr(sources_api.shutil, "rmtree", spy)
+    _, h = await actor("a")
+    tid = await _mk_target(h, client)
+    r = await client.post(
+        "/api/v1/sources/preview",
+        json={"name": "p", "url": "https://www.reddit.com/r/pics/", "target_id": tid},
+        headers=h,
+    )
+    assert r.status_code == 200
+    assert threads and threads[0] != threading.main_thread().name
+
+
+async def test_preview_disconnect_keeps_slot_and_dir_until_child_done(
+    client: httpx.AsyncClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import anyio
+
+    entered = threading.Event()
+    release = threading.Event()
+
+    def slow(*a: object, **k: object) -> list[object]:
+        entered.set()
+        release.wait(20)
+        return []
+
+    sem = asyncio.Semaphore(1)
+    monkeypatch.setattr(sources_api, "run_in_subprocess", slow)
+    monkeypatch.setattr(sources_api, "_PREVIEW_SEM", sem)
+    _, h = await actor("a")
+    tid = await _mk_target(h, client)
+    scope = anyio.CancelScope()
+
+    async def post() -> None:
+        with scope:
+            await client.post(
+                "/api/v1/sources/preview",
+                json={"name": "p", "url": "https://www.reddit.com/r/pics/", "target_id": tid},
+                headers=h,
+            )
+
+    task = asyncio.create_task(post())
+    assert await asyncio.to_thread(entered.wait, 15)
+    scope.cancel()  # client disconnect
+    await asyncio.sleep(0.3)
+    assert sem.locked()
+    assert len(list(settings.scratch_dir.glob("preview-*"))) == 1
+    release.set()
+    await asyncio.wait_for(task, 15)
+    assert not sem.locked()
+    assert list(settings.scratch_dir.glob("preview-*")) == []
+
+
+async def test_preview_cancel_during_cleanup_still_releases(
+    client: httpx.AsyncClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import anyio
+
+    in_cleanup = threading.Event()
+    real = shutil.rmtree
+
+    def slow_rmtree(path: object, *a: object, **k: object) -> None:
+        in_cleanup.set()
+        time.sleep(0.3)
+        real(path, *a, **k)  # type: ignore[arg-type]
+
+    sem = asyncio.Semaphore(1)
+    monkeypatch.setattr(sources_api, "run_in_subprocess", lambda *a, **k: [])
+    monkeypatch.setattr(sources_api.shutil, "rmtree", slow_rmtree)
+    monkeypatch.setattr(sources_api, "_PREVIEW_SEM", sem)
+    _, h = await actor("a")
+    tid = await _mk_target(h, client)
+    scope = anyio.CancelScope()
+
+    async def post() -> None:
+        with scope:
+            await client.post(
+                "/api/v1/sources/preview",
+                json={"name": "p", "url": "https://www.reddit.com/r/pics/", "target_id": tid},
+                headers=h,
+            )
+
+    task = asyncio.create_task(post())
+    assert await asyncio.to_thread(in_cleanup.wait, 15)
+    scope.cancel()  # disconnect while cleanup is running
+    await asyncio.wait_for(task, 15)
+    assert not sem.locked()
+    assert list(settings.scratch_dir.glob("preview-*")) == []

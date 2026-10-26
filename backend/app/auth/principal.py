@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings
@@ -21,6 +22,7 @@ SCOPES = frozenset(
         "jobs:write",
         "keys:read",
         "keys:write",
+        "metrics:read",
         "admin",
     }
 )
@@ -65,10 +67,7 @@ async def upsert_user(session: AsyncSession, claims: Mapping[str, Any], settings
     sub = str(claims["sub"])
     groups = extract_groups(claims, settings)
     role = resolve_role(groups, settings)
-    user = (await session.execute(select(User).where(User.sub == sub))).scalar_one_or_none()
-    if user is None:
-        user = User(sub=sub, role=role or Role.user, groups=groups)
-        session.add(user)
+    user = await _fetch_or_create(session, sub, role, groups)
     user.groups = groups
     if role is not None:
         user.role = role
@@ -78,4 +77,21 @@ async def upsert_user(session: AsyncSession, claims: Mapping[str, Any], settings
     if name:
         user.name = str(name)
     await session.flush()
+    return user
+
+
+async def _fetch_or_create(
+    session: AsyncSession, sub: str, role: Role | None, groups: list[str]
+) -> User:
+    user = (await session.execute(select(User).where(User.sub == sub))).scalar_one_or_none()
+    if user is not None:
+        return user
+    user = User(sub=sub, role=role or Role.user, groups=groups)
+    try:
+        async with session.begin_nested():  # savepoint: caller's pending work survives
+            session.add(user)
+            await session.flush()
+    except IntegrityError:
+        # Concurrent first login: another request created the row; re-select once.
+        return (await session.execute(select(User).where(User.sub == sub))).scalar_one()
     return user

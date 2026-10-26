@@ -25,7 +25,7 @@ async def list_keys(
     cursor: str | None = None,
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Page[ApiKeyOut]:
     require_scope(p, "keys:read")
     stmt = select(ApiKey).where(ApiKey.revoked.is_(False))
@@ -39,7 +39,7 @@ async def list_keys(
 async def create_key(
     body: ApiKeyIn,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> ApiKeyCreated:
     require_scope(p, "keys:write")
     scopes = sorted(set(body.scopes))
@@ -59,7 +59,7 @@ async def create_key(
 async def revoke_key(
     key_id: int,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Response:
     require_scope(p, "keys:write")
     key = await session.get(ApiKey, key_id)

@@ -165,6 +165,7 @@ async def test_visible_to_lists_only_accessible(session: AsyncSession) -> None:
         "group_member": {ev.id, rg.id},
         "user_share_use": {ev.id, rs.id},
         "user_share_edit": {ev.id, rs.id},
+        "scoped_admin": {ev.id},
     }
     for actor, ids in expected.items():
         rows = await session.execute(visible_to(select(ImmichTarget.id), ImmichTarget, ps[actor]))

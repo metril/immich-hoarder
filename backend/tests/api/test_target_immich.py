@@ -62,6 +62,7 @@ async def test_target_test_unauthorized(client: httpx.AsyncClient) -> None:
     r = await client.post(f"/api/v1/targets/{tid}/test", headers=h)
     assert r.status_code == 200
     assert r.json()["ok"] is False and r.json()["error"] == "unauthorized"
+    assert "k-secret" not in r.text
 
 
 async def test_albums_lists(client: httpx.AsyncClient) -> None:
@@ -150,3 +151,13 @@ async def test_albums_sorted_casefold(client: httpx.AsyncClient) -> None:
     tid = await make_target(client, h)
     r = await client.get(f"/api/v1/targets/{tid}/albums", headers=h)
     assert [a["name"] for a in r.json()["items"]] == ["a", "b", "C"]
+
+
+async def test_target_test_json_missing_fields(client: httpx.AsyncClient) -> None:
+    mount(client, httpx.MockTransport(lambda req: httpx.Response(200, json={})))
+    _, h = await actor("a")
+    tid = await make_target(client, h)
+    r = await client.post(f"/api/v1/targets/{tid}/test", headers=h)
+    assert r.status_code == 200
+    assert r.json()["ok"] is False and r.json()["error"] == "immich error 200"
+    assert "k-secret" not in r.text

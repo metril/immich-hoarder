@@ -17,12 +17,14 @@ def settings(tmp_path: Path) -> Settings:
         master_key=SecretStr("test-master-key-0123456789abcdef-xyz"),
         session_secret=SecretStr("test-session-secret-0123456789abcdef"),
         public_url="http://testserver",
+        backup_dir=tmp_path / "backups",
     )
 
 
 @pytest.fixture
 async def client(settings: Settings) -> AsyncIterator[httpx.AsyncClient]:
     app: FastAPI = create_app(settings)
+    app.state.runtime_enabled = False
     async with (
         app.router.lifespan_context(app),
         httpx.AsyncClient(

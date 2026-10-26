@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from sqlalchemy import Engine, text
 from sqlalchemy.orm import Session
+from tests.pgsupport import BACKENDS
 
 from app.db.engine import make_sync_engine
 from app.db.models import Base, ImmichTarget, Source, User
@@ -15,9 +16,13 @@ ASSET = str(uuid.uuid4())
 PH = 0x0123_4567_89AB_CDEF
 
 
-@pytest.fixture
-def engine(tmp_path: Path) -> Iterator[Engine]:
-    eng = make_sync_engine(f"sqlite+aiosqlite:///{tmp_path / 'd.db'}")
+@pytest.fixture(params=BACKENDS)
+def engine(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[Engine]:
+    if request.param == "pg":
+        url = request.getfixturevalue("pg_url")
+    else:
+        url = f"sqlite+aiosqlite:///{tmp_path / 'd.db'}"
+    eng = make_sync_engine(url)
     Base.metadata.create_all(eng)
     with Session(eng) as s:
         u = User(sub="u1")
@@ -135,10 +140,13 @@ def _plan(engine: Engine, store: DedupeStore, ph: int, max_distance: int) -> str
 
 
 def test_phash_query_uses_index(engine: Engine) -> None:
+    if engine.dialect.name != "sqlite":
+        pytest.skip("sqlite-specific")
     store = DedupeStore(engine)
     plan = _plan(engine, store, to_signed64(PH), 3)
     for n in range(4):
         assert f"ix_assets_seen_target_ph{n} (target_id=? AND ph{n}=?)" in plan
+    assert "SCAN assets_seen" not in plan
 
 
 def test_phash_four_chunks_each_flipped_not_found(engine: Engine) -> None:
@@ -164,6 +172,8 @@ def test_phash_many_candidates_same_chunk(engine: Engine) -> None:
 
 
 def test_hamming_udf(engine: Engine) -> None:
+    if engine.dialect.name != "sqlite":
+        pytest.skip("sqlite-specific")
     with engine.connect() as c:
         q = "SELECT hamming(:a, :b)"
         assert c.execute(text(q), {"a": -1, "b": 0}).scalar() == 64

@@ -170,3 +170,37 @@ def test_exif_orientation_applied(tmp_path: Path) -> None:
     ia, ib = analyze(a), analyze(b)
     assert (ia.width, ia.height) == (800, 500)
     assert hamming(ia.phash, ib.phash) <= 3
+
+
+def test_xmp_only_orientation_swaps_dimensions(tmp_path: Path) -> None:
+    xmp = (
+        b'<?xpacket begin="" id="W5M0MpCehiHzreSzNTczkc9d"?><x:xmpmeta xmlns:x="adobe:ns:meta/">'
+        b'<rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+        b'<rdf:Description rdf:about="" xmlns:tiff="http://ns.adobe.com/tiff/1.0/" '
+        b'tiff:Orientation="6"/></rdf:RDF></x:xmpmeta><?xpacket end="w"?>'
+    )
+    p = tmp_path / "x.jpg"
+    Image.new("RGB", (500, 300), "red").save(p, "JPEG", xmp=xmp)
+    info = analyze(p)
+    assert (info.width, info.height) == (300, 500)
+
+
+def test_large_jpeg_dims_not_draft_scaled(tmp_path: Path) -> None:
+    p = tmp_path / "big.jpg"
+    Image.new("RGB", (2000, 1000), "blue").save(p, "JPEG")
+    info = analyze(p)
+    assert (info.width, info.height) == (2000, 1000)
+
+
+def test_bomb_warning_filtered_at_module_level() -> None:
+    import subprocess
+    import sys
+
+    code = (
+        "import warnings, app.rip.media\n"
+        "from PIL import Image\n"
+        "print(any(f[0] == 'ignore' and f[2] is Image.DecompressionBombWarning"
+        " for f in warnings.filters))"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert out.stdout.strip() == "True"

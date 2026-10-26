@@ -1,10 +1,13 @@
 import asyncio
+import logging
 import shutil
 
+import anyio
+import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.common import get_obj, secret_box
@@ -16,8 +19,8 @@ from app.auth.principal import Principal
 from app.core.crypto import SecretBox
 from app.core.extractors import UnsupportedURL, validate_proxy, validate_url
 from app.db.engine import get_session
-from app.db.models import BackfillMode, Perm, Source
-from app.rip.build import check_refs, credential_snapshot
+from app.db.models import BackfillMode, Job, JobStatus, Perm, Source
+from app.rip.build import check_notify_refs, check_refs, credential_snapshot
 from app.rip.filters import FilterSpec, validate_backfill
 from app.rip.preview import (
     PREVIEW_MAX,
@@ -32,8 +35,23 @@ from app.rip.settings import load_rip_settings
 from app.rip.snapshot import SourceSnapshot
 from app.schemas.sources import SourceIn, SourceOut, SourcePatch
 
+log = logging.getLogger(__name__)
+
 PREVIEW_TIMEOUT = 60.0
 _PREVIEW_SEM = asyncio.Semaphore(2)
+
+
+async def _sync(request: Request, session: AsyncSession, source_id: int) -> None:
+    """Commit, then refresh the source's cron trigger (no-op without a scheduler)."""
+    scheduler = getattr(request.app.state, "scheduler", None)
+    if scheduler is None:
+        return
+    await session.commit()
+    try:
+        await scheduler.sync_source(source_id)
+    except Exception as e:  # write is already committed; never turn it into a 500
+        log.error("scheduler sync failed for source %s: %s", source_id, type(e).__name__)
+
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 
@@ -62,7 +80,7 @@ async def list_sources(
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     include_ephemeral: bool = False,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Page[SourceOut]:
     require_scope(p, "sources:read")
     stmt = visible_to(select(Source), Source, p)
@@ -72,14 +90,12 @@ async def list_sources(
     return Page(items=[SourceOut.of(r) for r in rows], next_cursor=nxt)
 
 
-@router.post("", response_model=SourceOut, status_code=201)
-async def create_source(
-    body: SourceIn,
-    p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
-) -> SourceOut:
-    require_scope(p, "sources:write")
+async def build_source(
+    session: AsyncSession, p: Principal, body: SourceIn, box: SecretBox
+) -> Source:
+    """Validate a create payload and add the resulting Source (flushed) owned by `p`."""
     await check_refs(session, p.user_id, body.target_id, body.credential_id)
+    await check_notify_refs(session, p.user_id, body.notify, box)
     extractor = await _extractor_for(session, body.url)
     await _check_proxy(session, body.proxy)
     s = Source(
@@ -89,7 +105,22 @@ async def create_source(
     )
     session.add(s)
     await session.flush()
-    return SourceOut.of(s)
+    return s
+
+
+@router.post("", response_model=SourceOut, status_code=201)
+async def create_source(
+    body: SourceIn,
+    request: Request,
+    p: Principal = Depends(current_principal),
+    session: AsyncSession = Depends(get_session, scope="function"),
+    box: SecretBox = Depends(secret_box),
+) -> SourceOut:
+    require_scope(p, "sources:write")
+    s = await build_source(session, p, body, box)
+    out = SourceOut.of(s)
+    await _sync(request, session, s.id)
+    return out
 
 
 class PreviewIn(SourceIn):
@@ -105,7 +136,7 @@ async def preview_source(
     body: PreviewIn,
     request: Request,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
     box: SecretBox = Depends(secret_box),
 ) -> PreviewOut:
     require_scope(p, "sources:read")
@@ -139,27 +170,31 @@ async def preview_source(
         raise HTTPException(429, "too many previews")
     await _PREVIEW_SEM.acquire()
     job_dir = None
-    try:
-        job_dir = make_job_dir(request.app.state.settings.scratch_dir)
-        items = await run_in_threadpool(
-            run_in_subprocess,
-            preview,
-            snap,
-            cred,
-            rip,
-            job_dir,
-            body.limit,
-            timeout=PREVIEW_TIMEOUT,
-            fragments=secret_fragments(cred),
-        )
-    except TimeoutError:
-        raise HTTPException(504, "preview timed out") from None
-    except PreviewError as e:
-        raise HTTPException(502, f"preview failed: {str(e)[:200]}") from None
-    finally:
-        if job_dir is not None:
-            shutil.rmtree(job_dir, ignore_errors=True)
-        _PREVIEW_SEM.release()
+    # shielded: a client disconnect must not free the slot or remove the dir under a live child
+    with anyio.CancelScope(shield=True):
+        try:
+            job_dir = make_job_dir(request.app.state.settings.scratch_dir)
+            items = await run_in_threadpool(
+                run_in_subprocess,
+                preview,
+                snap,
+                cred,
+                rip,
+                job_dir,
+                body.limit,
+                timeout=PREVIEW_TIMEOUT,
+                fragments=secret_fragments(cred),
+            )
+        except TimeoutError:
+            raise HTTPException(504, "preview timed out") from None
+        except PreviewError as e:
+            raise HTTPException(502, f"preview failed: {str(e)[:200]}") from None
+        finally:
+            try:
+                if job_dir is not None:
+                    await anyio.to_thread.run_sync(shutil.rmtree, job_dir, True)
+            finally:
+                _PREVIEW_SEM.release()
     return PreviewOut(items=items)
 
 
@@ -167,7 +202,7 @@ async def preview_source(
 async def get_source(
     obj_id: int,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> SourceOut:
     require_scope(p, "sources:read")
     return SourceOut.of(await get_obj(session, Source, obj_id, p))
@@ -177,8 +212,10 @@ async def get_source(
 async def patch_source(
     obj_id: int,
     body: SourcePatch,
+    request: Request,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
+    box: SecretBox = Depends(secret_box),
 ) -> SourceOut:
     require_scope(p, "sources:write")
     s: Source = await get_obj(session, Source, obj_id, p, Perm.edit)
@@ -214,22 +251,39 @@ async def patch_source(
     if "url" in data:
         s.extractor = await _extractor_for(session, s.url)
     await check_refs(session, s.owner_id, s.target_id, s.credential_id)
+    await check_notify_refs(session, s.owner_id, s.notify, box)
     await session.flush()
-    return SourceOut.of(s)
+    out = SourceOut.of(s)
+    await _sync(request, session, obj_id)
+    return out
 
 
 @router.delete("/{obj_id}", status_code=204)
 async def delete_source(
     obj_id: int,
+    request: Request,
     p: Principal = Depends(current_principal),
-    session: AsyncSession = Depends(get_session),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Response:
     require_scope(p, "sources:write")
     s: Source = await get_obj(session, Source, obj_id, p)
     await require_owner_or_admin(session, s, p)
+    # one atomic statement: no job can become active between the check and the delete
+    res = await session.execute(
+        delete(Source).where(
+            Source.id == obj_id,
+            ~exists().where(
+                Job.source_id == Source.id,
+                Job.status.in_((JobStatus.queued, JobStatus.running)),
+            ),
+        )
+    )
+    if res.rowcount == 0:  # type: ignore[attr-defined]
+        if await session.scalar(select(Source.id).where(Source.id == obj_id)) is not None:
+            raise HTTPException(409, "source has an active job")
+        raise HTTPException(404, "not found")
     await delete_shares(session, Source.share_type, obj_id)
-    await session.delete(s)
-    await session.flush()
+    await _sync(request, session, obj_id)
     return Response(status_code=204)
 
 

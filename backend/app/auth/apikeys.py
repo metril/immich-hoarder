@@ -13,7 +13,7 @@ from app.db.models import ApiKey, User
 
 _hasher = PasswordHasher()
 _ALPHABET = string.ascii_lowercase + string.digits
-_RAW_RE = re.compile(r"^ih_([a-z0-9]{8})_([A-Za-z0-9_-]{32,})$")
+_RAW_RE = re.compile(r"^ih_([a-z0-9]{8})_([A-Za-z0-9_-]{32})$")
 LAST_USED_INTERVAL = timedelta(minutes=1)
 
 

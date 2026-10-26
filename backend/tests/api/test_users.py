@@ -17,14 +17,17 @@ async def test_admin_manages_users_and_settings(client: httpx.AsyncClient) -> No
     r = await client.patch(f"/api/v1/users/{uid}", json={"disabled": True}, headers=h)
     assert r.status_code == 200 and r.json()["disabled"] is True
     assert (
-        await client.put("/api/v1/settings", json={"x": {"y": 1}}, headers=h)
+        await client.put("/api/v1/settings", json={"runtime": {"retention_days": 5}}, headers=h)
     ).status_code == 200
-    await client.put("/api/v1/settings", json={"z": 2}, headers=h)
-    assert (await client.get("/api/v1/settings", headers=h)).json() == {"x": {"y": 1}, "z": 2}
+    await client.put("/api/v1/settings", json={"notify": {"on": ["success"]}}, headers=h)
+    assert (await client.get("/api/v1/settings", headers=h)).json() == {
+        "runtime": {"retention_days": 5},
+        "notify": {"on": ["success"]},
+    }
 
 
 async def test_api_keys(client: httpx.AsyncClient) -> None:
-    uid, h = await actor("a")
+    _, h = await actor("a")
     _, hb = await actor("b")
     _, hadm = await actor("adm", Role.admin)
     r = await client.post(
@@ -48,7 +51,6 @@ async def test_api_keys(client: httpx.AsyncClient) -> None:
     # revoked key no longer authenticates
     raw = r.json()["key"]
     assert (await client.get("/api/v1/sources", headers={"X-API-Key": raw})).status_code == 401
-    _ = (uid, headers_for)
 
 
 async def test_api_keys_paginated(client: httpx.AsyncClient) -> None:
@@ -94,3 +96,11 @@ async def test_role_not_patchable(client: httpx.AsyncClient) -> None:
     _, h = await actor("adm", Role.admin)
     r = await client.patch(f"/api/v1/users/{uid}", json={"role": "admin"}, headers=h)
     assert r.status_code == 422
+
+
+async def test_disabling_already_disabled_admin_is_ok(client: httpx.AsyncClient) -> None:
+    _, h = await actor("adm", Role.admin)
+    other = await make_user("adm2", Role.admin)
+    for _ in range(2):
+        r = await client.patch(f"/api/v1/users/{other}", json={"disabled": True}, headers=h)
+        assert r.status_code == 200 and r.json()["disabled"] is True

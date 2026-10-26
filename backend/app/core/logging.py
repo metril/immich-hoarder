@@ -1,4 +1,5 @@
 import logging
+import re
 import sys
 from datetime import UTC, datetime
 
@@ -15,6 +16,9 @@ _LEVELS = {
     "trace": TRACE,
 }
 
+_SENSITIVE = re.compile(r"(?i)pass|token|secret|key|authorization|cookie")
+_MASK = "***"
+
 _STD = set(logging.LogRecord("", 0, "", 0, "", None, None).__dict__) | {"message", "asctime"}
 
 
@@ -28,7 +32,7 @@ class JsonFormatter(logging.Formatter):
         }
         for k, v in record.__dict__.items():
             if k not in _STD:
-                data[k] = v
+                data[k] = _MASK if _SENSITIVE.search(k) else v
         if record.exc_info:
             data["exc"] = self.formatException(record.exc_info)
         return orjson.dumps(data, default=str).decode()

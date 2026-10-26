@@ -15,6 +15,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
@@ -54,6 +55,7 @@ class CredentialKind(enum.StrEnum):
     cookies = "cookies"
     userpass = "userpass"
     token = "token"
+    apprise = "apprise"
 
 
 class BackfillMode(enum.StrEnum):
@@ -85,6 +87,7 @@ class Timestamps:
 
 class Ownable:
     share_type: ClassVar[str]
+    id: Mapped[int]
     visibility: Mapped[Visibility] = mapped_column(
         _enum(Visibility), default=Visibility.private, server_default=Visibility.private.value
     )
@@ -125,6 +128,7 @@ class ApiKey(Timestamps, Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     name: Mapped[str] = mapped_column(String(255))
+    # String(8) is intentional: the 8-char lowercase-alphanumeric lookup prefix of the raw key
     prefix: Mapped[str] = mapped_column(String(8), unique=True)
     hash: Mapped[str] = mapped_column(String(255))
     scopes: Mapped[list[str]] = mapped_column(JSON, default=list)
@@ -183,6 +187,16 @@ class Source(Ownable, Timestamps, Base):
 
 class Job(Timestamps, Base):
     __tablename__ = "jobs"
+    __table_args__ = (
+        Index("ix_jobs_status", "status"),
+        Index(
+            "uq_jobs_active_source",
+            "source_id",
+            unique=True,
+            sqlite_where=text("status IN ('queued','running')"),
+            postgresql_where=text("status IN ('queued','running')"),
+        ),
+    )
     id: Mapped[int] = mapped_column(primary_key=True)
     source_id: Mapped[int] = mapped_column(ForeignKey("sources.id", ondelete="CASCADE"), index=True)
     triggered_by: Mapped[int | None] = mapped_column(
@@ -198,8 +212,9 @@ class Job(Timestamps, Base):
 
 class JobEvent(Base):
     __tablename__ = "job_events"
+    __table_args__ = (Index("ix_job_events_job_id_id", "job_id", "id"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"))
     ts: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
     level: Mapped[str] = mapped_column(String(16))
     type: Mapped[str] = mapped_column(String(64))
@@ -208,8 +223,9 @@ class JobEvent(Base):
 
 class JobItem(Base):
     __tablename__ = "job_items"
+    __table_args__ = (Index("ix_job_items_job_id_id", "job_id", "id"),)
     id: Mapped[int] = mapped_column(primary_key=True)
-    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), index=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"))
     url: Mapped[str] = mapped_column(String(2048))
     outcome: Mapped[str] = mapped_column(String(32))
     reason: Mapped[str | None] = mapped_column(Text)
@@ -217,6 +233,8 @@ class JobItem(Base):
 
 
 class AssetSeen(Base):
+    # Rows outlive their source (source_id -> NULL on delete): intentional, since dedupe
+    # is per target via sha1 and phash, not per source.
     __tablename__ = "assets_seen"
     __table_args__ = (
         UniqueConstraint("source_id", "url_hash", name="uq_assets_seen_source_url"),

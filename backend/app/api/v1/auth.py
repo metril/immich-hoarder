@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.deps import CSRF_COOKIE, current_principal
+from app.auth.deps import CSRF_COOKIE, SESSION_MAX_AGE, check_csrf, current_principal
 from app.auth.principal import Principal, resolve_role, upsert_user
 from app.core.config import Settings
 from app.db.engine import get_session
@@ -34,7 +34,9 @@ async def login(request: Request) -> Response:
 
 
 @router.get("/callback")
-async def callback(request: Request, session: AsyncSession = Depends(get_session)) -> Response:
+async def callback(
+    request: Request, session: AsyncSession = Depends(get_session, scope="function")
+) -> Response:
     settings: Settings = request.app.state.settings
     try:
         token = await _client(request).authorize_access_token(request)
@@ -54,7 +56,7 @@ async def callback(request: Request, session: AsyncSession = Depends(get_session
     resp.set_cookie(
         CSRF_COOKIE,
         secrets.token_urlsafe(32),
-        max_age=8 * 3600,
+        max_age=SESSION_MAX_AGE,
         httponly=False,
         samesite="lax",
         secure=settings.public_url.startswith("https"),
@@ -64,6 +66,8 @@ async def callback(request: Request, session: AsyncSession = Depends(get_session
 
 @router.post("/logout", status_code=204)
 async def logout(request: Request) -> Response:
+    if request.session.get("user_id") is not None:
+        check_csrf(request)
     request.session.clear()
     resp = Response(status_code=204)
     resp.delete_cookie(CSRF_COOKIE)
@@ -72,7 +76,8 @@ async def logout(request: Request) -> Response:
 
 @router.get("/me")
 async def me(
-    p: Principal = Depends(current_principal), session: AsyncSession = Depends(get_session)
+    p: Principal = Depends(current_principal),
+    session: AsyncSession = Depends(get_session, scope="function"),
 ) -> dict[str, Any]:
     user = await session.get(User, p.user_id)
     assert user is not None

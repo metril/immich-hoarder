@@ -1,14 +1,10 @@
 """Admin-configurable rip settings (settings key "rip")."""
 
-import logging
-
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.extractors import UnsupportedURL, validate_proxy
-from app.db.models import Setting
-
-log = logging.getLogger(__name__)
+from app.runtime.settings import load_model
 
 
 class RateLimit(BaseModel, extra="forbid"):
@@ -36,11 +32,4 @@ class RipSettings(BaseModel, extra="forbid"):
 
 
 async def load_rip_settings(session: AsyncSession) -> RipSettings:
-    row = await session.get(Setting, "rip")
-    if row is None:
-        return RipSettings()
-    try:
-        return RipSettings.model_validate(row.value)
-    except ValidationError:
-        log.warning("invalid rip settings stored; using defaults")
-        return RipSettings()
+    return await load_model(session, "rip", RipSettings)

@@ -454,3 +454,51 @@ def test_pipeline_crash_log_is_scrubbed(env: Env, monkeypatch: pytest.MonkeyPatc
     env.run("/img/a.jpg", credential=cred)
     logs = json.dumps([e for e in env.events if e["type"] == "log"])
     assert "***" in logs and "zzSECRETzz" not in logs
+
+
+def test_events_comment_has_no_item_duplicate() -> None:
+    import app.rip.events as events
+
+    assert "item.duplicate" not in Path(events.__file__).read_text()
+
+
+def test_queued_item_after_cancel_fails_deterministically(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.rip import pipeline
+
+    entered, release = threading.Event(), threading.Event()
+    submitted = threading.Semaphore(0)
+    calls: list[int] = []
+
+    def block() -> None:
+        calls.append(1)
+        entered.set()
+        assert release.wait(20)
+
+    env.on_upload = block
+    orig = pipeline._Rip.on_file
+
+    def on_file(self: Any, path: Path, meta: dict[str, Any]) -> None:
+        orig(self, path, meta)
+        submitted.release()
+
+    monkeypatch.setattr(pipeline._Rip, "on_file", on_file)
+    out: list[RipResult] = []
+    t = threading.Thread(
+        target=lambda: out.append(env.run("/page/two", extractor="recursive", concurrency=1))
+    )
+    t.start()
+    try:
+        assert entered.wait(20)  # first item holds the only pool thread
+        assert submitted.acquire(timeout=20) and submitted.acquire(timeout=20)
+        env.cancel.set()
+    finally:
+        release.set()
+        t.join(30)
+    assert not t.is_alive()
+    assert len(calls) == 1
+    failed = [e for e in env.events if e["type"] == "item.failed"]
+    assert [e["reason"] for e in failed] == ["cancelled"]
+    assert out[0].status == "cancelled"
+    assert not any(env.scratch.iterdir())

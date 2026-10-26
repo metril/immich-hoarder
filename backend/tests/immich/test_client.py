@@ -306,3 +306,40 @@ def test_invalid_response_raises_immich_error(client: ImmichClient) -> None:
     respx.get(f"{BASE}/albums").respond(200, json=[{"id": "1"}])
     with pytest.raises(ImmichError):
         client.list_albums()
+
+
+def test_client_thumbnail(client: ImmichClient) -> None:
+    route = respx.get(f"{BASE}/assets/x/thumbnail").mock(
+        return_value=httpx.Response(200, content=b"abc", headers={"content-type": "image/webp"})
+    )
+    assert client.thumbnail("x", "preview") == (b"abc", "image/webp")
+    assert route.calls[0].request.url.params["size"] == "preview"
+    respx.get(f"{BASE}/assets/g/thumbnail").mock(return_value=httpx.Response(404))
+    with pytest.raises(AssetGone):
+        client.thumbnail("g", "thumbnail")
+    respx.get(f"{BASE}/assets/big/thumbnail").mock(
+        return_value=httpx.Response(200, content=b"x" * 11, headers={"content-type": "image/png"})
+    )
+    with pytest.raises(ImmichError):
+        client.thumbnail("big", "thumbnail", max_bytes=10)
+
+
+def test_thumbnail_content_length_rejected_early(client: ImmichClient) -> None:
+    respx.get(f"{BASE}/assets/big/thumbnail").mock(
+        return_value=httpx.Response(
+            200, content=b"x", headers={"content-type": "image/png", "content-length": "999"}
+        )
+    )
+    with pytest.raises(ImmichError):
+        client.thumbnail("big", "thumbnail", max_bytes=10)
+
+
+def test_thumbnail_rejects_content_encoding_and_asks_identity(client: ImmichClient) -> None:
+    route = respx.get(f"{BASE}/assets/z/thumbnail").mock(
+        return_value=httpx.Response(
+            200, content=b"x", headers={"content-type": "image/png", "content-encoding": "gzip"}
+        )
+    )
+    with pytest.raises(ImmichError):
+        client.thumbnail("z", "thumbnail")
+    assert route.calls[0].request.headers["accept-encoding"] == "identity"

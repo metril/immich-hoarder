@@ -13,6 +13,7 @@ from app.db.models import Role, User
 UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 CSRF_COOKIE = "ih_csrf"
 CSRF_HEADER = "X-CSRF-Token"
+SESSION_MAX_AGE = 8 * 3600
 
 
 def _unauth(detail: str = "unauthorized") -> HTTPException:
@@ -33,11 +34,14 @@ def check_csrf(request: Request) -> None:
 
 
 async def current_principal(
-    request: Request, session: AsyncSession = Depends(get_session)
+    request: Request, session: AsyncSession = Depends(get_session, scope="function")
 ) -> Principal:
     settings: Settings = request.app.state.settings
 
     raw_key = request.headers.get("X-API-Key")
+    auth = request.headers.get("Authorization", "")
+    if not raw_key and auth.lower().startswith("bearer ") and auth[7:].strip().startswith("ih_"):
+        raw_key = auth[7:].strip()  # API key presented as a bearer token; never tried as a JWT
     if raw_key:
         key = await verify_api_key(session, raw_key)
         user = await session.get(User, key.user_id) if key else None
@@ -48,7 +52,6 @@ async def current_principal(
             p = Principal(p.user_id, p.role, p.groups, p.scopes and p.scopes - {"admin"})
         return p
 
-    auth = request.headers.get("Authorization", "")
     if auth.lower().startswith("bearer "):
         verifier: BearerVerifier = request.app.state.verifier
         try:

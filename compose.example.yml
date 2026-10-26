@@ -2,6 +2,8 @@ services:
   immich-hoarder:
     image: ghcr.io/metril/immich-hoarder:latest
     restart: unless-stopped
+    # Time for running jobs to cancel gracefully and be finalized before SIGKILL.
+    stop_grace_period: 30s
     read_only: true
     tmpfs:
       - /scratch:size=4g,uid=10001,gid=10001

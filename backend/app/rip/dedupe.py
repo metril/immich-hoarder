@@ -42,6 +42,40 @@ def _ref(raw: bytes | None) -> AssetRef:
     return AssetRef(str(uuid.UUID(bytes=raw)) if raw is not None else None)
 
 
+def assets_seen_row(
+    *,
+    target_id: int,
+    source_id: int,
+    key: bytes,
+    sha1: bytes | None,
+    phash: int | None,
+    immich_asset_id: str | None,
+) -> dict[str, Any]:
+    ph = None if phash is None else to_signed64(phash)
+    chunks = chunks16(ph) if ph is not None else (None,) * 4
+    return {
+        "target_id": target_id,
+        "source_id": source_id,
+        "url_hash": key,
+        "sha1": sha1,
+        "phash": ph,
+        "ph0": chunks[0],
+        "ph1": chunks[1],
+        "ph2": chunks[2],
+        "ph3": chunks[3],
+        "immich_asset_id": (
+            uuid.UUID(immich_asset_id).bytes if immich_asset_id is not None else None
+        ),
+        "seen_at": int(time.time()),
+    }
+
+
+def insert_ignore(dialect_name: str, table: Any) -> Any:
+    """INSERT ... ON CONFLICT (source_id, url_hash) DO NOTHING for the given dialect."""
+    ins = pg_insert if dialect_name == "postgresql" else sqlite_insert
+    return ins(table).on_conflict_do_nothing(index_elements=["source_id", "url_hash"])
+
+
 class DedupeStore:
     def __init__(self, engine: Engine) -> None:
         self._engine = engine
@@ -132,29 +166,14 @@ class DedupeStore:
         phash: int | None,
         immich_asset_id: str | None,
     ) -> None:
-        ph = None if phash is None else to_signed64(phash)
-        chunks = chunks16(ph) if ph is not None else (None,) * 4
-        values: dict[str, Any] = {
-            "target_id": target_id,
-            "source_id": source_id,
-            "url_hash": key,
-            "sha1": sha1,
-            "phash": ph,
-            "ph0": chunks[0],
-            "ph1": chunks[1],
-            "ph2": chunks[2],
-            "ph3": chunks[3],
-            "immich_asset_id": (
-                uuid.UUID(immich_asset_id).bytes if immich_asset_id is not None else None
-            ),
-            "seen_at": int(time.time()),
-        }
-        dialect = self._engine.dialect.name
-        if dialect == "postgresql":
-            stmt: Any = pg_insert(AssetSeen).values(values)
-            stmt = stmt.on_conflict_do_nothing(index_elements=["source_id", "url_hash"])
-        else:
-            stmt = sqlite_insert(AssetSeen).values(values)
-            stmt = stmt.on_conflict_do_nothing(index_elements=["source_id", "url_hash"])
+        values = assets_seen_row(
+            target_id=target_id,
+            source_id=source_id,
+            key=key,
+            sha1=sha1,
+            phash=phash,
+            immich_asset_id=immich_asset_id,
+        )
+        stmt = insert_ignore(self._engine.dialect.name, AssetSeen).values(values)
         with self._engine.begin() as c:
             c.execute(stmt)

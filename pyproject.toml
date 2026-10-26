@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = "LicenseRef-Proprietary"
 license-files = ["LICENSE"]
+classifiers = ["Private :: Do Not Upload"]
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
@@ -27,6 +28,11 @@ dependencies = [
     "numpy>=2.5.4",
     "xxhash>=4.0.2",
     "psycopg[binary]>=3.3.6",
+    "apprise>=2.1.0",
+    "apscheduler>=3.11,<4",
+    "sse-starlette>=3.6.0",
+    "pyyaml>=6.0.3",
+    "prometheus-client>=0.26.0",
 ]
 
 [dependency-groups]
@@ -38,10 +44,11 @@ dev = [
     "mypy>=1.11",
     "respx>=0.23.1",
     "types-croniter>=6.2.4.20261006",
+    "types-pyyaml>=6.0.12.20260906",
 ]
 
 [tool.hatch.version]
-path = "backend/app/__init__.py"
+path = "backend/app/_version.py"
 
 [build-system]
 requires = ["hatchling"]
@@ -52,10 +59,12 @@ packages = ["backend/app"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+markers = ["pg: runs against Postgres when IH_TEST_PG_URL is set, otherwise skipped"]
 pythonpath = ["backend"]
 testpaths = ["backend/tests"]
 filterwarnings = [
     "ignore:The httpx module is deprecated; please use httpx2 instead\\.:authlib.deprecate.AuthlibDeprecationWarning",
+    "ignore:'imghdr' is deprecated:DeprecationWarning:apprise.*",
 ]
 
 [tool.ruff]
@@ -84,4 +93,8 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = ["gallery_dl", "gallery_dl.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["apscheduler.*"]
 ignore_missing_imports = true
