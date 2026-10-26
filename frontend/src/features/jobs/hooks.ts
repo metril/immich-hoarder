@@ -24,6 +24,23 @@ export function useJobs(params: { status?: JobStatus; source_id?: number }) {
   return { ...q, rows: flatItems(q) };
 }
 
+/** Running + queued jobs merged by id (a job moving queued -> running can briefly sit in both lists). Shares cache with the dashboard. */
+export function useActiveJobs() {
+  const r = useJobs({ status: "running" });
+  const q = useJobs({ status: "queued" });
+  const byId = new Map<number, JobOut>();
+  for (const j of [...q.rows, ...r.rows]) byId.set(j.id, j);
+  const active = [...byId.values()];
+  return {
+    running: active.filter((j) => j.status === "running"),
+    queued: active.filter((j) => j.status === "queued"),
+    isPending: r.isPending || q.isPending,
+    isError: r.isError || q.isError,
+    hasMore: !!r.hasNextPage || !!q.hasNextPage,
+    refetchFailed: () => [r, q].forEach((x) => x.isError && void x.refetch()),
+  };
+}
+
 export function useJob(id: number) {
   return useQuery({
     queryKey: keys.detail("jobs", id),

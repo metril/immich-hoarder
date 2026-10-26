@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { ActiveJobsBadge } from "./ActiveJobsBadge";
 import { Database, Ellipsis, LayoutDashboard, ListChecks, type LucideIcon } from "lucide-react";
 
 const TABS: { to: "/" | "/sources" | "/jobs"; label: string; icon: LucideIcon }[] = [
@@ -24,7 +25,10 @@ export function TabBar({ onMore }: { onMore: () => void }) {
           className={base}
           activeProps={{ className: "!text-primary font-medium", "aria-current": "page" }}
         >
-          <Icon className="size-5" aria-hidden />
+          <span className="relative">
+            <Icon className="size-5" aria-hidden />
+            {to === "/jobs" ? <ActiveJobsBadge className="absolute -top-2 left-3 px-1.5 py-0 text-[10px]" /> : null}
+          </span>
           {label}
         </Link>
       ))}

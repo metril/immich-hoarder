@@ -6,6 +6,7 @@ import { keys } from "../../api/keys";
 import type { MeOut } from "../../api/me";
 import { dashboardDefaults } from "../../test/handlers";
 import { server } from "../../test/server";
+import { FakeEventSource } from "../../test/setup";
 import { renderWithProviders } from "../../test/render";
 import { installPreloadErrorGuard, pageReload } from "./reload";
 import { RouteError } from "./RouteError";
@@ -216,6 +217,38 @@ describe("shortcuts", () => {
     expect(dlg.contains(document.activeElement)).toBe(true);
     await u.keyboard("{Escape}");
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Keyboard shortcuts" })).toBeNull());
+  });
+});
+
+describe("active jobs badge", () => {
+  const j = (id: number, status: string) => ({ id, status, counters: {}, phase: null, source_id: 3, source_name: "Cats", created_at: "2026-10-26T10:00:00Z", started_at: null, finished_at: null, error: null, log_level: null, triggered_by: 1 });
+
+  it("shows count and follows stream events", async () => {
+    let jobs = [j(1, "running"), j(2, "queued")];
+    server.use(
+      http.get("*/api/v1/jobs", ({ request }) => {
+        const s = new URL(request.url).searchParams.get("status");
+        return HttpResponse.json({ items: jobs.filter((x) => x.status === s), next_cursor: null });
+      }),
+    );
+    renderWithProviders(null, { me: admin, route: "/sources" });
+    const badge = await screen.findAllByLabelText("2 active jobs");
+    expect(badge[0]).toHaveAttribute("title", "1 running, 1 queued");
+    const stream = () => FakeEventSource.instances.filter((e) => e.url.includes("/jobs/stream")).at(-1)!;
+    // unknown job id -> invalidation -> refetch
+    jobs = [...jobs, j(3, "queued")];
+    act(() => stream().emit("status", { id: 1, ts: "t", job_id: 3, status: "queued" }));
+    expect((await screen.findAllByLabelText("3 active jobs"))[0]).toHaveAttribute("title", "1 running, 2 queued");
+    // terminal status
+    jobs = jobs.filter((x) => x.id !== 1);
+    act(() => stream().emit("status", { id: 2, ts: "t", job_id: 1, status: "succeeded" }));
+    expect((await screen.findAllByLabelText("2 active jobs"))[0]).toHaveAttribute("title", "0 running, 2 queued");
+  });
+
+  it("is hidden when nothing is active", async () => {
+    renderWithProviders(null, { me: admin, route: "/sources" });
+    await screen.findByRole("navigation", { name: "Main" });
+    expect(screen.queryByLabelText(/active job/)).toBeNull();
   });
 });
 

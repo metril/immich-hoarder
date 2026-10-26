@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { Aperture } from "lucide-react";
 import type { MeOut } from "../../api/me";
+import { ActiveJobsBadge } from "./ActiveJobsBadge";
 import { Badge } from "../ui/badge";
 import { GROUPS, initials, navFor } from "./nav";
 
@@ -54,6 +55,7 @@ export function Sidebar({
                 >
                   <Icon className="size-4" aria-hidden />
                   {text}
+                  {to === "/jobs" ? <ActiveJobsBadge className="ml-auto" /> : null}
                 </Link>
               ))}
             </div>
