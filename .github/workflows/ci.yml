@@ -20,6 +20,7 @@ jobs:
       skip: ${{ steps.skip.outputs.skip }}
       backend: ${{ steps.filter.outputs.backend }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      api: ${{ steps.filter.outputs.api }}
       docker: ${{ steps.filter.outputs.docker }}
     steps:
       # Release-PR skip rule: skip all jobs only when the PR comes from this
@@ -68,6 +69,10 @@ jobs:
             frontend:
               - 'frontend/**'
               - '.github/workflows/ci.yml'
+            api:
+              - 'backend/app/**'
+              - 'frontend/openapi.json'
+              - 'frontend/src/api/**'
             docker:
               - 'Dockerfile'
               - '.dockerignore'
@@ -118,6 +123,92 @@ jobs:
       - run: uv sync --frozen
       - run: uv run pytest -m pg -q
 
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm budget
+
+  api-client:
+    needs: changes
+    if: needs.changes.outputs.skip != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Dump OpenAPI
+        working-directory: backend
+        run: uv sync --frozen && uv run python -m app.openapi_dump ../frontend/openapi.json
+      - name: Generate client
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile && pnpm gen:api
+      - name: Check generated client is current
+        run: |
+          git diff --exit-code -- frontend/openapi.json frontend/src/api/schema.d.ts || { echo "Generated API client is stale: run app.openapi_dump + pnpm gen:api"; exit 1; }
+
+  frontend-e2e:
+    needs: changes
+    if: needs.changes.outputs.skip != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.21.0
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: uv sync --frozen
+      - name: Install and build
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile && pnpm build && pnpm exec playwright install --with-deps chromium
+      - name: Playwright smoke
+        working-directory: frontend
+        run: pnpm e2e
+      - name: Lighthouse
+        working-directory: frontend
+        run: |
+          (cd ../backend && uv run python -m tests.e2e_server) &
+          for _ in $(seq 60); do curl -sf http://127.0.0.1:8090/healthz >/dev/null && break; sleep 1; done
+          CHROME_PATH="$(node -e "import('@playwright/test').then(m=>console.log(m.chromium.executablePath()))")" pnpm lhci
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: frontend-e2e-reports
+          path: |
+            frontend/playwright-report/
+            frontend/test-results/
+            frontend/.lighthouseci/
+          if-no-files-found: ignore
+
   docker:
     needs: changes
     if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.docker == 'true'
@@ -154,7 +245,7 @@ jobs:
 
   ci-ok:
     if: always()
-    needs: [changes, backend, postgres, docker, docker-arm64]
+    needs: [changes, backend, postgres, frontend, api-client, frontend-e2e, docker, docker-arm64]
     runs-on: ubuntu-latest
     steps:
       - name: Verify no job failed or was cancelled
