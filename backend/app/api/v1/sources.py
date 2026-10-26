@@ -1,43 +1,29 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.common import get_obj
+from app.api.common import get_obj, secret_box
 from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
 from app.api.v1.shares import delete_shares, shares_router
 from app.auth.authz import require_owner_or_admin, require_scope, visible_to
 from app.auth.deps import current_principal
 from app.auth.principal import Principal
+from app.core.crypto import SecretBox
 from app.core.extractors import UnsupportedURL, validate_proxy, validate_url
 from app.db.engine import get_session
-from app.db.models import BackfillMode, Credential, ImmichTarget, Perm, Source, User
-from app.rip.filters import validate_backfill
+from app.db.models import BackfillMode, Perm, Source
+from app.rip.build import check_refs, credential_snapshot
+from app.rip.filters import FilterSpec, validate_backfill
+from app.rip.preview import PREVIEW_MAX, PreviewError, PreviewItem, preview, run_in_subprocess
 from app.rip.settings import load_rip_settings
+from app.rip.snapshot import SourceSnapshot
 from app.schemas.sources import SourceIn, SourceOut, SourcePatch
 
+PREVIEW_TIMEOUT = 60.0
+
 router = APIRouter(prefix="/sources", tags=["sources"])
-
-
-async def _check_refs(
-    session: AsyncSession, owner_id: int, target_id: int, credential_id: int | None
-) -> None:
-    """The source owner (not the caller) must have `use` on the target and credential."""
-    owner = await session.get(User, owner_id)
-    if owner is None:
-        raise HTTPException(422, "invalid owner")
-    if owner.disabled:
-        raise HTTPException(403, "source owner is disabled")
-    op = Principal(owner.id, owner.role, frozenset(owner.groups or []), None)
-    checks: list[tuple[type[ImmichTarget] | type[Credential], int | None]] = [
-        (ImmichTarget, target_id),
-        (Credential, credential_id),
-    ]
-    for model, ref in checks:
-        if ref is None:
-            continue
-        stmt = visible_to(select(model.id).where(model.id == ref), model, op, Perm.use)
-        if (await session.execute(stmt)).first() is None:
-            raise HTTPException(403, f"no access to {model.share_type}")
 
 
 async def _check_proxy(session: AsyncSession, proxy: str | None) -> None:
@@ -81,7 +67,7 @@ async def create_source(
     session: AsyncSession = Depends(get_session),
 ) -> SourceOut:
     require_scope(p, "sources:write")
-    await _check_refs(session, p.user_id, body.target_id, body.credential_id)
+    await check_refs(session, p.user_id, body.target_id, body.credential_id)
     extractor = await _extractor_for(session, body.url)
     await _check_proxy(session, body.proxy)
     s = Source(
@@ -92,6 +78,67 @@ async def create_source(
     session.add(s)
     await session.flush()
     return SourceOut.of(s)
+
+
+class PreviewIn(SourceIn):
+    limit: int = Field(default=PREVIEW_MAX, ge=1, le=PREVIEW_MAX)
+
+
+class PreviewOut(BaseModel):
+    items: list[PreviewItem]
+
+
+@router.post("/preview", response_model=PreviewOut)
+async def preview_source(
+    body: PreviewIn,
+    request: Request,
+    p: Principal = Depends(current_principal),
+    session: AsyncSession = Depends(get_session),
+    box: SecretBox = Depends(secret_box),
+) -> PreviewOut:
+    require_scope(p, "sources:read")
+    await check_refs(session, p.user_id, body.target_id, body.credential_id)
+    extractor = await _extractor_for(session, body.url)
+    await _check_proxy(session, body.proxy)
+    cred = (
+        await credential_snapshot(session, body.credential_id, box)
+        if body.credential_id is not None
+        else None
+    )
+    rip = await load_rip_settings(session)
+    snap = SourceSnapshot(
+        id=0,
+        name=body.name,
+        url=body.url,
+        extractor=extractor,
+        target_id=body.target_id,
+        album_template=body.album_template,
+        backfill_mode=body.backfill_mode,
+        backfill_value=body.backfill_value,
+        allow_animated=body.allow_animated,
+        filters=FilterSpec.model_validate(body.filters),
+        gdl_options=body.gdl_options,
+        proxy=body.proxy,
+        log_level=body.log_level or "info",
+    )
+    # release the DB connection before the (slow) subprocess run
+    await session.commit()
+    try:
+        items = await run_in_threadpool(
+            run_in_subprocess,
+            preview,
+            snap,
+            cred,
+            rip,
+            request.app.state.settings.scratch_dir,
+            body.limit,
+            timeout=PREVIEW_TIMEOUT,
+        )
+    except TimeoutError:
+        raise HTTPException(504, "preview timed out") from None
+    except PreviewError as e:
+        raise HTTPException(502, f"preview failed: {str(e)[:200]}") from None
+    return PreviewOut(items=items)
 
 
 @router.get("/{obj_id}", response_model=SourceOut)
@@ -144,7 +191,7 @@ async def patch_source(
         await _check_proxy(session, data["proxy"])
     if "url" in data:
         s.extractor = await _extractor_for(session, s.url)
-    await _check_refs(session, s.owner_id, s.target_id, s.credential_id)
+    await check_refs(session, s.owner_id, s.target_id, s.credential_id)
     await session.flush()
     return SourceOut.of(s)
 

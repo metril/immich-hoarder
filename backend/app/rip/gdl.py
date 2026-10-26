@@ -120,6 +120,7 @@ def configure(
     config.set(ext, "verify", True)
     config.set(ext, "proxy-env", False)
     config.set(ext, "write-pages", False)
+    config.set(("output",), "mode", "null")  # keep stdout clean for JSON-lines consumers
 
 
 class _Archive:

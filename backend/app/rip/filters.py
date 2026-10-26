@@ -128,6 +128,11 @@ def check(
         spec.aspect_max is not None and ratio > spec.aspect_max
     ):
         return "aspect"
+    return check_meta(meta, spec, since=since)
+
+
+def check_meta(meta: dict[str, Any], spec: FilterSpec, *, since: date | None = None) -> str | None:
+    """Pre-download checks (title and date) that need only extractor metadata."""
     title = str(meta.get("title") or meta.get("filename") or "")[:_TITLE_MAX]
     if spec.title_exclude and re.search(spec.title_exclude, title, re.IGNORECASE):
         return "title_excluded"

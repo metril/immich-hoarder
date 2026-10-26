@@ -12,8 +12,9 @@ class PhaseEvent(TypedDict):
 
 
 class ItemEvent(TypedDict):
-    # type: item.discovered | item.downloaded | item.filtered | item.duplicate |
-    #       item.linked | item.uploaded | item.failed | item.deleted_in_immich
+    # type: item.discovered | item.downloaded | item.filtered |
+    #       item.linked (duplicate=true: matched an existing asset) | item.uploaded |
+    #       item.failed | item.deleted_in_immich
     type: str
     url: str
     reason: NotRequired[str]
