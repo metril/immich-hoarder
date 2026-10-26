@@ -19,21 +19,33 @@ const regexField = z
   .nullable()
   .refine(validRegex, "Invalid regular expression");
 const num = z.number().nullable();
+const int = z.number().int().nullable();
 
-const filters = z.object({
-  min_width: num,
-  min_height: num,
-  min_bytes: num,
-  max_bytes: num,
+const filters = z
+  .object({
+  min_width: int,
+  min_height: int,
+  min_bytes: int,
+  max_bytes: int,
   aspect_min: num,
   aspect_max: num,
   title_include: regexField,
   title_exclude: regexField,
   date_from: z.string().nullable(),
   date_to: z.string().nullable(),
-  max_items: num,
+  max_items: z.number().int().min(1).nullable(),
   phash_distance: z.number().int().min(0).max(3).nullable(),
-});
+  })
+  .superRefine((f, ctx) => {
+    const pairs = [["min_bytes", "max_bytes"], ["aspect_min", "aspect_max"], ["date_from", "date_to"]] as const;
+    for (const [lo, hi] of pairs) {
+      const a = f[lo];
+      const b = f[hi];
+      if (a != null && b != null && a !== "" && b !== "" && a > b) {
+        ctx.addIssue({ code: "custom", path: [hi], message: hi === "date_to" ? "Must be on or after the start date" : "Must not be below the minimum" });
+      }
+    }
+  });
 
 const notify = z.object({
   credential_ids: z.array(z.number()),
@@ -146,13 +158,21 @@ export const CRON_PRESETS: { label: string; value: string | null }[] = [
   { label: "Weekly Sun", value: "0 3 * * 0" },
 ];
 
+export function fmtBytes(n: number | null | undefined): string {
+  if (n == null) return "";
+  const r = (x: number) => String(Math.round(x * 100) / 100);
+  if (n >= 1024 * 1024) return `${r(n / (1024 * 1024))} MB`;
+  if (n >= 1024) return `${r(n / 1024)} KB`;
+  return `${n} B`;
+}
+
 export function summarize(f: Partial<FilterSpec>): string {
   const parts: string[] = [];
   const add = (cond: unknown, text: string) => cond != null && cond !== "" && parts.push(text);
   add(f.min_width, `width ≥ ${f.min_width}`);
   add(f.min_height, `height ≥ ${f.min_height}`);
-  add(f.min_bytes, `size ≥ ${f.min_bytes} B`);
-  add(f.max_bytes, `size ≤ ${f.max_bytes} B`);
+  add(f.min_bytes, `size ≥ ${fmtBytes(f.min_bytes)}`);
+  add(f.max_bytes, `size ≤ ${fmtBytes(f.max_bytes)}`);
   add(f.aspect_min, `aspect ≥ ${f.aspect_min}`);
   add(f.aspect_max, `aspect ≤ ${f.aspect_max}`);
   add(f.title_include, `title matches /${f.title_include}/`);

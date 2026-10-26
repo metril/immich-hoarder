@@ -801,6 +801,8 @@ export interface components {
         CredentialOut: {
             /** Can Edit */
             can_edit: boolean;
+            /** Can Use */
+            can_use: boolean;
             /** Has Secret */
             has_secret: boolean;
             /** Id */
@@ -1643,6 +1645,8 @@ export interface components {
         TargetOut: {
             /** Can Edit */
             can_edit: boolean;
+            /** Can Use */
+            can_use: boolean;
             /** Has Api Key */
             has_api_key: boolean;
             /** Id */

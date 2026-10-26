@@ -22,7 +22,7 @@ export function ExtractorHint({ url }: { url: string }) {
   const hit = host
     ? data.items.find((e) => {
         const c = e.category.toLowerCase().replace(/[\s_-]+/g, "");
-        return c.length > 1 && (labels.includes(c) || host.replace(/\./g, "").includes(c));
+        return c.length > 1 && (labels.includes(c) || host === c || host.endsWith(`.${c}`));
       })
     : undefined;
   return (

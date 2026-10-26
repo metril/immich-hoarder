@@ -24,13 +24,13 @@ function NumberInput({ label, value, onChange, error, step }: {
   );
 }
 
-function BytesInput({ label, value, onChange }: { label: string; value: number | null | undefined; onChange: (v: number | null) => void }) {
+function BytesInput({ label, value, onChange, error }: { label: string; value: number | null | undefined; onChange: (v: number | null) => void; error?: string }) {
   const [unit, setUnit] = useState<Unit>(value && value >= UNITS.MB && value % UNITS.MB === 0 ? "MB" : "KB");
   const shown = value == null ? "" : String(Math.round((value / UNITS[unit]) * 1000) / 1000);
   const emit = (text: string, u: Unit) => onChange(text === "" || Number.isNaN(Number(text)) ? null : Math.round(Number(text) * UNITS[u]));
   return (
     <div className="grid grid-cols-[1fr_auto] items-end gap-2">
-      <FormField label={label}>
+      <FormField label={label} error={error}>
         <input type="number" min={0} step="any" className={inputClass} value={shown} onChange={(e) => emit(e.target.value, unit)} />
       </FormField>
       <select
@@ -66,7 +66,7 @@ function RegexInput({ label, value, onChange, error }: { label: string; value: s
   );
 }
 
-export function FilterBuilder({ value, onChange, errors = {} }: { value: FilterSpec; onChange: (v: FilterSpec) => void; errors?: Errors }) {
+export function FilterBuilder({ value, onChange, errors = {}, error }: { value: FilterSpec; onChange: (v: FilterSpec) => void; errors?: Errors; error?: string }) {
   const v = { ...emptyFilters(), ...value } as FilterSpec;
   const set = <K extends keyof FilterSpec>(k: K, x: FilterSpec[K]) => onChange({ ...v, [k]: x });
   return (
@@ -77,8 +77,8 @@ export function FilterBuilder({ value, onChange, errors = {} }: { value: FilterS
         <div className="grid gap-3 sm:grid-cols-2">
           <NumberInput label="Min width (px)" value={v.min_width} onChange={(x) => set("min_width", x)} error={errors.min_width} />
           <NumberInput label="Min height (px)" value={v.min_height} onChange={(x) => set("min_height", x)} error={errors.min_height} />
-          <BytesInput label="Min size" value={v.min_bytes} onChange={(x) => set("min_bytes", x)} />
-          <BytesInput label="Max size" value={v.max_bytes} onChange={(x) => set("max_bytes", x)} />
+          <BytesInput label="Min size" value={v.min_bytes} onChange={(x) => set("min_bytes", x)} error={errors.min_bytes} />
+          <BytesInput label="Max size" value={v.max_bytes} onChange={(x) => set("max_bytes", x)} error={errors.max_bytes} />
         </div>
       </section>
       <section aria-label="Aspect" className="grid gap-2">
@@ -112,6 +112,7 @@ export function FilterBuilder({ value, onChange, errors = {} }: { value: FilterS
           <input type="range" min={0} max={3} step={1} value={v.phash_distance ?? 3} onChange={(e) => set("phash_distance", Number(e.target.value))} />
         </FormField>
       </div>
+      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <p className="text-sm text-muted-foreground" data-testid="filter-summary">{summarize(v)}</p>
     </fieldset>
   );

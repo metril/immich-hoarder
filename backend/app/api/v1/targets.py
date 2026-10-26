@@ -9,9 +9,11 @@ from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
 from app.api.v1.shares import delete_shares, shares_router
 from app.auth.authz import (
     can_edit,
+    can_use,
     editable_ids,
     require_owner_or_admin,
     require_scope,
+    usable_ids,
     visible_to,
 )
 from app.auth.deps import current_principal
@@ -39,7 +41,8 @@ async def list_targets(
         session, visible_to(select(ImmichTarget), ImmichTarget, p), cursor, limit
     )
     ed = await editable_ids(session, ImmichTarget, p, [r.id for r in rows])
-    return Page(items=[TargetOut.of(r, r.id in ed) for r in rows], next_cursor=nxt)
+    us = await usable_ids(session, ImmichTarget, p, [r.id for r in rows])
+    return Page(items=[TargetOut.of(r, r.id in ed, r.id in us) for r in rows], next_cursor=nxt)
 
 
 @router.post("", response_model=TargetOut, status_code=201)
@@ -59,7 +62,7 @@ async def create_target(
     )
     session.add(t)
     await session.flush()
-    return TargetOut.of(t, True)
+    return TargetOut.of(t, True, True)
 
 
 @router.get("/{obj_id}", response_model=TargetOut)
@@ -70,7 +73,7 @@ async def get_target(
 ) -> TargetOut:
     require_scope(p, "targets:read")
     t: ImmichTarget = await get_obj(session, ImmichTarget, obj_id, p)
-    return TargetOut.of(t, await can_edit(session, t, p))
+    return TargetOut.of(t, await can_edit(session, t, p), await can_use(session, t, p))
 
 
 @router.patch("/{obj_id}", response_model=TargetOut)
@@ -89,7 +92,7 @@ async def patch_target(
     for k, v in data.items():
         setattr(t, k, v)
     await session.flush()
-    return TargetOut.of(t, True)
+    return TargetOut.of(t, True, True)
 
 
 @router.delete("/{obj_id}", status_code=204)

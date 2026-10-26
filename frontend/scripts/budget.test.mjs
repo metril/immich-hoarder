@@ -1,6 +1,6 @@
 import { gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { computeInitialJs, runBudget } from "./budget.mjs";
+import { computeInitialJs, findEagerMarkers, runBudget } from "./budget.mjs";
 
 const manifest = {
   "index.html": { file: "assets/index-a.js", isEntry: true, imports: ["_vendor.js"], dynamicImports: ["src/routes/x.tsx"], css: ["assets/index.css"] },
@@ -34,5 +34,12 @@ describe("budget", () => {
   it("names a missing manifest key", () => {
     const bad = { e: { file: "a.js", isEntry: true, imports: ["nope.js"] } };
     expect(() => computeInitialJs(bad, readFile)).toThrow("nope.js");
+  });
+
+  it("flags lazy-only libraries found in the entry graph", () => {
+    const f = { ...files, "assets/shared-c.js": "xx Expression has only yy" };
+    const rf = (n) => Buffer.from(f[n]);
+    expect(findEagerMarkers(manifest, rf, { cronstrue: "Expression has only" })).toEqual(["cronstrue"]);
+    expect(findEagerMarkers(manifest, readFile, { cronstrue: "Expression has only" })).toEqual([]);
   });
 });

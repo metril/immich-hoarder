@@ -72,3 +72,23 @@ async def test_list_can_edit_no_n_plus_one(client: httpx.AsyncClient) -> None:
     finally:
         event.remove(eng, "before_cursor_execute", count)
     assert len(r.json()["items"]) == 30 and n < 10
+
+
+@pytest.mark.parametrize(("kind", "body"), [("targets", TARGET), ("credentials", CRED)])
+async def test_can_use_matches_perm_use(
+    client: httpx.AsyncClient, kind: str, body: dict[str, str]
+) -> None:
+    uo, ho = await actor("owner2")
+    uu, hu = await actor("viewer")
+    _, hadm = await actor("adm2", Role.admin)
+    r = await client.post(f"/api/v1/{kind}", json=body, headers=ho)
+    assert r.json()["can_use"] is True
+    oid = r.json()["id"]
+    await client.put(
+        f"/api/v1/{kind}/{oid}/shares",
+        json={"visibility": "everyone", "shares": []},
+        headers=ho,
+    )
+    for h in (ho, hu, hadm):
+        assert (await client.get(f"/api/v1/{kind}", headers=h)).json()["items"][0]["can_use"]
+        assert (await client.get(f"/api/v1/{kind}/{oid}", headers=h)).json()["can_use"] is True

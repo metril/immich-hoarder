@@ -25,4 +25,11 @@ describe("CronField", () => {
     await userEvent.type(await screen.findByLabelText("Schedule (cron)"), "nope");
     expect(await screen.findByText("Invalid cron expression")).toBeInTheDocument();
   });
+
+  it("@ forms defer to the server", async () => {
+    renderWithProviders(<Host />);
+    await userEvent.type(await screen.findByLabelText("Schedule (cron)"), "@daily");
+    expect(screen.getByText(/server will validate/i)).toBeInTheDocument();
+    expect(screen.queryByText("Invalid cron expression")).not.toBeInTheDocument();
+  });
 });

@@ -282,6 +282,10 @@
             "title": "Can Edit",
             "type": "boolean"
           },
+          "can_use": {
+            "title": "Can Use",
+            "type": "boolean"
+          },
           "has_secret": {
             "title": "Has Secret",
             "type": "boolean"
@@ -317,7 +321,8 @@
           "owner_id",
           "visibility",
           "has_secret",
-          "can_edit"
+          "can_edit",
+          "can_use"
         ],
         "title": "CredentialOut",
         "type": "object"
@@ -2986,6 +2991,10 @@
             "title": "Can Edit",
             "type": "boolean"
           },
+          "can_use": {
+            "title": "Can Use",
+            "type": "boolean"
+          },
           "has_api_key": {
             "title": "Has Api Key",
             "type": "boolean"
@@ -3017,7 +3026,8 @@
           "owner_id",
           "visibility",
           "has_api_key",
-          "can_edit"
+          "can_edit",
+          "can_use"
         ],
         "title": "TargetOut",
         "type": "object"

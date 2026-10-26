@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import { omitEmpty } from "./omitEmpty";
+import { Controller } from "react-hook-form";
 import { z } from "zod";
 import { ApiError } from "../../api/errors";
 import { FormField, FormRootError, inputClass } from "./FormField";
@@ -81,5 +82,33 @@ describe("omitEmpty", () => {
     expect(omitEmpty(v, ["api_key", "secret"])).toEqual({ name: "", keep: "x", n: 0 });
     expect(omitEmpty({ api_key: "k" }, ["api_key"])).toEqual({ api_key: "k" });
     expect(omitEmpty({ api_key: undefined, a: 1 }, ["api_key"])).toEqual({ a: 1 });
+  });
+});
+
+describe("useApiForm nested 422", () => {
+  const nested = z.object({ filters: z.object({ title_include: z.string().nullable() }) });
+  function N() {
+    const f = useApiForm(nested, {
+      defaultValues: { filters: { title_include: "x" } },
+      onSubmit: () => {
+        throw new ApiError(422, "bad", [], { "filters.title_include": "bad regex" });
+      },
+    });
+    return (
+      <form onSubmit={f.submit}>
+        <Controller control={f.control} name="filters" render={({ field }) => (
+          <input aria-label="inc" value={field.value.title_include ?? ""} onChange={() => {}} />
+        )} />
+        <FormRootError message={f.rootError} />
+        <p>{f.formState.errors.filters?.title_include?.message}</p>
+        <button>Save</button>
+      </form>
+    );
+  }
+  it("lands on a leaf under a registered object field, not root", async () => {
+    render(<N />);
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("bad regex")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

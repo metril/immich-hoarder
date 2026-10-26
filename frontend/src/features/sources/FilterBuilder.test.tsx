@@ -34,4 +34,9 @@ describe("FilterBuilder", () => {
     await userEvent.type(await screen.findByLabelText("Title include"), "(");
     expect(await screen.findByText("Invalid regular expression")).toBeInTheDocument();
   });
+
+  it("renders a root filters error", () => {
+    renderWithProviders(<FilterBuilder value={emptyFilters()} onChange={() => {}} error="filters are inconsistent" />);
+    return screen.findByRole("alert").then((a) => expect(a).toHaveTextContent("filters are inconsistent"));
+  });
 });

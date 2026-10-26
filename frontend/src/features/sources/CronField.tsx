@@ -12,9 +12,10 @@ function describe(v: string): string | null {
 
 export function CronField({ value, onChange, error }: { value: string | null; onChange: (v: string | null) => void; error?: string }) {
   const text = value ?? "";
-  const desc = text.trim() ? describe(text) : null;
-  const invalid = text.trim() !== "" && desc === null;
-  const hint = !text.trim() ? "Off: only runs when started manually" : desc;
+  const special = text.trim().startsWith("@");
+  const desc = text.trim() && !special ? describe(text) : null;
+  const invalid = text.trim() !== "" && !special && desc === null;
+  const hint = !text.trim() ? "Off: only runs when started manually" : special ? "Special schedule — the server will validate" : desc;
   return (
     <div className="grid gap-2">
       <FormField label="Schedule (cron)" error={error ?? (invalid ? "Invalid cron expression" : undefined)} hint={hint}>

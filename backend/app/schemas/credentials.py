@@ -28,9 +28,10 @@ class CredentialOut(BaseModel):
     visibility: Visibility
     has_secret: bool
     can_edit: bool  # output-only: caller may PATCH
+    can_use: bool  # output-only: caller may reference it from a source
 
     @classmethod
-    def of(cls, c: Credential, can_edit: bool) -> "CredentialOut":
+    def of(cls, c: Credential, can_edit: bool, can_use: bool) -> "CredentialOut":
         return cls(
             id=c.id,
             name=c.name,
@@ -40,4 +41,5 @@ class CredentialOut(BaseModel):
             visibility=c.visibility,
             has_secret=bool(c.secret_enc),
             can_edit=can_edit,
+            can_use=can_use,
         )

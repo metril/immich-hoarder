@@ -66,6 +66,21 @@ async def editable_ids(
     return {r[0] for r in (await session.execute(stmt)).all()}
 
 
+async def usable_ids(
+    session: AsyncSession, model: type[Ownable], p: Principal, ids: list[int]
+) -> set[int]:
+    """Ids (of `ids`) the principal may `use`; same predicate as check_refs."""
+    if not ids:
+        return set()
+    m: Any = model
+    stmt = select(m.id).where(m.id.in_(ids), _predicate(model, p, Perm.use))
+    return {r[0] for r in (await session.execute(stmt)).all()}
+
+
+async def can_use(session: AsyncSession, obj: Ownable, p: Principal) -> bool:
+    return await _allowed(session, obj, p, Perm.use)
+
+
 async def require_perm(session: AsyncSession, obj: Ownable, p: Principal, perm: Perm) -> None:
     if not await _allowed(session, obj, p, Perm.use):
         raise HTTPException(404, "not found")

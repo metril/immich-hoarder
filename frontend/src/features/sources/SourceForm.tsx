@@ -2,14 +2,13 @@ import { useMemo } from "react";
 import { Controller } from "react-hook-form";
 import { FormField, FormRootError, inputClass } from "../../components/common/FormField";
 import { useApiForm } from "../../components/common/useApiForm";
-import { useCredentials } from "../credentials/hooks";
-import { useTargets } from "../targets/hooks";
 import { AlbumTemplateField } from "./AlbumTemplateField";
 import { BackfillField } from "./BackfillField";
 import { CronField } from "./CronField";
 import { ExtractorHint } from "./ExtractorHint";
 import { FilterBuilder } from "./FilterBuilder";
 import { NotifyField } from "./NotifyField";
+import { useUsableCredentials, useUsableTargets } from "./pickers";
 import { useCreateSource, useUpdateSource, type FilterSpec, type SourceOut, type SourcePatch } from "./hooks";
 import { LOG_LEVELS, defaultValues, sourceSchema, type SourceFormOutput } from "./schema";
 
@@ -34,8 +33,8 @@ const btn = "rounded-md border px-3 py-1.5 text-sm hover:bg-accent focus-visible
 export function SourceForm({ initial, onSaved, onCancel }: { initial?: SourceOut; onSaved: (s: SourceOut) => void; onCancel?: () => void }) {
   const create = useCreateSource();
   const update = useUpdateSource(initial?.id ?? 0);
-  const targets = useTargets().rows;
-  const credentials = useCredentials().rows;
+  const targets = useUsableTargets(initial?.target_id);
+  const credentials = useUsableCredentials(initial?.credential_id).filter((c) => c.kind !== "apprise");
   const defaults = useMemo(() => defaultValues(initial), [initial]);
   const base = useMemo(() => (initial ? sourceSchema.safeParse(defaults).data : undefined), [initial, defaults]);
 
@@ -105,10 +104,10 @@ export function SourceForm({ initial, onSaved, onCancel }: { initial?: SourceOut
         )} />
       )} />
       <Controller control={form.control} name="filters" render={({ field }) => (
-        <FilterBuilder value={field.value} onChange={field.onChange} errors={filterErrors} />
+        <FilterBuilder value={field.value} onChange={field.onChange} errors={filterErrors} error={e.filters?.message} />
       )} />
       <Controller control={form.control} name="notify" render={({ field }) => (
-        <NotifyField value={field.value} onChange={field.onChange} error={(e.notify)?.message} />
+        <NotifyField value={field.value} onChange={field.onChange} keep={initial?.notify.credential_ids} error={(e.notify)?.message} />
       )} />
       <details className="rounded-md border p-3">
         <summary className="cursor-pointer text-sm font-medium">Advanced</summary>

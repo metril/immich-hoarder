@@ -1,4 +1,5 @@
-import { useCredentials } from "../credentials/hooks";
+import { useId } from "react";
+import { useUsableCredentials } from "./pickers";
 import type { SourceNotify } from "./hooks";
 
 const EVENTS: { value: SourceNotify["on"][number]; label: string }[] = [
@@ -9,11 +10,11 @@ const EVENTS: { value: SourceNotify["on"][number]; label: string }[] = [
 
 const toggle = <T,>(list: T[], item: T) => (list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
 
-export function NotifyField({ value, onChange, error }: { value: SourceNotify; onChange: (v: SourceNotify) => void; error?: string }) {
-  const { rows } = useCredentials();
-  const apprise = rows.filter((c) => c.kind === "apprise");
+export function NotifyField({ value, onChange, error, keep }: { value: SourceNotify; onChange: (v: SourceNotify) => void; error?: string; keep?: number[] }) {
+  const errId = useId();
+  const apprise = useUsableCredentials(undefined, keep).filter((c) => c.kind === "apprise");
   return (
-    <fieldset className="grid gap-2 rounded-md border p-3">
+    <fieldset className="grid gap-2 rounded-md border p-3" aria-describedby={error ? errId : undefined}>
       <legend className="px-1 text-sm font-medium">Notifications</legend>
       {apprise.length === 0 ? (
         <p className="text-sm text-muted-foreground">No Apprise credentials available.</p>
@@ -39,7 +40,7 @@ export function NotifyField({ value, onChange, error }: { value: SourceNotify; o
           </label>
         ))}
       </div>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {error && <p id={errId} role="alert" className="text-sm text-destructive">{error}</p>}
     </fieldset>
   );
 }
