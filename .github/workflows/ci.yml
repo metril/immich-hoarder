@@ -25,7 +25,7 @@ jobs:
       # Release-PR skip rule: skip all jobs only when the PR comes from this
       # repo (not a fork) AND every changed file is in the release-please
       # allowlist. Branch names are never trusted.
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: rel
         with:
           predicate-quantifier: every
@@ -38,7 +38,7 @@ jobs:
               - '!.release-please-manifest.json'
               - '!backend/app/_version.py'
               - '!version.txt'
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Verify version file is release-only
         run: |
           if [[ "$(grep -cv '^\s*$' backend/app/_version.py)" != "1" ]] \
@@ -56,7 +56,7 @@ jobs:
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@v4
         id: filter
         with:
           filters: |
@@ -84,8 +84,8 @@ jobs:
     if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.backend == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - run: uv sync --frozen
@@ -102,8 +102,8 @@ jobs:
       matrix:
         shard: [1, 2, 3, 4]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - run: uv sync --frozen
@@ -129,8 +129,8 @@ jobs:
     env:
       IH_TEST_PG_URL: postgresql://postgres:pg@localhost:5432/postgres
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - run: uv sync --frozen
@@ -144,7 +144,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           package_json_file: frontend/package.json
@@ -167,7 +167,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
         with:
           package_json_file: frontend/package.json
@@ -183,8 +183,8 @@ jobs:
     if: needs.changes.outputs.skip != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - uses: pnpm/action-setup@v4
@@ -210,8 +210,8 @@ jobs:
     if: needs.changes.outputs.skip != 'true' && (needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - uses: pnpm/action-setup@v4
@@ -254,7 +254,7 @@ jobs:
     if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Validate compose files
         run: |
           mkdir -p secrets && for s in ih_master_key ih_session_secret ih_oidc_client_secret ih_db_url ih_pg_password; do echo x > secrets/$s; done
@@ -265,7 +265,7 @@ jobs:
           docker compose -f compose.example.yml -f deploy/compose.gluetun.yml config -q
           docker compose -f compose.example.yml -f deploy/compose.postgres.yml -f deploy/compose.gluetun.yml config -q
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64
@@ -278,9 +278,9 @@ jobs:
     if: needs.changes.outputs.skip != 'true' && needs.changes.outputs.docker == 'true'
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/arm64
@@ -298,9 +298,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
-      - uses: docker/build-push-action@v6
+      - uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64
@@ -308,7 +308,7 @@ jobs:
           load: true
           tags: immich-hoarder:e2e
           cache-from: type=gha
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - run: uv sync --frozen
