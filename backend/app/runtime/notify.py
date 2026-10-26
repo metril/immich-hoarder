@@ -1,14 +1,14 @@
 """Job notifications via apprise. Never raises; never logs URLs or secrets."""
 
 import asyncio
+import contextlib
 import logging
 import socket
 import threading
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from typing import Any
 
 import apprise
-import urllib3.util.connection as _uconn
 from apprise.url import URLBase
 
 from app.rip.gdl import _blocked
@@ -32,38 +32,41 @@ def _literal_private(host: str) -> bool:
 
 
 _gate = threading.local()
-_orig_create = _uconn.create_connection
+_real_getaddrinfo = socket.getaddrinfo
 _install_lock = threading.Lock()
 _installed = False
 
 
-def _guarded_create(address: tuple[str, int], *args: Any, **kwargs: Any) -> socket.socket:
-    if not getattr(_gate, "active", False):
-        return _orig_create(address, *args, **kwargs)
-    host, port = address
-    try:
-        infos = socket.getaddrinfo(host.strip("[]"), port, 0, socket.SOCK_STREAM)
-    except socket.gaierror as e:
-        raise OSError(f"name resolution failed: {e}") from e
-    ips = [str(i[4][0]) for i in infos]
-    if not ips or any(_blocked(ip) for ip in ips):
+def _guarded_getaddrinfo(*args: Any, **kwargs: Any) -> Any:
+    infos = _real_getaddrinfo(*args, **kwargs)
+    if getattr(_gate, "active", False) and any(_blocked(str(i[4][0])) for i in infos):
         raise OSError("blocked private address")
-    err: OSError | None = None
-    for ip in ips:
-        try:
-            return _orig_create((ip, port), *args, **kwargs)
-        except OSError as e:
-            err = e
-    raise err or OSError("connection failed")
+    return infos
 
 
 def install_connect_guard() -> None:
-    """Idempotently wrap urllib3's create_connection; inert unless the thread gate is set."""
+    """Idempotently wrap socket.getaddrinfo; inert unless the thread gate is set.
+
+    Every connect (urllib3, smtplib, raw-socket plugins) resolves through it.
+    """
     global _installed
     with _install_lock:
         if not _installed:
-            _uconn.create_connection = _guarded_create
+            socket.getaddrinfo = _guarded_getaddrinfo
             _installed = True
+
+
+@contextlib.contextmanager
+def gated(block_private: bool) -> Iterator[None]:
+    if not block_private:
+        yield
+        return
+    install_connect_guard()
+    _gate.active = True
+    try:
+        yield
+    finally:
+        _gate.active = False
 
 
 def check_notify_url(url: str, *, allow_private: bool) -> None:
@@ -98,13 +101,8 @@ def _send(urls: list[str], title: str, body: str, *, block_private: bool = False
         ap.add(u, asset=asset)
     if not len(ap):
         return False
-    if block_private:
-        install_connect_guard()
-        _gate.active = True
-    try:
+    with gated(block_private):
         return all(bool(svc.notify(body=body, title=title)) for svc in ap)
-    finally:
-        _gate.active = False
 
 
 async def notify_job(

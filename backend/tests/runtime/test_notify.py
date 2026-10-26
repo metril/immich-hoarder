@@ -81,6 +81,7 @@ def test_check_notify_url_accepts_numeric_ids() -> None:
 
 @pytest.fixture
 def conn(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
+    """Resolver returns a private IP; record any socket connect attempt."""
     import socket
 
     from app.runtime import notify as nm
@@ -88,32 +89,52 @@ def conn(monkeypatch: pytest.MonkeyPatch) -> list[Any]:
     nm.install_connect_guard()
     seen: list[Any] = []
 
-    def rec(address: Any, *a: Any, **k: Any) -> Any:
+    def rec(self: Any, address: Any) -> None:
         seen.append(address)
         raise OSError("stop")
 
-    monkeypatch.setattr(nm, "_orig_create", rec)
-    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("10.0.0.1", 80))])
+    monkeypatch.setattr(socket.socket, "connect", rec)
+    monkeypatch.setattr(
+        nm, "_real_getaddrinfo", lambda *a, **k: [(2, 1, 6, "", ("10.0.0.5", a[1]))]
+    )
     return seen
 
 
-def test_connect_guard_blocks_dns_private(conn: list[Any]) -> None:
+def test_connect_guard_blocks_http_rebind(conn: list[Any]) -> None:
     from app.runtime.notify import _send
 
     assert _send(["json://rebind.example.com/"], "t", "b", block_private=True) is False
     assert conn == []
 
 
+def test_connect_guard_blocks_smtp(conn: list[Any]) -> None:
+    from app.runtime.notify import _send
+
+    assert _send(["mailto://u:p@smtp.internal.lan"], "t", "b", block_private=True) is False
+    assert conn == []
+
+
+def test_connect_guard_blocks_raw_socket_plugins(conn: list[Any]) -> None:
+    # mqtt/xmpp/rsyslog/aprs use raw sockets; mqtt needs paho, so exercise the socket layer.
+    import socket
+
+    from app.runtime.notify import gated
+
+    with gated(True), pytest.raises(OSError, match="blocked private address"):
+        socket.create_connection(("broker.lan", 1883))
+    assert conn == []
+
+
 def test_connect_guard_off_outside_send_and_for_global(conn: list[Any]) -> None:
-    import urllib3.util.connection as uc
+    import socket
 
     from app.runtime.notify import _send
 
+    assert socket.getaddrinfo("anything.lan", 80)[0][4][0] == "10.0.0.5"
     with pytest.raises(OSError, match="stop"):
-        uc.create_connection(("10.0.0.1", 80))
-    assert conn == [("10.0.0.1", 80)]
+        socket.create_connection(("anything.lan", 80))
     conn.clear()
-    _send(["json://rebind.example.com/"], "t", "b", block_private=False)
+    _send(["mailto://u:p@smtp.internal.lan"], "t", "b", block_private=False)
     assert conn  # exempt group reaches the connection
 
 

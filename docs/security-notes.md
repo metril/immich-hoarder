@@ -5,3 +5,5 @@ API-key requests use the role and groups from the user's last login or bearer-to
 `MASTER_KEY` must be high-entropy (32+ random characters, e.g. `openssl rand -base64 48`). Encryption keys are derived with HKDF, which is not a password KDF and gives no protection to a guessable passphrase.
 
 A missing target or credential returns 403, not 404, so the API does not reveal whether an id exists to callers who cannot access it.
+
+User notification URLs (apprise credentials) are blocked from connecting to private addresses at resolve time, so a private `HTTP(S)_PROXY` environment variable also blocks those gated sends. Admin-configured global notification URLs are unaffected.
