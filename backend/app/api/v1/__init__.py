@@ -9,9 +9,21 @@ from app.api.v1 import (
     sources,
     streams,
     targets,
+    uploads,
     users,
 )
 
 api_router = APIRouter(prefix="/api/v1")
-for _m in (targets, credentials, sources, apikeys, users, settings, extractors, streams, jobs):
+for _m in (
+    targets,
+    credentials,
+    sources,
+    apikeys,
+    users,
+    settings,
+    extractors,
+    streams,
+    jobs,
+    uploads,
+):
     api_router.include_router(_m.router)
