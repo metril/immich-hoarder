@@ -257,7 +257,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Validate compose files
         run: |
-          mkdir -p secrets && for s in ih_master_key ih_session_secret ih_oidc_client_secret ih_db_url ih_pg_password; do echo x > secrets/$s; done
+          mkdir -p secrets && for s in ih_db_url ih_pg_password; do echo x > secrets/$s; done
           docker network create traefik
           export VPN_SERVICE_PROVIDER=custom
           docker compose -f compose.example.yml config -q

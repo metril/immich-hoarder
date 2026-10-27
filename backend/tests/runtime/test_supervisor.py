@@ -21,6 +21,7 @@ from app.db.models import (
     ImmichTarget,
     Job,
     JobStatus,
+    Setting,
     Source,
     User,
 )
@@ -55,9 +56,7 @@ async def env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> AsyncIterator[
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'sup.db'}",
         master_key=SecretStr(KEY),
         session_secret=SecretStr("test-session-secret-0123456789abcdef"),
-        public_url="http://testserver",
         scratch_dir=scratch,
-        max_concurrent_jobs=2,
     )
     box = SecretBox(KEY)
     async with sf() as s:
@@ -169,6 +168,9 @@ async def test_one_running_per_target_and_concurrency_cap(env: Env) -> None:
     _, b = await env.seed(target=t1)
     _, c = await env.seed()
     _, d = await env.seed()
+    async with env.sf() as s:
+        s.add(Setting(key="runtime", value={"max_concurrent_jobs": 2}))
+        await s.commit()
     sup = env.make(fw.slow_worker)
     await sup.start()
     ja = await sup.enqueue(a, None, "info")

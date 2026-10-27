@@ -88,11 +88,11 @@ async def _seed(settings: Settings) -> int:
     now = datetime.now(UTC).replace(tzinfo=None)
     async with sf() as s, s.begin():
         admin = User(
-            sub="e2e-admin",
+            sub="local:e2e-admin",  # local accounts need no OIDC group mapping
             email="e2e@example.test",
             name="E2E Admin",
             role=Role.admin,
-            groups=["admins"],
+            groups=[],
         )
         s.add(admin)
         await s.flush()
@@ -190,11 +190,9 @@ def main() -> None:
         database_url=f"sqlite+aiosqlite:///{root / 'e2e.db'}",
         master_key=SecretStr("e2e-master-key-0123456789abcdef-xyz"),
         session_secret=SecretStr(SESSION_SECRET),
-        public_url=f"http://127.0.0.1:{PORT}",
         scratch_dir=root / "scratch",
         backup_dir=root / "backups",
         web_dir=Path(__file__).resolve().parents[2] / "frontend" / "dist",
-        oidc_admin_groups=["admins"],
     )
     settings.scratch_dir.mkdir()
     settings.backup_dir.mkdir()

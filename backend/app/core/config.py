@@ -6,9 +6,11 @@ from typing import Any, Literal
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.core.secrets import load_or_create
+
 MIN_SECRET_LENGTH = 32
 _ENV_PREFIX = "IH_"
-_FILE_SECRETS = ("database_url", "master_key", "session_secret", "oidc_client_secret")
+_FILE_SECRETS = ("database_url", "master_key", "session_secret")
 
 
 class Settings(BaseSettings):
@@ -19,8 +21,16 @@ class Settings(BaseSettings):
         repr=False,
         description="SQLAlchemy async database URL (SQLite or PostgreSQL); may embed a password.",
     )
-    master_key: SecretStr = Field(
-        description="Key that encrypts stored credentials; at least 32 characters.",
+    master_key: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Override for the key that encrypts stored credentials (at least 32 characters); "
+            "unset uses an auto-generated key in the data directory."
+        ),
+    )
+    data_dir: Path = Field(
+        default=Path("/data"),
+        description="Directory for persistent data; auto-generated secrets live in its secrets/.",
     )
     scratch_dir: Path = Field(
         default=Path("/scratch"), description="Directory for temporary download files."
@@ -31,38 +41,26 @@ class Settings(BaseSettings):
     web_dir: Path = Field(
         default=Path("/srv/web"), description="Directory containing the built web UI."
     )
-    scratch_max_bytes: int = Field(
-        default=4 * 1024**3,
-        description="Total size limit of the scratch directory, in bytes.",
-    )
-    max_concurrent_jobs: int = Field(
-        default=os.cpu_count() or 1,
-        description="Maximum number of jobs run at the same time; defaults to the CPU count.",
-    )
     log_level: Literal["error", "warn", "info", "debug", "trace"] = Field(
         default="info", description="Minimum severity of emitted log lines."
     )
-    oidc_issuer: str | None = Field(
-        default=None, description="OIDC issuer URL; OIDC login is enabled when set."
+    session_secret: SecretStr | None = Field(
+        default=None,
+        description=(
+            "Override for the secret that signs session cookies (at least 32 characters); "
+            "unset uses an auto-generated secret in the data directory."
+        ),
     )
-    oidc_client_id: str | None = Field(default=None, description="OIDC client ID.")
-    oidc_client_secret: SecretStr | None = Field(default=None, description="OIDC client secret.")
-    oidc_admin_groups: list[str] = Field(
-        default=["hoarder-admins"],
-        description="OIDC groups granted the admin role, as a JSON list.",
+    break_glass: bool = Field(
+        default=False,
+        description=(
+            "Force local-account login on regardless of the UI setting, and allow "
+            "creating the local admin when none exists. Unset after recovery."
+        ),
     )
-    oidc_user_groups: list[str] = Field(
-        default=["hoarder-users"],
-        description="OIDC groups granted the user role, as a JSON list.",
-    )
-    oidc_groups_claim: str = Field(
-        default="groups", description="Name of the OIDC claim that lists the user's groups."
-    )
-    public_url: str = Field(
-        description="Externally visible base URL of this service, used for OIDC redirects."
-    )
-    session_secret: SecretStr = Field(
-        description="Secret that signs session cookies; at least 32 characters.",
+    break_glass_reset: bool = Field(
+        default=False,
+        description="With break glass: allow resetting an existing local admin's password.",
     )
 
     @model_validator(mode="before")
@@ -85,10 +83,25 @@ class Settings(BaseSettings):
 
     @field_validator("master_key", "session_secret")
     @classmethod
-    def _min_secret_length(cls, v: SecretStr) -> SecretStr:
-        if len(v.get_secret_value()) < MIN_SECRET_LENGTH:
+    def _min_secret_length(cls, v: SecretStr | None) -> SecretStr | None:
+        if v is not None and len(v.get_secret_value()) < MIN_SECRET_LENGTH:
             raise ValueError(f"must be at least {MIN_SECRET_LENGTH} characters")
         return v
+
+    @property
+    def secrets_dir(self) -> Path:
+        return self.data_dir / "secrets"
+
+    def master_key_value(self) -> str:
+        """Configured master key, else the auto-generated one (created on first use)."""
+        if self.master_key is not None:
+            return self.master_key.get_secret_value()
+        return load_or_create("master_key", self.secrets_dir)
+
+    def session_secret_value(self) -> str:
+        if self.session_secret is not None:
+            return self.session_secret.get_secret_value()
+        return load_or_create("session_secret", self.secrets_dir)
 
 
 @lru_cache

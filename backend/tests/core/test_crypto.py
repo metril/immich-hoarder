@@ -24,8 +24,6 @@ def test_ciphertexts_differ() -> None:
 
 def test_get_secret_box_cached(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("IH_MASTER_KEY", "k" * 32)
-    monkeypatch.setenv("IH_SESSION_SECRET", "s" * 32)
-    monkeypatch.setenv("IH_PUBLIC_URL", "http://x")
     get_settings.cache_clear()
     _box_for.cache_clear()
     try:

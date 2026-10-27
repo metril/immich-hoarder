@@ -8,24 +8,17 @@
 |---|---|---|---|
 | `IH_DATABASE_URL` | str | `sqlite+aiosqlite:////data/hoarder.db` | SQLAlchemy async database URL (SQLite or PostgreSQL); may embed a password. |
 | `IH_DATABASE_URL_FILE` | path | unset | Path to a file holding the value of `IH_DATABASE_URL` (Docker secrets); used when `IH_DATABASE_URL` is unset. |
-| `IH_MASTER_KEY` | SecretStr | required | Key that encrypts stored credentials; at least 32 characters. |
+| `IH_MASTER_KEY` | SecretStr (optional) | unset | Override for the key that encrypts stored credentials (at least 32 characters); unset uses an auto-generated key in the data directory. |
 | `IH_MASTER_KEY_FILE` | path | unset | Path to a file holding the value of `IH_MASTER_KEY` (Docker secrets); used when `IH_MASTER_KEY` is unset. |
+| `IH_DATA_DIR` | Path | `/data` | Directory for persistent data; auto-generated secrets live in its secrets/. |
 | `IH_SCRATCH_DIR` | Path | `/scratch` | Directory for temporary download files. |
 | `IH_BACKUP_DIR` | Path | `/data/backups` | Directory where database backups are written. |
 | `IH_WEB_DIR` | Path | `/srv/web` | Directory containing the built web UI. |
-| `IH_SCRATCH_MAX_BYTES` | int | `4294967296` | Total size limit of the scratch directory, in bytes. |
-| `IH_MAX_CONCURRENT_JOBS` | int | CPU count | Maximum number of jobs run at the same time; defaults to the CPU count. |
 | `IH_LOG_LEVEL` | error / warn / info / debug / trace | `info` | Minimum severity of emitted log lines. |
-| `IH_OIDC_ISSUER` | str (optional) | unset | OIDC issuer URL; OIDC login is enabled when set. |
-| `IH_OIDC_CLIENT_ID` | str (optional) | unset | OIDC client ID. |
-| `IH_OIDC_CLIENT_SECRET` | SecretStr (optional) | unset | OIDC client secret. |
-| `IH_OIDC_CLIENT_SECRET_FILE` | path | unset | Path to a file holding the value of `IH_OIDC_CLIENT_SECRET` (Docker secrets); used when `IH_OIDC_CLIENT_SECRET` is unset. |
-| `IH_OIDC_ADMIN_GROUPS` | list[str] | `["hoarder-admins"]` | OIDC groups granted the admin role, as a JSON list. |
-| `IH_OIDC_USER_GROUPS` | list[str] | `["hoarder-users"]` | OIDC groups granted the user role, as a JSON list. |
-| `IH_OIDC_GROUPS_CLAIM` | str | `groups` | Name of the OIDC claim that lists the user's groups. |
-| `IH_PUBLIC_URL` | str | required | Externally visible base URL of this service, used for OIDC redirects. |
-| `IH_SESSION_SECRET` | SecretStr | required | Secret that signs session cookies; at least 32 characters. |
+| `IH_SESSION_SECRET` | SecretStr (optional) | unset | Override for the secret that signs session cookies (at least 32 characters); unset uses an auto-generated secret in the data directory. |
 | `IH_SESSION_SECRET_FILE` | path | unset | Path to a file holding the value of `IH_SESSION_SECRET` (Docker secrets); used when `IH_SESSION_SECRET` is unset. |
+| `IH_BREAK_GLASS` | bool | `false` | Force local-account login on regardless of the UI setting, and allow creating the local admin when none exists. Unset after recovery. |
+| `IH_BREAK_GLASS_RESET` | bool | `false` | With break glass: allow resetting an existing local admin's password. |
 | `FORWARDED_ALLOW_IPS` | str | `127.0.0.1` | Comma-separated proxy addresses uvicorn trusts for `X-Forwarded-*` headers (set to the reverse proxy's address). |
 
 ## Rip settings (admin, GUI/API)
@@ -37,7 +30,7 @@ Stored in the database and edited by an admin in the web UI or API (settings key
 | `proxy` | str (optional) | unset | - | Proxy URL used for all downloads; unset means no proxy. |
 | `rate_limits` | dict[str, RateLimit] | `{}` | - | Per-site rate limits keyed by extractor name. |
 | `upload_concurrency` | int | `4` | >= 1, <= 16 | Number of simultaneous uploads to Immich. |
-| `job_scratch_max_bytes` | int (optional) | unset | >= 1 | Scratch size limit for a single job, in bytes; unset means no per-job limit. |
+| `job_scratch_max_bytes` | int (optional) | unset | >= 1 | Scratch size limit for a single job, in bytes; unset uses 4 GiB. |
 | `allow_private_hosts` | bool | `false` | - | Allow downloads from private and loopback network addresses. |
 
 ## Rate limit entry
@@ -59,7 +52,7 @@ Stored in the database and edited by an admin (settings key `runtime`).
 | `retention_days` | int | `30` | >= 1, <= 3650 | Days that finished job records are kept. |
 | `backup_cron` | str | `0 3 * * *` | - | Five-field cron expression for scheduled backups. |
 | `backup_keep` | int | `7` | >= 0, <= 365 | Number of most recent backups to keep. |
-| `max_concurrent_jobs` | int (optional) | unset | >= 1, <= 64 | Override for the maximum number of simultaneous jobs; unset uses the IH_MAX_CONCURRENT_JOBS value. |
+| `max_concurrent_jobs` | int (optional) | unset | >= 1, <= 64 | Override for the maximum number of simultaneous jobs; unset uses the CPU count. |
 | `cancel_grace_s` | int | `10` | >= 0, <= 300 | Seconds a cancelled job gets to stop before it is killed. |
 
 ## Notification settings

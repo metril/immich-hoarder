@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.extractors import UnsupportedURL, validate_proxy
 from app.runtime.settings import load_model
 
+DEFAULT_SCRATCH_MAX_BYTES = 4 * 1024**3
+
 
 class RateLimit(BaseModel, extra="forbid"):
     sleep_request: float = Field(
@@ -28,7 +30,7 @@ class RipSettings(BaseModel, extra="forbid"):
     job_scratch_max_bytes: int | None = Field(
         default=None,
         ge=1,
-        description="Scratch size limit for a single job, in bytes; unset means no per-job limit.",
+        description="Scratch size limit for a single job, in bytes; unset uses 4 GiB.",
     )
     allow_private_hosts: bool = Field(
         default=False, description="Allow downloads from private and loopback network addresses."

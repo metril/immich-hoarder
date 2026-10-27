@@ -15,7 +15,6 @@ def build() -> str:
         database_url="sqlite+aiosqlite:///:memory:",
         master_key=SecretStr("test-master-key-0123456789abcdef-xyz"),
         session_secret=SecretStr("test-session-secret-0123456789abcdef"),
-        public_url="http://testserver",
     )
     doc = create_app(settings).openapi()
     doc["info"]["version"] = "0"  # release bumps must not stale the committed file

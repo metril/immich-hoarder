@@ -1,5 +1,7 @@
 import asyncio
+import logging
 import multiprocessing
+import secrets
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -16,11 +18,14 @@ from app import __version__
 from app.api.v1 import api_router
 from app.api.v1 import auth as auth_api
 from app.auth.authz import require_scope
-from app.auth.csrf_cookie import CsrfCookieRenewal
+from app.auth.csrf_cookie import CsrfCookieRenewal, SecureSessionCookie
 from app.auth.deps import SESSION_MAX_AGE, current_principal
-from app.auth.oidc import BearerVerifier, build_oauth
+from app.auth.local import LoginLimiter
+from app.auth.oidc import BearerVerifier, OidcConfig, build_oauth
 from app.auth.principal import Principal
+from app.auth.settings import AuthSettings, import_legacy_env, reload_auth
 from app.core.config import Settings, get_settings
+from app.core.crypto import SecretBox
 from app.core.logging import configure_logging
 from app.db.engine import dispose_engine, init_engine, session_scope
 from app.db.migrate import upgrade_head_async
@@ -32,6 +37,8 @@ from app.runtime.supervisor import JobSupervisor
 from app.runtime.writer import IpcBridge, JobWriter, make_ipc_queue
 from app.web.spa import ApiHeaders, mount_spa
 
+log = logging.getLogger(__name__)
+
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or get_settings()
@@ -41,6 +48,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         await upgrade_head_async(settings.database_url)
         engine = init_engine(settings.database_url)
+        if settings.break_glass:
+            log.warning(
+                "BREAK GLASS is enabled (IH_BREAK_GLASS): local login is forced on%s; "
+                "unset it and restart once access is restored",
+                " and the local admin may be reset" if settings.break_glass_reset else "",
+            )
+        _app.state.reset_token = None
+        if settings.break_glass and settings.break_glass_reset:
+            _app.state.reset_token = secrets.token_urlsafe(24)
+            log.warning(
+                "BREAK GLASS RESET token (one use, valid until restart): %s",
+                _app.state.reset_token,
+            )
+        async with session_scope() as s:
+            await import_legacy_env(s, SecretBox(settings.master_key_value()))
+            await reload_auth(_app, s)
         writer: JobWriter | None = None
         bridge: IpcBridge | None = None
         supervisor: JobSupervisor | None = None
@@ -90,17 +113,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.metrics = Metrics()
     app.state.runtime_enabled = True
     app.state.immich_transport = None
-    app.state.oauth = build_oauth(settings)
-    app.state.verifier = BearerVerifier(settings)
-    secure = settings.public_url.startswith("https")
-    app.add_middleware(CsrfCookieRenewal, secure=secure)  # inside SessionMiddleware
+    # Replaced from the database in lifespan (and live on settings changes).
+    app.state.oidc_cfg = OidcConfig()
+    app.state.auth_cfg = AuthSettings()
+    app.state.oauth = build_oauth(app.state.oidc_cfg)
+    app.state.verifier = BearerVerifier(app.state.oidc_cfg)
+    app.state.login_limiter = LoginLimiter()
+    app.state.setup_lock = asyncio.Lock()
+    app.state.reset_token = None
+    app.add_middleware(CsrfCookieRenewal)  # inside SessionMiddleware
     app.add_middleware(
         SessionMiddleware,
-        secret_key=settings.session_secret.get_secret_value(),
+        secret_key=settings.session_secret_value(),
         max_age=SESSION_MAX_AGE,
         same_site="lax",
-        https_only=settings.public_url.startswith("https"),
     )
+    app.add_middleware(SecureSessionCookie)  # outside SessionMiddleware
     app.add_middleware(ApiHeaders)
     app.include_router(auth_api.router)
     app.include_router(api_router)

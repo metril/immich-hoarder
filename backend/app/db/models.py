@@ -106,6 +106,7 @@ class User(Timestamps, Base):
     role: Mapped[Role] = mapped_column(_enum(Role), default=Role.user)
     groups: Mapped[list[str]] = mapped_column(JSON, default=list)
     disabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    session_gen: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
 
 class Share(Timestamps, Base):

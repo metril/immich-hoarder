@@ -20,4 +20,4 @@ async def get_obj(
 
 
 def secret_box(request: Request) -> SecretBox:
-    return SecretBox(request.app.state.settings.master_key.get_secret_value())
+    return SecretBox(request.app.state.settings.master_key_value())

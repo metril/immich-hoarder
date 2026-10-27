@@ -27,20 +27,11 @@ Create the groups `hoarder-admins` and `hoarder-users` and add people to them. R
 
 ## 4. App configuration
 
-```yaml
-IH_OIDC_ISSUER: https://auth.example.com/application/o/hoarder/
-IH_OIDC_CLIENT_ID: <client id>
-IH_OIDC_CLIENT_SECRET_FILE: /run/secrets/ih_oidc_client_secret
-IH_OIDC_ADMIN_GROUPS: '["hoarder-admins"]'
-IH_OIDC_USER_GROUPS: '["hoarder-users"]'
-IH_OIDC_GROUPS_CLAIM: groups
-```
-
-Both group variables are JSON lists, so several groups can map to one role. `IH_OIDC_GROUPS_CLAIM` names the claim that holds the groups (default `groups`).
+In the web UI open **Settings → Auth** (create the local admin on `/setup` first if this is a fresh install). Set the public URL, then enable OIDC and enter the issuer, client id, client secret, admin groups (`hoarder-admins`), user groups (`hoarder-users`) and groups claim (`groups`). Group fields accept several groups per role. The client secret is stored encrypted. No environment variables are needed.
 
 ## Users in neither group, and disabled users
 
-Role resolution (`resolve_role` in `app/auth/principal.py`) gives the admin role if any of the user's groups is in `IH_OIDC_ADMIN_GROUPS`, otherwise the user role if any is in `IH_OIDC_USER_GROUPS`, otherwise no role. A user with no role:
+Role resolution (`resolve_role` in `app/auth/principal.py`) gives the admin role if any of the user's groups is in the configured admin groups, otherwise the user role if any is in the configured user groups, otherwise no role. A user with no role:
 
 - is denied at login with `403 access denied` and no session is created (the user record and groups are still stored);
 - is rejected with `401` on any later session or bearer-token request, including API keys, even if they had access before. Removing someone from the groups takes effect on their next request.

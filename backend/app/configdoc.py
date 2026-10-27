@@ -40,8 +40,6 @@ def _is_secret(t: Any) -> bool:
 
 
 def _default(name: str, f: FieldInfo) -> str:
-    if name == "max_concurrent_jobs" and f.default is not None:
-        return "CPU count"
     if f.default is PydanticUndefined:
         return "required"
     if f.default is None or _is_secret(f.annotation):

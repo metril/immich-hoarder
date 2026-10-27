@@ -145,9 +145,8 @@ async def test_upsert_user_recovers_from_concurrent_first_login(
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from app.auth.principal import upsert_user
-    from app.core.config import Settings
 
-    settings: Settings = client._transport.app.state.settings  # type: ignore[attr-defined]
+    settings = client._transport.app.state.oidc_cfg  # type: ignore[attr-defined]
     real = AsyncSession.execute
     raced = False
 
@@ -190,9 +189,8 @@ async def test_upsert_race_keeps_callers_pending_work(
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from app.auth.principal import upsert_user
-    from app.core.config import Settings
 
-    settings: Settings = client._transport.app.state.settings  # type: ignore[attr-defined]
+    settings = client._transport.app.state.oidc_cfg  # type: ignore[attr-defined]
     async with session_scope() as winner:
         winner.add(User(sub="racer2", groups=["hoarder-users"]))
     real = AsyncSession.execute

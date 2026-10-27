@@ -15,19 +15,19 @@ Fields are `ts`, `level`, `logger`, `msg` plus any extras; secrets show as `***`
 
 ### Login returns 503 "OIDC is not configured"
 
-**Cause:** `IH_OIDC_ISSUER`, `IH_OIDC_CLIENT_ID` or the client secret is unset, so login is disabled. **Fix:** set all three (see [Authentik](authentik.md)) and restart.
+**Cause:** OIDC is not enabled or its issuer, client id or client secret is unset in Settings → Auth. **Fix:** fill them in (see [Authentik](authentik.md)). If you cannot log in at all, use the local admin or set `IH_BREAK_GLASS=true` (add `IH_BREAK_GLASS_RESET=true` to reset the local admin) and restart.
 
 ### Redirect URI mismatch at the provider
 
-**Cause:** the provider's allowed redirect does not match what the app sends, which is `<IH_PUBLIC_URL>/api/v1/auth/callback`. **Fix:** register exactly that URL, with the same scheme and host as `IH_PUBLIC_URL`.
+**Cause:** the provider's allowed redirect does not match what the app sends, which is `<public URL>/api/v1/auth/callback`. **Fix:** register exactly that URL, with the same scheme and host as the public URL in Settings → Auth.
 
 ### Login ends with 403 "access denied"
 
-**Cause:** the user is disabled, or none of their groups is in `IH_OIDC_ADMIN_GROUPS` or `IH_OIDC_USER_GROUPS`. **Fix:** add the user to a mapped group and check that the provider sends the groups claim named by `IH_OIDC_GROUPS_CLAIM`. A `401 login failed` means the token exchange failed; check the client secret and issuer.
+**Cause:** the user is disabled, or none of their groups is in the admin or user groups set in Settings → Auth. **Fix:** add the user to a mapped group and check that the provider sends the groups claim named by the groups claim setting. A `401 login failed` means the token exchange failed; check the client secret and issuer.
 
 ### Wrong client IP, or redirects go to `http://`
 
-**Cause:** uvicorn does not trust the proxy's `X-Forwarded-*` headers. **Fix:** set `FORWARDED_ALLOW_IPS` to the proxy's address or subnet (see [Install](install.md)) and make sure `IH_PUBLIC_URL` uses `https`.
+**Cause:** uvicorn does not trust the proxy's `X-Forwarded-*` headers. **Fix:** set `FORWARDED_ALLOW_IPS` to the proxy's address or subnet (see [Install](install.md)) and make sure the public URL in Settings → Auth uses `https`.
 
 ## Sources
 
@@ -41,7 +41,7 @@ Fields are `ts`, `level`, `logger`, `msg` plus any extras; secrets show as `***`
 
 ### A job is stuck, or the scratch space is full
 
-**Cause:** downloads wait while in-flight data exceeds the scratch limit (`IH_SCRATCH_MAX_BYTES`, or the admin's `job_scratch_max_bytes`) or the scratch disk has less than 5% free. If uploads are slow, or `IH_SCRATCH_MAX_BYTES` is larger than the `/scratch` tmpfs, the tmpfs fills first. **Fix:** keep the compose `tmpfs` `size=` and `IH_SCRATCH_MAX_BYTES` in agreement (the limit not above the tmpfs size), check that Immich is accepting uploads, or cancel and retry the job. Leftover job directories are swept at start.
+**Cause:** downloads wait while in-flight data exceeds the scratch limit (the admin's `job_scratch_max_bytes`, default 4 GiB) or the scratch disk has less than 5% free. If uploads are slow, or the limit is larger than the `/scratch` tmpfs, the tmpfs fills first. **Fix:** keep the limit not above the compose `tmpfs` `size=`, check that Immich is accepting uploads, or cancel and retry the job. Leftover job directories are swept at start.
 
 ### Items counted as `deleted_in_immich`
 
@@ -61,7 +61,7 @@ The target **Test** reports one of: `unauthorized` (the API key is wrong), `unre
 
 ### Start fails with "must be at least 32 characters"
 
-**Cause:** `IH_MASTER_KEY` or `IH_SESSION_SECRET` is shorter than 32 characters. **Fix:** generate each with `openssl rand -base64 48`. A secret file with a trailing newline is fine, because trailing line breaks are trimmed. If you replace an existing `MASTER_KEY`, stored credentials can no longer be decrypted.
+**Cause:** an overridden `IH_MASTER_KEY` or `IH_SESSION_SECRET` is shorter than 32 characters. **Fix:** generate each with `openssl rand -base64 48`, or remove the override to use the auto-generated one in `/data/secrets`. A secret file with a trailing newline is fine, because trailing line breaks are trimmed. If you replace an existing `MASTER_KEY`, stored credentials can no longer be decrypted.
 
 ## Live updates
 

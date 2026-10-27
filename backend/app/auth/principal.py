@@ -2,11 +2,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Literal, get_args
 
+from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import Settings
+from app.auth.oidc import OidcConfig
 from app.db.models import Role, User
 
 Scope = Literal[
@@ -39,17 +40,24 @@ class Principal:
         return self.role == Role.admin and (self.scopes is None or "admin" in self.scopes)
 
 
-def resolve_role(groups: Any, settings: Settings) -> Role | None:
+LOCAL_PREFIX = "local:"
+
+
+def is_local(user: User) -> bool:
+    return user.sub.startswith(LOCAL_PREFIX)
+
+
+def resolve_role(groups: Any, cfg: OidcConfig) -> Role | None:
     gs = set(groups or [])
-    if gs & set(settings.oidc_admin_groups):
+    if gs & set(cfg.admin_groups):
         return Role.admin
-    if gs & set(settings.oidc_user_groups):
+    if gs & set(cfg.user_groups):
         return Role.user
     return None
 
 
-def extract_groups(claims: Mapping[str, Any], settings: Settings) -> list[str]:
-    raw = claims.get(settings.oidc_groups_claim)
+def extract_groups(claims: Mapping[str, Any], cfg: OidcConfig) -> list[str]:
+    raw = claims.get(cfg.groups_claim)
     if isinstance(raw, str):
         return [raw]
     if isinstance(raw, list):
@@ -57,15 +65,17 @@ def extract_groups(claims: Mapping[str, Any], settings: Settings) -> list[str]:
     return []
 
 
-async def upsert_user(session: AsyncSession, claims: Mapping[str, Any], settings: Settings) -> User:
+async def upsert_user(session: AsyncSession, claims: Mapping[str, Any], cfg: OidcConfig) -> User:
     """Create/update the user from claims. Role/groups refresh on every login and token use.
 
     A user whose groups no longer map to a role keeps their last role; callers must
-    check `resolve_role(user.groups, settings)` to deny access.
+    check `resolve_role(user.groups, cfg)` to deny access.
     """
     sub = str(claims["sub"])
-    groups = extract_groups(claims, settings)
-    role = resolve_role(groups, settings)
+    if sub.startswith(LOCAL_PREFIX):  # reserved for local accounts; never IdP-controlled
+        raise HTTPException(401, "unauthorized")
+    groups = extract_groups(claims, cfg)
+    role = resolve_role(groups, cfg)
     user = await _fetch_or_create(session, sub, role, groups)
     user.groups = groups
     if role is not None:

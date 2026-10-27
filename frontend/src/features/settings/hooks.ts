@@ -68,3 +68,17 @@ export async function downloadExport(secrets: "omit" | "encrypted"): Promise<voi
     setTimeout(() => URL.revokeObjectURL(url), 0);
   }
 }
+
+export function useOidcTest() {
+  return useMutation({
+    mutationFn: async (issuer: string | null) =>
+      unwrap(await api.POST("/api/v1/settings/oidc/test", { body: { issuer: issuer || null } })),
+  });
+}
+
+export function useChangeLocalPassword() {
+  return useMutation({
+    mutationFn: async (body: { current_password?: string; new_password: string }) =>
+      unwrap(await api.PUT("/api/v1/settings/local-admin", { body })),
+  });
+}

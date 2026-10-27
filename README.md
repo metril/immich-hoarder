@@ -21,18 +21,24 @@ immich-hoarder fetches images from sites supported by [gallery-dl](https://githu
 
 ## Quickstart
 
-Image: `ghcr.io/metril/immich-hoarder`. You need Docker with Compose, an external `traefik` network, and an OIDC provider (details in the [install guide](https://metril.github.io/immich-hoarder/install/)).
+Image: `ghcr.io/metril/immich-hoarder`. You need Docker with Compose, an external `traefik` network, and, optionally, an OIDC provider (details in the [install guide](https://metril.github.io/immich-hoarder/install/)).
 
 ```bash
-# 1. secrets (also paste your OIDC client secret into secrets/ih_oidc_client_secret)
-mkdir secrets && openssl rand -base64 48 > secrets/ih_master_key && openssl rand -base64 48 > secrets/ih_session_secret
-# 2. get the compose file, then set your hostname, OIDC issuer and OIDC client ID in it
+# 1. get the compose file and set your hostname in it
 curl -fsSLO https://raw.githubusercontent.com/metril/immich-hoarder/main/compose.example.yml
-# 3. start
+# 2. start (no env needed: secrets are generated into the data volume)
 docker compose -f compose.example.yml up -d
-# 4. open https://hoarder.example.com (your hostname)
-# 5. sign in with your OIDC provider
+# 3. open https://hoarder.example.com (your hostname) and create the local admin on the /setup page
+# 4. optional: configure OIDC under Settings, then test it and sign in with it
 ```
+
+## Configuration and recovery
+
+All app configuration (OIDC, public URL, groups, local admin) lives in the web UI. Optional env: `IH_DATABASE_URL`, `IH_LOG_LEVEL`, `FORWARDED_ALLOW_IPS`, and `IH_MASTER_KEY[_FILE]` / `IH_SESSION_SECRET[_FILE]` overrides.
+
+- The master key and session secret are generated into `/data/secrets/` on first start. Back up the `/data` volume: losing `/data/secrets/master_key` makes stored credentials unreadable.
+- Upgrading from env-based OIDC: `IH_OIDC_*` / `IH_PUBLIC_URL` are imported into the database once on startup (with a deprecation warning); remove them afterwards.
+- Locked out? Set `IH_BREAK_GLASS=true` (plus `IH_BREAK_GLASS_RESET=true` to reset an existing local admin) and restart: local login is forced on and `/setup` is reachable. A banner is shown while it is set; remove the variable and restart to turn it off.
 
 ## Documentation
 

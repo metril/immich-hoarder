@@ -39,4 +39,4 @@ def _box_for(master_key: str) -> SecretBox:
 
 
 def get_secret_box() -> SecretBox:
-    return _box_for(get_settings().master_key.get_secret_value())
+    return _box_for(get_settings().master_key_value())

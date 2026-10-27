@@ -141,6 +141,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/local/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Local Login */
+        post: operations["local_login_api_v1_auth_local_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/login": {
         parameters: {
             query?: never;
@@ -184,6 +201,40 @@ export interface paths {
         };
         /** Me */
         get: operations["me_api_v1_auth_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/setup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Setup */
+        post: operations["setup_api_v1_auth_setup_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/auth/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Status */
+        get: operations["status_api_v1_auth_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -429,6 +480,43 @@ export interface paths {
         /** Put Settings */
         put: operations["put_settings_api_v1_settings_put"];
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/local-admin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Local Admin Password
+         * @description Change the local admin password (current password required), or create the account.
+         */
+        put: operations["set_local_admin_password_api_v1_settings_local_admin_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/oidc/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Oidc */
+        post: operations["test_oidc_api_v1_settings_oidc_test_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -756,6 +844,33 @@ export interface components {
             /** Scopes */
             scopes: string[];
         };
+        /** AuthSettings */
+        AuthSettings: {
+            /**
+             * Local Enabled
+             * @description Whether local-account login is on.
+             * @default true
+             */
+            local_enabled: boolean;
+            /**
+             * Public Url
+             * @description Externally visible base URL, used for OIDC redirects; unset derives it.
+             */
+            public_url?: string | null;
+        };
+        /** AuthStatus */
+        AuthStatus: {
+            /** Break Glass */
+            break_glass: boolean;
+            /** Local Login Enabled */
+            local_login_enabled: boolean;
+            /** Oidc Enabled */
+            oidc_enabled: boolean;
+            /** Reset Token Required */
+            reset_token_required: boolean;
+            /** Setup Required */
+            setup_required: boolean;
+        };
         /**
          * BackfillMode
          * @enum {string}
@@ -927,6 +1042,22 @@ export interface components {
          * @enum {string}
          */
         JobStatus: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+        /** LocalCredentials */
+        LocalCredentials: {
+            /** Password */
+            password: string;
+            /** Username */
+            username: string;
+        };
+        /** LocalPasswordIn */
+        LocalPasswordIn: {
+            /** Current Password */
+            current_password?: string | null;
+            /** New Password */
+            new_password: string;
+            /** Username */
+            username?: string | null;
+        };
         /** MeOut */
         MeOut: {
             /** Email */
@@ -955,6 +1086,73 @@ export interface components {
              * @default []
              */
             urls: string[];
+        };
+        /**
+         * OidcSettings
+         * @description API shape of the OIDC settings; the client secret is write-only.
+         */
+        OidcSettings: {
+            /**
+             * Admin Groups
+             * @description OIDC groups granted the admin role.
+             * @default [
+             *       "hoarder-admins"
+             *     ]
+             */
+            admin_groups: string[];
+            /**
+             * Client Id
+             * @description OIDC client ID.
+             */
+            client_id?: string | null;
+            /**
+             * Client Secret
+             * @description OIDC client secret; write-only, blank or unset keeps the stored one.
+             */
+            client_secret?: string | null;
+            /**
+             * Client Secret Set
+             * @description Whether a client secret is stored (read-only).
+             * @default false
+             */
+            client_secret_set: boolean;
+            /**
+             * Enabled
+             * @description Whether OIDC login is offered.
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Groups Claim
+             * @description Name of the claim that lists the user's groups.
+             * @default groups
+             */
+            groups_claim: string;
+            /**
+             * Issuer
+             * @description OIDC issuer URL.
+             */
+            issuer?: string | null;
+            /**
+             * User Groups
+             * @description OIDC groups granted the user role.
+             * @default [
+             *       "hoarder-users"
+             *     ]
+             */
+            user_groups: string[];
+        };
+        /** OidcTestIn */
+        OidcTestIn: {
+            /** Issuer */
+            issuer?: string | null;
+        };
+        /** OidcTestOut */
+        OidcTestOut: {
+            /** Error */
+            error?: string | null;
+            /** Ok */
+            ok: boolean;
         };
         /** Page[ApiKeyOut] */
         Page_ApiKeyOut_: {
@@ -1298,7 +1496,7 @@ export interface components {
             allow_private_hosts: boolean;
             /**
              * Job Scratch Max Bytes
-             * @description Scratch size limit for a single job, in bytes; unset means no per-job limit.
+             * @description Scratch size limit for a single job, in bytes; unset uses 4 GiB.
              */
             job_scratch_max_bytes?: number | null;
             /**
@@ -1353,7 +1551,7 @@ export interface components {
             cancel_grace_s: number;
             /**
              * Max Concurrent Jobs
-             * @description Override for the maximum number of simultaneous jobs; unset uses the IH_MAX_CONCURRENT_JOBS value.
+             * @description Override for the maximum number of simultaneous jobs; unset uses the CPU count.
              */
             max_concurrent_jobs?: number | null;
             /**
@@ -1368,9 +1566,20 @@ export interface components {
          * @description Admin settings document; each key is optional and replaced as a whole when present.
          */
         SettingsDoc: {
+            auth?: components["schemas"]["AuthSettings"] | null;
             notify?: components["schemas"]["NotifySettings"] | null;
+            oidc?: components["schemas"]["OidcSettings"] | null;
             rip?: components["schemas"]["RipSettings"] | null;
             runtime?: components["schemas"]["RuntimeSettings"] | null;
+        };
+        /** SetupIn */
+        SetupIn: {
+            /** Password */
+            password: string;
+            /** Reset Token */
+            reset_token?: string | null;
+            /** Username */
+            username: string;
         };
         /** ShareEntry */
         ShareEntry: {
@@ -2019,6 +2228,39 @@ export interface operations {
             };
         };
     };
+    local_login_api_v1_auth_local_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalCredentials"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     login_api_v1_auth_login_get: {
         parameters: {
             query?: never;
@@ -2073,6 +2315,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["MeOut"];
+                };
+            };
+        };
+    };
+    setup_api_v1_auth_setup_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetupIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    status_api_v1_auth_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthStatus"];
                 };
             };
         };
@@ -2644,6 +2939,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SettingsDoc"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    set_local_admin_password_api_v1_settings_local_admin_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalPasswordIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_oidc_api_v1_settings_oidc_test_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OidcTestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OidcTestOut"];
                 };
             };
             /** @description Validation Error */

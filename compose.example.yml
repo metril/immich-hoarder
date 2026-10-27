@@ -20,25 +20,12 @@ services:
       - default
       - traefik
     environment:
-      # OIDC redirect URI to register at your IdP:
-      #   https://hoarder.example.com/api/v1/auth/callback
-      IH_PUBLIC_URL: https://hoarder.example.com
-      IH_SESSION_SECRET_FILE: /run/secrets/ih_session_secret
-      IH_MASTER_KEY_FILE: /run/secrets/ih_master_key
-      IH_OIDC_ISSUER: https://auth.example.com/application/o/hoarder/
-      # Paste the client ID Authentik shows for the provider (not this example value).
-      IH_OIDC_CLIENT_ID: immich-hoarder
-      IH_OIDC_CLIENT_SECRET_FILE: /run/secrets/ih_oidc_client_secret
-      IH_OIDC_ADMIN_GROUPS: '["hoarder-admins"]'
-      IH_OIDC_USER_GROUPS: '["hoarder-users"]'
+      # Everything else (OIDC, public URL, local admin) is configured in the web UI on
+      # first run; secrets are generated into the /data volume (back it up).
       # Proxy trust is controlled only by uvicorn's FORWARDED_ALLOW_IPS (comma-separated IPs/CIDRs).
       # Set it to the subnet of the external `traefik` network, e.g. created with:
       #   docker network create --subnet 172.30.0.0/16 traefik
       FORWARDED_ALLOW_IPS: 172.30.0.0/16
-    secrets:
-      - ih_master_key
-      - ih_session_secret
-      - ih_oidc_client_secret
     labels:
       - traefik.enable=true
       - traefik.http.routers.hoarder.rule=Host(`hoarder.example.com`)
@@ -71,14 +58,6 @@ services:
 networks:
   traefik:
     external: true
-
-secrets:
-  ih_master_key:
-    file: ./secrets/ih_master_key
-  ih_session_secret:
-    file: ./secrets/ih_session_secret
-  ih_oidc_client_secret:
-    file: ./secrets/ih_oidc_client_secret
 
 volumes:
   ih_data:

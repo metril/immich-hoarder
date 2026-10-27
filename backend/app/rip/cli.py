@@ -3,6 +3,7 @@
 import argparse
 import asyncio
 import logging
+import os
 import signal
 import sys
 import threading
@@ -22,7 +23,7 @@ from app.immich.client import ImmichClient
 from app.rip.build import build_snapshots
 from app.rip.dedupe import DedupeStore
 from app.rip.pipeline import RipContext, run_rip
-from app.rip.settings import load_rip_settings
+from app.rip.settings import DEFAULT_SCRATCH_MAX_BYTES, load_rip_settings
 from app.rip.snapshot import TargetSnapshot
 
 _EXIT = {"succeeded": 0, "failed": 1, "cancelled": 130}
@@ -52,7 +53,7 @@ async def _load(source_id: int, box: SecretBox, url: str) -> Any:
 
 def _run(source_id: int, log_level: str | None) -> int:
     st = get_settings()
-    box = SecretBox(st.master_key.get_secret_value())
+    box = SecretBox(st.master_key_value())
     loaded = asyncio.run(_load(source_id, box, st.database_url))
     if loaded is None:
         sys.stderr.write(f"source {source_id} not found\n")
@@ -81,7 +82,7 @@ def _run(source_id: int, log_level: str | None) -> int:
             )
         ts = int(time.time())
         store = DedupeStore(engine)
-        cap = rip.job_scratch_max_bytes or st.scratch_max_bytes // max(st.max_concurrent_jobs, 1)
+        cap = rip.job_scratch_max_bytes or DEFAULT_SCRATCH_MAX_BYTES // (os.cpu_count() or 1)
         ctx = RipContext(
             job_id=ts,
             job_dir_name=f"cli-{ts}",

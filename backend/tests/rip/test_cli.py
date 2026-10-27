@@ -56,8 +56,6 @@ def db(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[str, int]:
     scratch.mkdir()
     monkeypatch.setenv("IH_DATABASE_URL", url)
     monkeypatch.setenv("IH_MASTER_KEY", KEY)
-    monkeypatch.setenv("IH_SESSION_SECRET", "test-session-secret-0123456789abcdef")
-    monkeypatch.setenv("IH_PUBLIC_URL", "http://testserver")
     monkeypatch.setenv("IH_SCRATCH_DIR", str(scratch))
     get_settings.cache_clear()
     eng = make_sync_engine(url)

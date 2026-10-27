@@ -5,6 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { PageHeader } from "@/components/ui/page";
 import { PageSkeleton } from "../../components/common/PageSkeleton";
 import { AdminTools } from "./AdminTools";
+import { AuthSettingsForm } from "./AuthSettingsForm";
 import { useSettings } from "./hooks";
 import { NotifySettingsForm } from "./NotifySettingsForm";
 import { RipSettingsForm } from "./RipSettingsForm";
@@ -15,6 +16,7 @@ const TABS = [
   { id: "rip", label: "Rip", blurb: "Upload and rate-limit behaviour for rips." },
   { id: "runtime", label: "Runtime", blurb: "Retention, backups and job concurrency." },
   { id: "notify", label: "Notifications", blurb: "Where and when job events are announced." },
+  { id: "auth", label: "Authentication", blurb: "Public URL, single sign-on and local login." },
   { id: "admin", label: "Admin tools", blurb: "" },
 ] as const;
 
@@ -29,6 +31,7 @@ export default function SettingsPage() {
   else if (settings.isError) body = <p role="alert" className="text-destructive">{settings.error.message}</p>;
   else if (tab === "rip") body = <RipSettingsForm value={settings.data.rip} />;
   else if (tab === "runtime") body = <RuntimeSettingsForm value={settings.data.runtime} />;
+  else if (tab === "auth") body = <AuthSettingsForm value={settings.data} />;
   else body = <NotifySettingsForm value={settings.data.notify} />;
   const current = TABS.find((t) => t.id === tab) ?? TABS[0];
   return (

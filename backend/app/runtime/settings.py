@@ -41,8 +41,7 @@ class RuntimeSettings(BaseModel, extra="forbid"):
         ge=1,
         le=64,
         description=(
-            "Override for the maximum number of simultaneous jobs; "
-            "unset uses the IH_MAX_CONCURRENT_JOBS value."
+            "Override for the maximum number of simultaneous jobs; unset uses the CPU count."
         ),
     )
     cancel_grace_s: int = Field(

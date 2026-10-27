@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import shutil
 import time
 from collections.abc import Callable
@@ -19,7 +20,7 @@ from app.core.crypto import SecretBox
 from app.db.models import AssetSeen, Job, JobStatus, Source
 from app.rip.build import build_snapshots, check_notify_refs, credential_snapshot
 from app.rip.pipeline import sweep_scratch
-from app.rip.settings import load_rip_settings
+from app.rip.settings import DEFAULT_SCRATCH_MAX_BYTES, load_rip_settings
 from app.runtime.notify import notify_job, shutdown_executor
 from app.runtime.settings import load_notify_settings, load_runtime_settings
 from app.runtime.worker import WorkerSpec, worker_main
@@ -301,7 +302,7 @@ class JobSupervisor:
             return
         async with self._sf() as s:
             runtime = await load_runtime_settings(s)
-            cap = runtime.max_concurrent_jobs or self._settings.max_concurrent_jobs
+            cap = runtime.max_concurrent_jobs or os.cpu_count() or 1
             rows = (
                 await s.execute(
                     select(Job.id, Job.source_id, Source.target_id)
@@ -331,7 +332,7 @@ class JobSupervisor:
             source = await s.get(Source, h.source_id)
             if job is None or source is None:
                 return "source missing"
-            box = SecretBox(self._settings.master_key.get_secret_value())
+            box = SecretBox(self._settings.master_key_value())
             try:
                 source_snap, target_snap, cred = await build_snapshots(s, source, box)
             except HTTPException as e:
@@ -345,7 +346,7 @@ class JobSupervisor:
                 credential=cred,
                 rip_settings=rip,
                 scratch_dir=self._settings.scratch_dir,
-                scratch_cap_bytes=rip.job_scratch_max_bytes or self._settings.scratch_max_bytes,
+                scratch_cap_bytes=rip.job_scratch_max_bytes or DEFAULT_SCRATCH_MAX_BYTES,
                 incremental=incremental,
                 db_url=self._settings.database_url,
                 log_level=job.log_level or source.log_level or self._settings.log_level,
@@ -391,7 +392,7 @@ class JobSupervisor:
                     return
                 name, cfg = src.name, dict(src.notify or {})
                 gl = await load_notify_settings(s)
-                box = SecretBox(self._settings.master_key.get_secret_value())
+                box = SecretBox(self._settings.master_key_value())
                 src_urls: list[str] = []
                 allow_private = (await load_rip_settings(s)).allow_private_hosts
                 for cid in cfg.get("credential_ids") or []:

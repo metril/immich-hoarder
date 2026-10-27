@@ -97,6 +97,7 @@ def _login(uid: int):  # type: ignore[no-untyped-def]
 
     async def h(request):  # type: ignore[no-untyped-def]
         request.session["user_id"] = uid
+        request.session["sg"] = 0
         return PlainTextResponse("ok")
 
     return h

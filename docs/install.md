@@ -13,27 +13,18 @@ Deployment uses Docker Compose behind an existing Traefik. The app has no publis
 
     `FORWARDED_ALLOW_IPS` must match this subnet, because it controls which proxy addresses uvicorn trusts for `X-Forwarded-*` headers.
 - Traefik attached to that network, with a certificate resolver named `letsencrypt`. The compose example has a commented minimal Traefik service if you do not run one.
-- A DNS name for the app (the examples use `hoarder.example.com`) and an [OIDC provider](authentik.md).
+- A DNS name for the app (the examples use `hoarder.example.com`) and, optionally, an [OIDC provider](authentik.md) (local admin login works without one).
 
 ## Secrets
 
-```bash
-mkdir secrets
-openssl rand -base64 48 > secrets/ih_master_key
-openssl rand -base64 48 > secrets/ih_session_secret
-# paste the OIDC client secret from your provider
-install -m 600 /dev/stdin secrets/ih_oidc_client_secret
-sudo chown 10001:10001 secrets/* && chmod 600 secrets/*
-```
+None to prepare. The master key and session secret are generated into `/data/secrets/` on first start (the container user owns `/data`). Back up the `ih_data` volume: losing `/data/secrets/master_key` makes stored credentials unreadable. `IH_MASTER_KEY[_FILE]` and `IH_SESSION_SECRET[_FILE]` override the generated values.
 
-The container runs as uid 10001, so the secret files must be readable by that uid.
+## Locked out?
 
-The master key encrypts stored credentials and must be high-entropy; see [security](security.md). Losing it makes stored credentials unreadable.
+Set `IH_BREAK_GLASS=true` and restart to force local login on even if it was disabled or OIDC is broken. Add `IH_BREAK_GLASS_RESET=true` to also reset the local admin: on startup a one-time reset token is written to the log (WARNING `BREAK GLASS RESET token`); enter it with the new password on `/setup`. The token works once per process and changes on every restart. Resetting signs out all existing sessions. Remove both variables afterwards.
 
-## Deploy
-
-1. Copy [`compose.example.yml`](https://github.com/metril/immich-hoarder/blob/main/compose.example.yml) next to your `secrets/` directory.
-2. Replace `hoarder.example.com` (in `IH_PUBLIC_URL` and the Traefik `Host` rule) and the OIDC issuer. Set `IH_OIDC_CLIENT_ID` to the client ID that Authentik shows for your provider, not the example value `immich-hoarder`.
+1. Copy [`compose.example.yml`](https://github.com/metril/immich-hoarder/blob/main/compose.example.yml) anywhere you like.
+2. Replace `hoarder.example.com` in the Traefik `Host` rule. OIDC and the public URL are configured in the web UI, not in the environment: on first start open the site, create the local admin on `/setup`, then use Settings → Auth.
 3. Start it:
 
     ```bash
@@ -56,7 +47,7 @@ Optional overrides, used with `-f compose.example.yml -f <file>`:
 
 ## Scratch space
 
-Downloads land in the `/scratch` tmpfs. Its `size=` in the compose file and `IH_SCRATCH_MAX_BYTES` (default 4 GiB, `4294967296`) must agree: if you change one, change the other, keeping the byte limit not above the tmpfs size.
+Downloads land in the `/scratch` tmpfs. Its `size=` in the compose file (default 4 GiB) bounds scratch use; if you set the admin `job_scratch_max_bytes` setting, keep it not above the tmpfs size.
 
 ## Upgrade
 

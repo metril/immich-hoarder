@@ -195,7 +195,6 @@ async def test_maintenance_jobs_registered(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 's.db'}",
         master_key=SecretStr(KEY),
         session_secret=SecretStr("test-session-secret-0123456789abcdef"),
-        public_url="http://t",
     )
     sched = SourceScheduler(FakeSup(), sf, cfg)  # type: ignore[arg-type]
     await sched.start()
@@ -223,7 +222,6 @@ async def test_backup_keep_zero_registers_no_backup_job(
         database_url=f"sqlite+aiosqlite:///{tmp_path / 's.db'}",
         master_key=SecretStr(KEY),
         session_secret=SecretStr("test-session-secret-0123456789abcdef"),
-        public_url="http://t",
     )
     sched = SourceScheduler(FakeSup(), sf, cfg)  # type: ignore[arg-type]
     await sched.start()

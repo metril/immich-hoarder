@@ -1,12 +1,11 @@
 import asyncio
 import time
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 import jwt
 from authlib.integrations.starlette_client import OAuth
-
-from app.core.config import Settings
 
 JWKS_TTL = 600.0
 FORCED_REFETCH_INTERVAL = 30.0
@@ -16,34 +15,71 @@ class TokenError(Exception):
     pass
 
 
-def build_oauth(settings: Settings) -> OAuth | None:
-    if not (settings.oidc_issuer and settings.oidc_client_id and settings.oidc_client_secret):
+@dataclass(frozen=True)
+class OidcConfig:
+    """Runtime OIDC configuration (client secret decrypted)."""
+
+    enabled: bool = False
+    issuer: str | None = None
+    client_id: str | None = None
+    client_secret: str | None = field(default=None, repr=False)
+    admin_groups: tuple[str, ...] = ("hoarder-admins",)
+    user_groups: tuple[str, ...] = ("hoarder-users",)
+    groups_claim: str = "groups"
+
+    @property
+    def active(self) -> bool:
+        return bool(self.enabled and self.issuer and self.client_id and self.client_secret)
+
+
+def _discovery_url(issuer: str) -> str:
+    return f"{issuer.rstrip('/')}/.well-known/openid-configuration"
+
+
+async def discover(issuer: str) -> None:
+    """Fetch the issuer's discovery document; raises ValueError with a short reason."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as http:
+            resp = await http.get(_discovery_url(issuer))
+            resp.raise_for_status()
+            doc = resp.json()
+    except httpx.HTTPStatusError as e:
+        raise ValueError(f"discovery returned HTTP {e.response.status_code}") from None
+    except (httpx.HTTPError, ValueError):
+        raise ValueError("discovery document could not be fetched") from None
+    if not isinstance(doc, dict) or not all(
+        doc.get(k) for k in ("authorization_endpoint", "token_endpoint", "jwks_uri")
+    ):
+        raise ValueError("discovery document is missing required endpoints")
+
+
+def build_oauth(cfg: OidcConfig) -> OAuth | None:
+    if not cfg.active:
         return None
+    assert cfg.issuer and cfg.client_id and cfg.client_secret
     oauth = OAuth()
     oauth.register(
         name="oidc",
-        client_id=settings.oidc_client_id,
-        client_secret=settings.oidc_client_secret.get_secret_value(),
-        server_metadata_url=f"{settings.oidc_issuer.rstrip('/')}/.well-known/openid-configuration",
+        client_id=cfg.client_id,
+        client_secret=cfg.client_secret,
+        server_metadata_url=_discovery_url(cfg.issuer),
         client_kwargs={"scope": "openid email profile groups", "code_challenge_method": "S256"},
     )
     return oauth
 
 
 class BearerVerifier:
-    def __init__(self, settings: Settings) -> None:
-        self._s = settings
+    def __init__(self, cfg: OidcConfig) -> None:
+        self._s = cfg
         self._keys: dict[str, Any] = {}
         self._fetched = 0.0
         self._forced_at: float | None = None
         self._lock = asyncio.Lock()
 
     async def _refresh(self) -> None:
-        assert self._s.oidc_issuer
+        assert self._s.issuer
         async with httpx.AsyncClient(timeout=10) as http:
-            disc = await http.get(
-                f"{self._s.oidc_issuer.rstrip('/')}/.well-known/openid-configuration"
-            )
+            disc = await http.get(_discovery_url(self._s.issuer))
             disc.raise_for_status()
             resp = await http.get(disc.json()["jwks_uri"])
             resp.raise_for_status()
@@ -73,7 +109,7 @@ class BearerVerifier:
 
     async def verify(self, token: str) -> dict[str, Any]:
         s = self._s
-        if not (s.oidc_issuer and s.oidc_client_id):
+        if not (s.active and s.issuer and s.client_id):
             raise TokenError("oidc not configured")
         try:
             kid = jwt.get_unverified_header(token).get("kid")
@@ -84,8 +120,8 @@ class BearerVerifier:
                 token,
                 key,
                 algorithms=["RS256", "ES256"],
-                issuer=s.oidc_issuer,
-                audience=s.oidc_client_id,
+                issuer=s.issuer,
+                audience=s.client_id,
                 options={"require": ["exp", "sub"]},
             )
         except (jwt.PyJWTError, httpx.HTTPError, KeyError, ValueError) as e:

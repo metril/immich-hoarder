@@ -1,7 +1,7 @@
 import { createFileRoute, lazyRouteComponent } from "@tanstack/react-router";
 import { PageSkeleton } from "../../components/common/PageSkeleton";
 
-const TABS = ["rip", "runtime", "notify", "admin"] as const;
+const TABS = ["rip", "runtime", "notify", "auth", "admin"] as const;
 export type SettingsTab = (typeof TABS)[number];
 
 export const Route = createFileRoute("/_app/settings")({

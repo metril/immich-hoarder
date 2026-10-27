@@ -24,7 +24,7 @@ def test_render_lists_env_and_files() -> None:
         "FORWARDED_ALLOW_IPS",
     ):
         assert needle in out
-    for name in ("master_key", "session_secret", "oidc_client_secret"):
+    for name in ("master_key", "session_secret"):
         row = next(r for r in out.splitlines() if r.startswith(f"| `IH_{name.upper()}` |"))
-        assert row.split("|")[3].strip() in ("required", "unset")
+        assert row.split("|")[3].strip() == "unset"
     assert out.endswith("\n") and not out.endswith("\n\n")

@@ -1,12 +1,11 @@
 import hmac
 
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.apikeys import verify_api_key
-from app.auth.oidc import BearerVerifier, TokenError
-from app.auth.principal import Principal, resolve_role, upsert_user
-from app.core.config import Settings
+from app.auth.oidc import BearerVerifier, OidcConfig, TokenError
+from app.auth.principal import Principal, is_local, resolve_role, upsert_user
 from app.db.engine import get_session
 from app.db.models import Role, User
 
@@ -20,8 +19,18 @@ def _unauth(detail: str = "unauthorized") -> HTTPException:
     return HTTPException(401, detail, headers={"WWW-Authenticate": "Bearer"})
 
 
-def _principal(user: User, settings: Settings, scopes: frozenset[str] | None) -> Principal:
-    if user.disabled or resolve_role(user.groups, settings) is None:
+def local_login_allowed(app: FastAPI) -> bool:
+    """Break glass forces local accounts on; otherwise the admin's setting decides."""
+    return bool(app.state.settings.break_glass or app.state.auth_cfg.local_enabled)
+
+
+def _principal(user: User, request: Request, scopes: frozenset[str] | None) -> Principal:
+    if user.disabled:
+        raise _unauth()
+    if is_local(user):
+        if not local_login_allowed(request.app):
+            raise _unauth()
+    elif resolve_role(user.groups, request.app.state.oidc_cfg) is None:
         raise _unauth()
     return Principal(user.id, user.role, frozenset(user.groups or []), scopes)
 
@@ -36,7 +45,7 @@ def check_csrf(request: Request) -> None:
 async def current_principal(
     request: Request, session: AsyncSession = Depends(get_session, scope="function")
 ) -> Principal:
-    settings: Settings = request.app.state.settings
+    cfg: OidcConfig = request.app.state.oidc_cfg
 
     raw_key = request.headers.get("X-API-Key")
     auth = request.headers.get("Authorization", "")
@@ -47,7 +56,7 @@ async def current_principal(
         user = await session.get(User, key.user_id) if key else None
         if key is None or user is None:
             raise _unauth()
-        p = _principal(user, settings, frozenset(key.scopes or []))
+        p = _principal(user, request, frozenset(key.scopes or []))
         if p.role != Role.admin:  # cap scopes at the user's current role
             p = Principal(p.user_id, p.role, p.groups, p.scopes and p.scopes - {"admin"})
         return p
@@ -58,16 +67,18 @@ async def current_principal(
             claims = await verifier.verify(auth[7:].strip())
         except TokenError:
             raise _unauth() from None
-        user = await upsert_user(session, claims, settings)
+        user = await upsert_user(session, claims, cfg)
         await session.commit()  # persist group changes even if access is denied below
-        return _principal(user, settings, None)
+        return _principal(user, request, None)
 
     uid = request.session.get("user_id")
     if uid is not None:
         user = await session.get(User, uid)
         if user is None:
             raise _unauth()
-        p = _principal(user, settings, None)
+        if request.session.get("sg") != user.session_gen:  # password changed/reset
+            raise _unauth()
+        p = _principal(user, request, None)
         if request.method in UNSAFE:
             check_csrf(request)
         return p

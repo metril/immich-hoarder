@@ -4,7 +4,7 @@ from typing import Any
 
 import yaml
 
-from app.core.config import Settings
+from app.rip.settings import DEFAULT_SCRATCH_MAX_BYTES
 
 ROOT = Path(__file__).parents[2]
 BASE = ROOT / "compose.example.yml"
@@ -29,7 +29,7 @@ def test_compose_invariants() -> None:
     assert s["read_only"] is True
     assert s["stop_grace_period"] == "30s"
     assert "/scratch:size=4g,uid=10001,gid=10001" in s["tmpfs"]
-    assert Settings.model_fields["scratch_max_bytes"].default == 4 * 1024**3
+    assert DEFAULT_SCRATCH_MAX_BYTES == 4 * 1024**3
     assert "/tmp" in s["tmpfs"]
     assert "ports" not in s
     assert "healthcheck" not in s
@@ -51,15 +51,12 @@ def test_traefik_labels() -> None:
         "traefik.http.services.hoarder.loadbalancer.server.port=8080",
         "traefik.docker.network=traefik",
     } <= labels
-    assert _env(s)["IH_PUBLIC_URL"] == "https://hoarder.example.com"
-    assert "https://hoarder.example.com/api/v1/auth/callback" in BASE.read_text()
+    assert not any(k.startswith(("IH_OIDC_", "IH_PUBLIC_URL")) for k in _env(s))
 
 
 def test_secrets_are_files() -> None:
     env = _env(_load(BASE)["services"][SVC])
-    for key in ("IH_MASTER_KEY", "IH_SESSION_SECRET", "IH_OIDC_CLIENT_SECRET"):
-        assert key not in env
-        assert re.fullmatch(r"/run/secrets/\w+", env[f"{key}_FILE"])
+    assert not {"IH_MASTER_KEY", "IH_SESSION_SECRET"} & env.keys()
     for key in env:
         if re.search(r"SECRET|KEY|PASSWORD|TOKEN", key) and not key.endswith("_FILE"):
             raise AssertionError(f"{key} looks like a literal secret")

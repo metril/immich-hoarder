@@ -4,7 +4,7 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { keys } from "../../api/keys";
 import type { MeOut } from "../../api/me";
-import { dashboardDefaults } from "../../test/handlers";
+import { authStatus, dashboardDefaults } from "../../test/handlers";
 import { server } from "../../test/server";
 import { FakeEventSource } from "../../test/setup";
 import { renderWithProviders } from "../../test/render";
@@ -38,10 +38,77 @@ describe("auth gate", () => {
     expect(router.state.location.pathname).toBe("/login");
   });
 
-  it("shows OIDC hint only on 503", async () => {
-    server.use(...dashboardDefaults, http.head("*/api/v1/auth/login", () => new HttpResponse(null, { status: 503 })));
+  it("shows only the enabled sign-in methods", async () => {
+    server.use(authStatus({ oidc_enabled: false, local_login_enabled: true }));
     renderWithProviders(null, { me: null, route: "/login" });
-    expect(await screen.findByText(/OIDC is not configured/)).toBeInTheDocument();
+    expect(await screen.findByLabelText("Username")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Sign in with SSO" })).not.toBeInTheDocument();
+  });
+
+  it("shows both methods when both are enabled", async () => {
+    server.use(authStatus({ oidc_enabled: true, local_login_enabled: true }));
+    renderWithProviders(null, { me: null, route: "/login" });
+    expect(await screen.findByLabelText("Username")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Sign in with SSO" })).toBeInTheDocument();
+  });
+
+  it("redirects to /setup when setup is required", async () => {
+    server.use(authStatus({ setup_required: true }));
+    const { router } = renderWithProviders(null, { me: null, route: "/" });
+    expect(await screen.findByRole("button", { name: "Create admin account" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/setup");
+  });
+
+  it("setup posts credentials and lands on the dashboard", async () => {
+    let body: unknown;
+    server.use(
+      authStatus({ setup_required: true }),
+      http.post("*/api/v1/auth/setup", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(admin);
+      }),
+    );
+    const { router } = renderWithProviders(null, { me: null, route: "/setup" });
+    await userEvent.type(await screen.findByLabelText("Username"), "root");
+    await userEvent.type(screen.getByLabelText("Password"), "longenough1");
+    await userEvent.click(screen.getByRole("button", { name: "Create admin account" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/"));
+    expect(body).toEqual({ username: "root", password: "longenough1" });
+  });
+
+  it("setup in reset mode asks for the token and sends it", async () => {
+    let body: unknown;
+    server.use(
+      authStatus({ reset_token_required: true, break_glass: true }),
+      http.post("*/api/v1/auth/setup", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json(admin);
+      }),
+    );
+    renderWithProviders(null, { me: null, route: "/setup" });
+    await userEvent.type(await screen.findByLabelText("Username"), "root");
+    await userEvent.type(screen.getByLabelText("Password"), "longenough1");
+    await userEvent.type(screen.getByLabelText("Reset token"), "tok123");
+    await userEvent.click(screen.getByRole("button", { name: "Create admin account" }));
+    await waitFor(() => expect(body).toEqual({ username: "root", password: "longenough1", reset_token: "tok123" }));
+  });
+
+  it("local login surfaces 401 and 429", async () => {
+    server.use(authStatus({ local_login_enabled: true }), http.post("*/api/v1/auth/local/login", () => HttpResponse.json({ detail: "Invalid credentials" }, { status: 401 })));
+    renderWithProviders(null, { me: null, route: "/login" });
+    await userEvent.type(await screen.findByLabelText("Username"), "root");
+    await userEvent.type(screen.getByLabelText("Password"), "wrong");
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect(await screen.findByText("Invalid credentials")).toBeInTheDocument();
+    server.use(http.post("*/api/v1/auth/local/login", () => HttpResponse.json({ detail: "slow" }, { status: 429, headers: { "Retry-After": "30" } })));
+    await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    expect((await screen.findAllByText(/Try again in 30s/)).length).toBeGreaterThan(0);
+  });
+
+  it("break-glass shows a global warning", async () => {
+    server.use(authStatus({ break_glass: true }));
+    renderWithProviders(null, { me: admin, route: "/" });
+    expect(await screen.findByText(/Break-glass mode is active/)).toBeInTheDocument();
   });
 
   it.each(["/SETTINGS", "/Settings", "/settings/", "/USERS"])("non-admin visiting %s redirects home", async (path) => {

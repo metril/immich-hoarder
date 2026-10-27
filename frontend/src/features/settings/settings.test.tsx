@@ -220,4 +220,46 @@ describe("settings", () => {
     await waitFor(() => expect(router.state.location.search).toMatchObject({ tab: "runtime" }));
     expect(screen.getByRole("tab", { name: "Rip" })).toHaveAttribute("tabindex", "-1");
   });
+
+  it("auth form: blank secret sent as null, shows set state, test button reports", async () => {
+    let body: Record<string, unknown> | undefined;
+    server.use(
+      doc({ oidc: { enabled: true, issuer: "https://i.x", client_id: "cid", client_secret_set: true, admin_groups: ["a"], user_groups: ["u"], groups_claim: "groups" }, auth: { public_url: null, local_enabled: true } }),
+      http.post("*/api/v1/settings/oidc/test", () => HttpResponse.json({ ok: false, error: "unreachable" })),
+      http.put("*/api/v1/settings", async ({ request }) => {
+        body = (await request.json()) as Record<string, unknown>;
+        return HttpResponse.json(body);
+      }),
+    );
+    open("auth");
+    expect(await screen.findByDisplayValue("https://i.x")).toBeInTheDocument();
+    expect(screen.getByText("A secret is set. Leave blank to keep it.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Test issuer" }));
+    expect(await screen.findByText("unreachable")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(body).toBeDefined());
+    expect(body!.oidc as object).toMatchObject({ enabled: true, client_secret: null, admin_groups: ["a"], user_groups: ["u"] });
+    expect(body!.auth).toEqual({ public_url: null, local_enabled: true });
+  });
+
+  it("auth form surfaces 422 message", async () => {
+    server.use(doc(), http.put("*/api/v1/settings", () => HttpResponse.json({ detail: "Cannot disable local login without working OIDC" }, { status: 422 })));
+    open("auth");
+    await screen.findByLabelText("Issuer URL");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Cannot disable local login without working OIDC")).toBeInTheDocument();
+  });
+
+  it("change password sends current and new", async () => {
+    let body: unknown;
+    server.use(doc(), http.put("*/api/v1/settings/local-admin", async ({ request }) => {
+      body = await request.json();
+      return new HttpResponse(null, { status: 204 });
+    }));
+    open("auth");
+    await user.type(await screen.findByLabelText("Current password"), "oldpass12");
+    await user.type(screen.getByLabelText("New password"), "newpass123");
+    await user.click(screen.getByRole("button", { name: "Change password" }));
+    await waitFor(() => expect(body).toEqual({ current_password: "oldpass12", new_password: "newpass123" }));
+  });
 });

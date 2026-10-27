@@ -183,6 +183,64 @@
         "title": "ApiKeyOut",
         "type": "object"
       },
+      "AuthSettings": {
+        "additionalProperties": false,
+        "properties": {
+          "local_enabled": {
+            "default": true,
+            "description": "Whether local-account login is on.",
+            "title": "Local Enabled",
+            "type": "boolean"
+          },
+          "public_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Externally visible base URL, used for OIDC redirects; unset derives it.",
+            "title": "Public Url"
+          }
+        },
+        "title": "AuthSettings",
+        "type": "object"
+      },
+      "AuthStatus": {
+        "properties": {
+          "break_glass": {
+            "title": "Break Glass",
+            "type": "boolean"
+          },
+          "local_login_enabled": {
+            "title": "Local Login Enabled",
+            "type": "boolean"
+          },
+          "oidc_enabled": {
+            "title": "Oidc Enabled",
+            "type": "boolean"
+          },
+          "reset_token_required": {
+            "title": "Reset Token Required",
+            "type": "boolean"
+          },
+          "setup_required": {
+            "title": "Setup Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "setup_required",
+          "oidc_enabled",
+          "local_login_enabled",
+          "break_glass",
+          "reset_token_required"
+        ],
+        "title": "AuthStatus",
+        "type": "object"
+      },
       "BackfillMode": {
         "enum": [
           "full",
@@ -708,6 +766,68 @@
         "title": "JobStatus",
         "type": "string"
       },
+      "LocalCredentials": {
+        "properties": {
+          "password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          },
+          "username": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LocalCredentials",
+        "type": "object"
+      },
+      "LocalPasswordIn": {
+        "properties": {
+          "current_password": {
+            "anyOf": [
+              {
+                "maxLength": 1024,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Password"
+          },
+          "new_password": {
+            "maxLength": 1024,
+            "minLength": 8,
+            "title": "New Password",
+            "type": "string"
+          },
+          "username": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Username"
+          }
+        },
+        "required": [
+          "new_password"
+        ],
+        "title": "LocalPasswordIn",
+        "type": "object"
+      },
       "MeOut": {
         "properties": {
           "email": {
@@ -787,6 +907,131 @@
           }
         },
         "title": "NotifySettings",
+        "type": "object"
+      },
+      "OidcSettings": {
+        "additionalProperties": false,
+        "description": "API shape of the OIDC settings; the client secret is write-only.",
+        "properties": {
+          "admin_groups": {
+            "default": [
+              "hoarder-admins"
+            ],
+            "description": "OIDC groups granted the admin role.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Admin Groups",
+            "type": "array"
+          },
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "OIDC client ID.",
+            "title": "Client Id"
+          },
+          "client_secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "OIDC client secret; write-only, blank or unset keeps the stored one.",
+            "title": "Client Secret"
+          },
+          "client_secret_set": {
+            "default": false,
+            "description": "Whether a client secret is stored (read-only).",
+            "title": "Client Secret Set",
+            "type": "boolean"
+          },
+          "enabled": {
+            "default": false,
+            "description": "Whether OIDC login is offered.",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "groups_claim": {
+            "default": "groups",
+            "description": "Name of the claim that lists the user's groups.",
+            "title": "Groups Claim",
+            "type": "string"
+          },
+          "issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "OIDC issuer URL.",
+            "title": "Issuer"
+          },
+          "user_groups": {
+            "default": [
+              "hoarder-users"
+            ],
+            "description": "OIDC groups granted the user role.",
+            "items": {
+              "type": "string"
+            },
+            "title": "User Groups",
+            "type": "array"
+          }
+        },
+        "title": "OidcSettings",
+        "type": "object"
+      },
+      "OidcTestIn": {
+        "properties": {
+          "issuer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Issuer"
+          }
+        },
+        "title": "OidcTestIn",
+        "type": "object"
+      },
+      "OidcTestOut": {
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "OidcTestOut",
         "type": "object"
       },
       "Page_ApiKeyOut_": {
@@ -1793,7 +2038,7 @@
                 "type": "null"
               }
             ],
-            "description": "Scratch size limit for a single job, in bytes; unset means no per-job limit.",
+            "description": "Scratch size limit for a single job, in bytes; unset uses 4 GiB.",
             "title": "Job Scratch Max Bytes"
           },
           "proxy": {
@@ -1891,7 +2136,7 @@
                 "type": "null"
               }
             ],
-            "description": "Override for the maximum number of simultaneous jobs; unset uses the IH_MAX_CONCURRENT_JOBS value.",
+            "description": "Override for the maximum number of simultaneous jobs; unset uses the CPU count.",
             "title": "Max Concurrent Jobs"
           },
           "retention_days": {
@@ -1910,10 +2155,30 @@
         "additionalProperties": false,
         "description": "Admin settings document; each key is optional and replaced as a whole when present.",
         "properties": {
+          "auth": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "notify": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/NotifySettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "oidc": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OidcSettings"
               },
               {
                 "type": "null"
@@ -1942,6 +2207,40 @@
           }
         },
         "title": "SettingsDoc",
+        "type": "object"
+      },
+      "SetupIn": {
+        "properties": {
+          "password": {
+            "maxLength": 1024,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          },
+          "reset_token": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reset Token"
+          },
+          "username": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "SetupIn",
         "type": "object"
       },
       "ShareEntry": {
@@ -3692,6 +3991,47 @@
         ]
       }
     },
+    "/api/v1/auth/local/login": {
+      "post": {
+        "operationId": "local_login_api_v1_auth_local_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalCredentials"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Local Login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/v1/auth/login": {
       "get": {
         "operationId": "login_api_v1_auth_login_get",
@@ -3741,6 +4081,68 @@
           }
         },
         "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/setup": {
+      "post": {
+        "operationId": "setup_api_v1_auth_setup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Setup",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/status": {
+      "get": {
+        "operationId": "status_api_v1_auth_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Status",
         "tags": [
           "auth"
         ]
@@ -4630,6 +5032,82 @@
           }
         },
         "summary": "Put Settings",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/local-admin": {
+      "put": {
+        "description": "Change the local admin password (current password required), or create the account.",
+        "operationId": "set_local_admin_password_api_v1_settings_local_admin_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalPasswordIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set Local Admin Password",
+        "tags": [
+          "settings"
+        ]
+      }
+    },
+    "/api/v1/settings/oidc/test": {
+      "post": {
+        "operationId": "test_oidc_api_v1_settings_oidc_test_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OidcTestIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OidcTestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Test Oidc",
         "tags": [
           "settings"
         ]

@@ -1,8 +1,8 @@
 # Security notes
 
-API-key requests use the role and groups from the user's last login or bearer-token use. Roles come only from OIDC groups and are refreshed on each login or bearer use. Disabling a user takes effect immediately, including for their API keys.
+API-key requests use the role and groups from the user's last login or bearer-token use. Roles for OIDC users come only from OIDC groups and are refreshed on each login or bearer use. Disabling a user takes effect immediately, including for their API keys.
 
-`MASTER_KEY` must be high-entropy (32+ random characters, e.g. `openssl rand -base64 48`). Encryption keys are derived with HKDF, which is not a password KDF and gives no protection to a guessable passphrase.
+The auto-generated `MASTER_KEY` is high-entropy; if you override it, use 32+ random characters (e.g. `openssl rand -base64 48`). Encryption keys are derived with HKDF, which is not a password KDF and gives no protection to a guessable passphrase.
 
 A missing target or credential returns 403, not 404, so the API does not reveal whether an id exists to callers who cannot access it.
 
@@ -18,7 +18,8 @@ User notification URLs (apprise credentials) are blocked from connecting to priv
 
 - **`MASTER_KEY` entropy.** Use at least 32 random characters, for example `openssl rand -base64 48`. Encryption keys are derived with HKDF, which is not a password KDF, so a guessable passphrase gets no protection. Values shorter than 32 characters are rejected at start.
 - **Losing `MASTER_KEY` makes stored credentials unrecoverable**: site credentials, Immich API keys and notification URLs cannot be decrypted, and encrypted config exports cannot be imported. Back it up separately from the database. Changing it has the same effect.
-- Secrets can be supplied as files (`IH_MASTER_KEY_FILE`, `IH_SESSION_SECRET_FILE`, `IH_OIDC_CLIENT_SECRET_FILE`, `IH_DATABASE_URL_FILE`) so they stay out of the process environment.
+- The master key and session secret are auto-generated into `/data/secrets` on first start; back up `/data`. They can be overridden with `IH_MASTER_KEY[_FILE]`, `IH_SESSION_SECRET[_FILE]` and `IH_DATABASE_URL_FILE`. The OIDC client secret lives encrypted in the database (Settings → Auth).
+- `IH_BREAK_GLASS` forces local login on and logs a warning at start; `IH_BREAK_GLASS_RESET` additionally allows resetting the local admin. Leave both unset in normal operation.
 
 ## Private addresses and SSRF
 
@@ -40,4 +41,4 @@ Logs are JSON on stderr. Secrets are masked as `***`: values under keys that loo
 ## Proxies and sessions
 
 - **Trusted proxies:** set `FORWARDED_ALLOW_IPS` to the reverse proxy's address or subnet (the compose file uses the Traefik network's subnet). Only those addresses may set `X-Forwarded-*`; the default `127.0.0.1` trusts nobody else.
-- **Session cookie:** signed with `IH_SESSION_SECRET`, `HttpOnly`, `SameSite=Lax`, `Secure` when `IH_PUBLIC_URL` starts with `https`, and valid for 8 hours. The CSRF token cookie `ih_csrf` (readable by the web app by design, `SameSite=Lax`, same `Secure` rule) has the same lifetime, and unsafe cookie-session requests must echo it in `X-CSRF-Token`. API-key and bearer-token requests do not use cookies and are not subject to CSRF.
+- **Session cookie:** signed with the session secret, `HttpOnly`, `SameSite=Lax`, `Secure` when the public URL (Settings → Auth) starts with `https`, and valid for 8 hours. The CSRF token cookie `ih_csrf` (readable by the web app by design, `SameSite=Lax`, same `Secure` rule) has the same lifetime, and unsafe cookie-session requests must echo it in `X-CSRF-Token`. API-key and bearer-token requests do not use cookies and are not subject to CSRF.
