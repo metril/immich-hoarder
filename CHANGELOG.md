@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/metril/immich-hoarder/compare/v0.4.0...v0.5.0) (2026-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **auth:** OIDC env vars are deprecated (imported once); existing sessions must log in again.
+
+### Features
+
+* **auth:** configure OIDC and auth in the web UI with minimal env ([ae881ad](https://github.com/metril/immich-hoarder/commit/ae881ad4cfcbfa23b67e57194018d12db12ba983))
+
 ## [0.4.0](https://github.com/metril/immich-hoarder/compare/v0.3.0...v0.4.0) (2026-10-26)
 
 
