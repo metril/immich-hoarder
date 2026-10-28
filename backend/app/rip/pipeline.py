@@ -19,7 +19,7 @@ from app.rip.albums import AlbumResolver, render_album
 from app.rip.dedupe import DedupeStore, Recorder
 from app.rip.events import Emit
 from app.rip.filters import check
-from app.rip.gdl import HoarderJob, capture_logs, configure, run_job
+from app.rip.gdl import CredentialError, HoarderJob, capture_logs, configure, run_job
 from app.rip.media import MediaInfo, NotAnImage, analyze
 from app.rip.scrub import safe_url, scrub_data, secret_fragments
 from app.rip.settings import RipSettings
@@ -102,6 +102,13 @@ def build_description(meta: dict[str, Any]) -> str:
     return "\n".join(parts)[:_DESC_MAX]
 
 
+_BLOCKED = "blocked by network security"
+_BLOCKED_HINT = (
+    "Blocked by Reddit network security: add reddit cookies including token_v2 "
+    "(it expires after about a day) or an OAuth credential"
+)
+
+
 class _Rip:
     def __init__(self, ctx: RipContext, emit: Emit, cancel: threading.Event) -> None:
         self.ctx = ctx
@@ -124,12 +131,15 @@ class _Rip:
             if self.src.backfill_value:
                 self.since = date.fromisoformat(self.src.backfill_value)
         self.fragments = secret_fragments(ctx.credential)
+        self.blocked = False
         self.client: ImmichClient
         self.albums: AlbumResolver
 
     # -- helpers ---------------------------------------------------------
     def emit(self, ev: dict[str, Any]) -> None:
         ev = scrub_data(ev, self.fragments)
+        if ev.get("type") == "log" and _BLOCKED in str(ev.get("msg", "")).lower():
+            self.blocked = True
         with self.emit_lock:
             self._emit_fn(ev)
 
@@ -447,6 +457,9 @@ class _Rip:
                 fragments=self.fragments,
             ):
                 gdl_status = run_job(job, self.src, ctx.settings)
+        except CredentialError as e:
+            self.log_error(str(e))
+            error = str(e)
         except Exception as e:
             self.log_error(f"extraction crashed: {type(e).__name__}: {e}")
             error = "internal error"
@@ -472,7 +485,9 @@ class _Rip:
                 self.counters[k] for k in ("uploaded", "linked", "filtered", "deleted_in_immich")
             )
             if error is None and gdl_status != 0 and ok == 0:
-                error = f"gallery-dl exited with status {gdl_status}"
+                error = (
+                    _BLOCKED_HINT if self.blocked else f"gallery-dl exited with status {gdl_status}"
+                )
             status = "failed" if error else "succeeded"
         self.emit({"type": "phase", "name": "done"})
         return RipResult(counters=dict(self.counters), status=status, error=error)

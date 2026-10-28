@@ -523,3 +523,25 @@ def test_queued_item_after_cancel_fails_deterministically(
     assert [e["reason"] for e in failed] == ["cancelled"]
     assert out[0].status == "cancelled"
     assert not any(env.scratch.iterdir())
+
+
+def test_blocked_by_network_security_gives_hint(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    import logging
+
+    def fake(job: Any, src: Any, settings: Any) -> int:
+        logging.getLogger("gallery-dl").error("403 blocked by network security")
+        return 4
+
+    monkeypatch.setattr("app.rip.pipeline.run_job", fake)
+    r = env.run("/img/a.jpg")
+    assert r.status == "failed" and r.error and "token_v2" in r.error
+
+
+def test_expired_reddit_token_fails_with_message(env: Env) -> None:
+    cred = CredentialSnapshot(
+        site="reddit",
+        kind=CredentialKind.cookies,
+        secret=SecretStr(".reddit.com\tTRUE\t/\tTRUE\t0\ttoken_v2\ta.eyJleHAiOjF9.c\n"),
+    )
+    r = env.run("/img/a.jpg", credential=cred)
+    assert r.status == "failed" and r.error == "Reddit token_v2 expired; re-export cookies"

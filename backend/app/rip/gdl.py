@@ -1,5 +1,6 @@
 """gallery-dl runner: process-global config, own archive, hooks, log capture, SSRF guard."""
 
+import base64
 import collections
 import contextlib
 import ipaddress
@@ -9,14 +10,17 @@ import math
 import os
 import socket
 import threading
+import time
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 import urllib3.util.connection as _uconn
-from gallery_dl import cache, config, downloader, exception, extractor, formatter, job
+from gallery_dl import cache, config, downloader, exception, extractor, formatter, job, util
+from gallery_dl.extractor import reddit as _reddit
 
+from app import __version__
 from app.core.extractors import _ip_private, validate_gdl_options
 from app.db.models import CredentialKind
 from app.rip.dedupe import url_key
@@ -33,6 +37,7 @@ _CRED_ALLOW = frozenset(
         "api-key",
         "api-secret",
         "client-id",
+        "user-agent",
         "client-secret",
         "token",
         "user-id",
@@ -53,6 +58,64 @@ def _no_cache() -> None:
     return None
 
 
+class CredentialError(ValueError):
+    """A credential is unusable; the message is safe to show to the user."""
+
+
+_BEARER_OPT = "_bearer"
+_REDDIT_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"
+_orig_reddit_init = _reddit.RedditAPI.__init__
+
+
+def _reddit_init(self: Any, extractor: Any) -> None:
+    """With a token_v2 bearer, use oauth.reddit.com directly and never POST access_token."""
+    bearer = extractor.config(_BEARER_OPT)
+    if not bearer:
+        _orig_reddit_init(self, extractor)
+        return
+    cfg = extractor.config
+    self.extractor = extractor
+    self.log = extractor.log
+    self.comments = int(cfg("comments", 0) or 0)
+    self.morecomments = cfg("morecomments", False)
+    self._warn_429 = False
+    self.client_id = ""
+    self.refresh_token = None
+    self.root = self.ROOT
+    ua = cfg("user-agent-oauth") or cfg("user-agent") or _REDDIT_UA
+    self.headers = {"User-Agent": ua, "Authorization": f"Bearer {bearer}"}
+    self.authenticate = util.noop
+    self.log.debug("Using OAuth API with token_v2 bearer")
+
+
+_reddit.RedditAPI.__init__ = _reddit_init
+
+
+def _cookie_value(text: str, name: str) -> str | None:
+    """Value of cookie `name` from Netscape cookies.txt text (HttpOnly lines included)."""
+    for line in text.splitlines():
+        line = line.strip().removeprefix("#HttpOnly_")
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= 7 and parts[5] == name:
+            return parts[6].strip() or None
+    return None
+
+
+def _jwt_exp(token: str) -> float | None:
+    """`exp` claim of a JWT (unverified); None when absent or unparseable."""
+    try:
+        seg = token.split(".")[1]
+        claims = json.loads(base64.urlsafe_b64decode(seg + "=" * (-len(seg) % 4)))
+        exp = claims.get("exp")
+    except (IndexError, ValueError, AttributeError):
+        return None
+    if isinstance(exp, bool) or not isinstance(exp, int | float):
+        return None
+    return float(exp)
+
+
 def _credential_options(cred: CredentialSnapshot, job_dir: Path) -> dict[str, Any]:
     """Return extractor.<site> options for a credential (cookies written to job_dir)."""
     secret = cred.secret.get_secret_value()
@@ -62,7 +125,14 @@ def _credential_options(cred: CredentialSnapshot, job_dir: Path) -> dict[str, An
         with os.fdopen(fd, "w") as f:
             f.write(secret)
         os.chmod(path, 0o600)
-        return {"cookies": str(path)}
+        opts: dict[str, Any] = {"cookies": str(path)}
+        bearer = _cookie_value(secret, "token_v2") if cred.site == "reddit" else None
+        if bearer:
+            exp = _jwt_exp(bearer)
+            if exp is not None and exp <= time.time():
+                raise CredentialError("Reddit token_v2 expired; re-export cookies")
+            opts[_BEARER_OPT] = bearer
+        return opts
     data = json.loads(secret)
     if not isinstance(data, dict):
         raise ValueError("credential secret must be a JSON object")
@@ -78,6 +148,8 @@ def _credential_options(cred: CredentialSnapshot, job_dir: Path) -> dict[str, An
         if isinstance(v, bool) or not isinstance(v, str | int):
             raise ValueError(f"credential value must be a string or int: {k}")
         out[k] = v
+    if cred.site == "reddit" and "client-id" in out and "user-agent" not in out:
+        out["user-agent"] = f"immich-hoarder/{__version__}"
     return out
 
 

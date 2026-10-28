@@ -83,6 +83,13 @@ A source can set `log_level` (`trace`, `debug`, `info`, `warn`, `error`) and a s
 
 Rate limits are per site and set by an admin in Settings (`rate_limits`, keyed by extractor name, or `default`): `sleep_request` (seconds between requests, default 1.0), `sleep` (seconds between file downloads) and `retries` (default 4). Per-source `gdl_options` cannot weaken the sleeps below these limits; allowed keys are `sleep`, `sleep-request`, `retries`, `timeout`, `include`, `recursion` and `previews`.
 
+## Reddit setup
+
+Reddit blocks anonymous gallery-dl requests ("blocked by network security"). Use one of:
+
+- **Cookies with `token_v2` (kind `cookies`, site `reddit`).** Export your logged-in reddit.com cookies as Netscape `cookies.txt`; the export must include `token_v2`. It is sent as a bearer token to `oauth.reddit.com`. It lasts about 24 hours, then runs fail with "Reddit token_v2 expired; re-export cookies". There is no automatic refresh.
+- **Your own OAuth app (kind `oauth`, site `reddit`).** JSON with `client-id`, `client-secret` and `refresh-token`, plus an optional `user-agent` (default `immich-hoarder/<version>`). It does not expire, but Reddit now requires approval for new apps.
+
 ## Ad-hoc rips
 
 `POST /api/v1/rip` takes the same body as a source and runs it once as a private, ephemeral source. Ephemeral sources are pruned automatically.

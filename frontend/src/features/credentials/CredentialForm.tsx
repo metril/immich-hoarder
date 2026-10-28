@@ -18,6 +18,11 @@ const KIND_HELP = {
   token: "API or access token.",
   apprise: "Apprise URL (e.g. ntfys://topic)",
 } satisfies Record<CredentialKind, string>;
+const REDDIT_HELP = {
+  cookies:
+    "Reddit: the Netscape export must include token_v2. It is used as a bearer token and expires after about a day, so re-export when runs fail.",
+  oauth: 'Reddit: use JSON like {"client-id": "...", "client-secret": "...", "refresh-token": "...", "user-agent": "optional"}.',
+} as const;
 const KINDS = Object.keys(KIND_HELP) as CredentialKind[];
 
 const base = {
@@ -38,7 +43,10 @@ function Fields({
 }) {
   const e = form.formState.errors;
   const kind = form.watch("kind");
-  const hint = saved && kind === "cookies" ? `${KIND_HELP[kind]} Saved — enter a new value to replace.` : KIND_HELP[kind];
+  const site = form.watch("site").trim().toLowerCase();
+  const redditHelp = site === "reddit" && (kind === "cookies" || kind === "oauth") ? REDDIT_HELP[kind] : "";
+  const base = saved && kind === "cookies" ? `${KIND_HELP[kind]} Saved — enter a new value to replace.` : KIND_HELP[kind];
+  const hint = redditHelp ? `${base} ${redditHelp}` : base;
   return (
     <>
       <DialogBody className="grid gap-4">

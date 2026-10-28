@@ -36,6 +36,17 @@ describe("credentials", () => {
     expect(screen.getByText("Apprise URL (e.g. ntfys://topic)")).toBeInTheDocument();
   });
 
+  it("shows reddit help for cookies and oauth", async () => {
+    server.use(http.get("*/api/v1/credentials", () => HttpResponse.json({ items: [], next_cursor: null })));
+    open();
+    await user.click(await screen.findByRole("button", { name: "Add credential" }));
+    await user.type(screen.getByLabelText("Site"), "reddit");
+    await user.selectOptions(screen.getByLabelText("Kind"), "cookies");
+    expect(screen.getByText(/must include token_v2/)).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Kind"), "oauth");
+    expect(screen.getByText(/"client-id"/)).toBeInTheDocument();
+  });
+
   it("shows 422 on the secret field", async () => {
     server.use(
       http.get("*/api/v1/credentials", () => HttpResponse.json({ items: [], next_cursor: null })),
