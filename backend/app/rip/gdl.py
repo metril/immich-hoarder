@@ -1,6 +1,5 @@
 """gallery-dl runner: process-global config, own archive, hooks, log capture, SSRF guard."""
 
-import base64
 import collections
 import contextlib
 import ipaddress
@@ -8,22 +7,20 @@ import json
 import logging
 import math
 import os
-import re
 import socket
 import threading
-import time
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
 import urllib3.util.connection as _uconn
-from gallery_dl import cache, config, downloader, exception, extractor, formatter, job, util
-from gallery_dl.extractor import reddit as _reddit
+from gallery_dl import cache, config, downloader, exception, extractor, formatter, job
 
 from app import __version__
 from app.core.extractors import _ip_private, validate_gdl_options
 from app.db.models import CredentialKind
+from app.rip.cookies import to_netscape
 from app.rip.dedupe import url_key
 from app.rip.filters import gdl_filter_options
 from app.rip.scrub import safe_url, scrub, scrub_data
@@ -59,126 +56,19 @@ def _no_cache() -> None:
     return None
 
 
-class CredentialError(ValueError):
-    """A credential is unusable; the message is safe to show to the user."""
-
-
-_BEARER_OPT = "_bearer"
-_REDDIT_UA = "Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0"
-_orig_reddit_init = _reddit.RedditAPI.__init__
-
-
-def _reddit_init(self: Any, extractor: Any) -> None:
-    """With a token_v2 bearer, use oauth.reddit.com directly and never POST access_token."""
-    bearer = extractor.config(_BEARER_OPT)
-    if not bearer:
-        _orig_reddit_init(self, extractor)
-        return
-    cfg = extractor.config
-    self.extractor = extractor
-    self.log = extractor.log
-    self.comments = int(cfg("comments", 0) or 0)
-    self.morecomments = cfg("morecomments", False)
-    self._warn_429 = False
-    self.client_id = ""
-    self.refresh_token = None
-    self.root = self.ROOT
-    ua = cfg("user-agent-oauth") or cfg("user-agent") or _REDDIT_UA
-    self.headers = {"User-Agent": ua, "Authorization": f"Bearer {bearer}"}
-    self.authenticate = util.noop
-    self.log.debug("Using OAuth API with token_v2 bearer")
-
-
-_reddit.RedditAPI.__init__ = _reddit_init
-
-
-def _cookie_value(text: str, name: str) -> str | None:
-    """Value of cookie `name` from Netscape cookies.txt text (HttpOnly lines included)."""
-    for line in text.splitlines():
-        line = line.strip().removeprefix("#HttpOnly_")
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split("\t")
-        if len(parts) >= 7 and parts[5] == name:
-            return parts[6].strip() or None
-    return None
-
-
-def _jwt_exp(token: str) -> float | None:
-    """`exp` claim of a JWT (unverified); None when absent or unparseable."""
-    try:
-        seg = token.split(".")[1]
-        claims = json.loads(base64.urlsafe_b64decode(seg + "=" * (-len(seg) % 4)))
-        exp = claims.get("exp")
-    except (IndexError, ValueError, AttributeError):
-        return None
-    if isinstance(exp, bool) or not isinstance(exp, int | float):
-        return None
-    return float(exp)
-
-
-_BARE_JWT = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$")
-_NO_TOKEN = (
-    "Reddit cookies must include token_v2 "
-    "(paste the token_v2 value or a cookies.txt export containing it)"
-)
-
-
-def _is_netscape(text: str) -> bool:
-    return any(
-        len(ln.strip().removeprefix("#HttpOnly_").split("\t")) >= 7 for ln in text.splitlines()
-    )
-
-
-def _cookie_pairs(text: str) -> dict[str, str]:
-    """Pairs from a bare JWT (token_v2) or a `[Cookie:] a=b; c=d` header string."""
-    text = text.strip()
-    if _BARE_JWT.match(text):
-        return {"token_v2": text}
-    text = text.removeprefix("Cookie:").removeprefix("cookie:").strip()
-    pairs: dict[str, str] = {}
-    for part in text.split(";"):
-        name, sep, val = part.strip().partition("=")
-        name, val = name.strip(), val.strip()
-        if sep and name and val and not any(c in name + val for c in "\t\r\n"):
-            pairs[name] = val
-    return pairs
-
-
-def _netscape_text(pairs: dict[str, str]) -> str:
-    rows = ["# Netscape HTTP Cookie File"]
-    for name, val in pairs.items():
-        exp = _jwt_exp(val) if name == "token_v2" else None
-        rows.append(f".reddit.com\tTRUE\t/\tTRUE\t{int(exp) if exp else 0}\t{name}\t{val}")
-    return "\n".join(rows) + "\n"
-
-
 def _credential_options(cred: CredentialSnapshot, job_dir: Path) -> dict[str, Any]:
     """Return extractor.<site> options for a credential (cookies written to job_dir)."""
     secret = cred.secret.get_secret_value()
     if cred.kind == CredentialKind.cookies:
-        reddit = cred.site == "reddit"
-        text, bearer = secret, None
-        if reddit:
-            if _is_netscape(secret):
-                bearer = _cookie_value(secret, "token_v2")
-            else:
-                pairs = _cookie_pairs(secret)
-                bearer = pairs.get("token_v2")
-                text = _netscape_text(pairs)
-            if not bearer:
-                raise CredentialError(_NO_TOKEN)
-            exp = _jwt_exp(bearer)
-            if exp is not None and exp <= time.time():
-                raise CredentialError("Reddit token_v2 expired; re-export cookies")
+        text = to_netscape(secret, cred.site)
         path = job_dir / ".cookies.txt"
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
             f.write(text)
         os.chmod(path, 0o600)
         opts: dict[str, Any] = {"cookies": str(path)}
-        if bearer:
-            opts[_BEARER_OPT] = bearer
+        if cred.site == "reddit":
+            opts["api"] = "rest"
         return opts
     data = json.loads(secret)
     if not isinstance(data, dict):

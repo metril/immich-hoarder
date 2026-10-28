@@ -83,3 +83,14 @@ def test_fragments_nested_json() -> None:
     f = secret_fragments(_cred(CredentialKind.oauth, sec))
     assert {"deepSecret1", "987654"} <= f
     assert "True" not in f
+
+
+def test_cookie_json_and_header_values_scrubbed() -> None:
+    js = json.dumps([{"name": "reddit_session", "value": "SECRETVAL1", "domain": ".reddit.com"}])
+    cred = CredentialSnapshot(site="x", kind=CredentialKind.cookies, secret=SecretStr(js))
+    assert "SECRETVAL1" in secret_fragments(cred)
+    hdr = "Cookie: reddit_session=SECRETVAL2; loid=OTHERVAL3"
+    f = secret_fragments(
+        CredentialSnapshot(site="reddit", kind=CredentialKind.cookies, secret=SecretStr(hdr))
+    )
+    assert {"SECRETVAL2", "OTHERVAL3"} <= f

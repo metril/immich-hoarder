@@ -16,10 +16,11 @@ from app.db.models import BackfillMode
 from app.immich.client import ImmichClient
 from app.immich.errors import AssetGone, ImmichAuthError, ImmichError, ImmichUnavailable
 from app.rip.albums import AlbumResolver, render_album
+from app.rip.cookies import CredentialError
 from app.rip.dedupe import DedupeStore, Recorder
 from app.rip.events import Emit
 from app.rip.filters import check
-from app.rip.gdl import CredentialError, HoarderJob, capture_logs, configure, run_job
+from app.rip.gdl import HoarderJob, capture_logs, configure, run_job
 from app.rip.media import MediaInfo, NotAnImage, analyze
 from app.rip.scrub import safe_url, scrub_data, secret_fragments
 from app.rip.settings import RipSettings
@@ -104,8 +105,9 @@ def build_description(meta: dict[str, Any]) -> str:
 
 _BLOCKED = "blocked by network security"
 _BLOCKED_HINT = (
-    "Blocked by Reddit network security: add reddit cookies including token_v2 "
-    "(it expires after about a day) or an OAuth credential"
+    "Reddit blocked the request; add a cookies credential exported from a logged-in "
+    "reddit.com browser session (all cookies, Netscape or JSON), or an OAuth credential "
+    "with your own client-id"
 )
 
 

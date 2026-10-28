@@ -20,7 +20,7 @@ const KIND_HELP = {
 } satisfies Record<CredentialKind, string>;
 const REDDIT_HELP = {
   cookies:
-    "Reddit: paste just the token_v2 value, or a Netscape cookies.txt export containing it. It is used as a bearer token and expires after about a day, so re-export when runs fail.",
+    "Reddit: export ALL reddit.com cookies while logged in, in Netscape or JSON form (e.g. with the Cookie-Editor or \"Get cookies.txt LOCALLY\" extension). The REST API is used; a datacenter IP may still be blocked. The OAuth app alternative needs Reddit approval.",
   oauth: 'Reddit: use JSON like {"client-id": "...", "client-secret": "...", "refresh-token": "...", "user-agent": "optional"}.',
 } as const;
 const KINDS = Object.keys(KIND_HELP) as CredentialKind[];

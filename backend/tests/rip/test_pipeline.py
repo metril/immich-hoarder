@@ -534,14 +534,14 @@ def test_blocked_by_network_security_gives_hint(env: Env, monkeypatch: pytest.Mo
 
     monkeypatch.setattr("app.rip.pipeline.run_job", fake)
     r = env.run("/img/a.jpg")
-    assert r.status == "failed" and r.error and "token_v2" in r.error
+    assert r.status == "failed" and r.error and "logged-in reddit.com browser session" in r.error
 
 
-def test_expired_reddit_token_fails_with_message(env: Env) -> None:
+def test_reddit_cookies_missing_session_fails_with_message(env: Env) -> None:
     cred = CredentialSnapshot(
         site="reddit",
         kind=CredentialKind.cookies,
-        secret=SecretStr(".reddit.com\tTRUE\t/\tTRUE\t0\ttoken_v2\ta.eyJleHAiOjF9.c\n"),
+        secret=SecretStr(".reddit.com\tTRUE\t/\tTRUE\t0\tloid\tabc\n"),
     )
     r = env.run("/img/a.jpg", credential=cred)
-    assert r.status == "failed" and r.error == "Reddit token_v2 expired; re-export cookies"
+    assert r.status == "failed" and r.error and "missing reddit_session" in r.error

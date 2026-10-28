@@ -87,8 +87,8 @@ Rate limits are per site and set by an admin in Settings (`rate_limits`, keyed b
 
 Reddit blocks anonymous gallery-dl requests ("blocked by network security"). Use one of:
 
-- **Cookies with `token_v2` (kind `cookies`, site `reddit`).** Export your logged-in reddit.com cookies as Netscape `cookies.txt`, or just paste the `token_v2` value (a `token_v2=...; ...` cookie header also works); `token_v2` is required. It is sent as a bearer token to `oauth.reddit.com`. It lasts about 24 hours, then runs fail with "Reddit token_v2 expired; re-export cookies". There is no automatic refresh.
-- **Your own OAuth app (kind `oauth`, site `reddit`).** JSON with `client-id`, `client-secret` and `refresh-token`, plus an optional `user-agent` (default `immich-hoarder/<version>`). It does not expire, but Reddit now requires approval for new apps.
+- **Logged-in cookies (kind `cookies`, site `reddit`).** Export ALL reddit.com cookies while logged in, in Netscape `cookies.txt` or JSON form, e.g. with the Cookie-Editor or "Get cookies.txt LOCALLY" extension (a `name=value; ...` cookie header also works). A `reddit_session` cookie is required. gallery-dl uses the REST API with these cookies. A datacenter IP may still be blocked.
+- **Your own OAuth app (kind `oauth`, site `reddit`).** JSON with `client-id`, `client-secret` and `refresh-token`, plus an optional `user-agent` (default `immich-hoarder/<version>`). It does not expire, but Reddit requires approval for new apps.
 
 ## Ad-hoc rips
 

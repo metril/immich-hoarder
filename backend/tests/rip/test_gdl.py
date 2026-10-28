@@ -13,6 +13,7 @@ from gallery_dl.extractor.message import Message
 from pydantic import SecretStr
 
 from app.db.models import BackfillMode, CredentialKind
+from app.rip.cookies import CredentialError
 from app.rip.filters import FilterSpec
 from app.rip.gdl import HoarderJob, capture_logs, configure, run_job, ssrf_guard
 from app.rip.settings import RateLimit, RipSettings
@@ -470,117 +471,83 @@ def test_handle_url_overwrites_shared_kwdict_file_url(
     assert seen == ["http://x/1.jpg", "http://x/2.jpg"]
 
 
-def _jwt(exp: Any) -> str:
-    import base64
-
-    def b(d: dict[str, Any]) -> str:
-        return base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip("=")
-
-    return f"{b({'alg': 'none'})}.{b({} if exp is None else {'exp': exp})}.sig"
+def _cookie_cred(secret: str, site: str = "reddit") -> CredentialSnapshot:
+    return CredentialSnapshot(site=site, kind=CredentialKind.cookies, secret=SecretStr(secret))
 
 
-def _reddit_cookies(token: str | None) -> CredentialSnapshot:
-    rows = ["# Netscape HTTP Cookie File", ".reddit.com\tTRUE\t/\tTRUE\t0\tloid\tabc"]
-    if token:
-        rows.append(f"#HttpOnly_.reddit.com\tTRUE\t/\tTRUE\t0\ttoken_v2\t{token}")
-    return CredentialSnapshot(
-        site="reddit", kind=CredentialKind.cookies, secret=SecretStr("\n".join(rows) + "\n")
-    )
+def _cookie_text(tmp_path: Path, secret: str, site: str = "reddit") -> str:
+    configure(src(), _cookie_cred(secret, site), FAST, tmp_path, incremental=False)
+    return Path(config.get(("extractor", site), "cookies")).read_text()
 
 
-def test_reddit_token_v2_extracted_and_cookies_kept(tmp_path: Path) -> None:
-    import time
-
-    tok = _jwt(time.time() + 3600)
-    configure(src(), _reddit_cookies(tok), FAST, tmp_path, incremental=False)
-    assert config.get(("extractor", "reddit"), "_bearer") == tok
-    assert Path(config.get(("extractor", "reddit"), "cookies")).exists()
+NS = (
+    "# Netscape HTTP Cookie File\n"
+    ".reddit.com\tTRUE\t/\tTRUE\t0\treddit_session\tabc123\n"
+    "#HttpOnly_.reddit.com\tTRUE\t/\tTRUE\t0\tloid\txyz789\n"
+)
 
 
-def _reddit_raw(secret: str) -> CredentialSnapshot:
-    return CredentialSnapshot(site="reddit", kind=CredentialKind.cookies, secret=SecretStr(secret))
+def test_netscape_passthrough_as_is(tmp_path: Path) -> None:
+    assert _cookie_text(tmp_path, NS) == NS
+    assert _cookie_text(tmp_path, "# Netscape\n", "directlink") == "# Netscape\n"
 
 
-def test_reddit_cookies_without_token_raises(tmp_path: Path) -> None:
-    from app.rip.gdl import CredentialError
-
-    with pytest.raises(CredentialError, match="must include token_v2"):
-        configure(src(), _reddit_cookies(None), FAST, tmp_path, incremental=False)
-    with pytest.raises(CredentialError, match="must include token_v2"):
-        configure(src(), _reddit_raw("loid=abc; foo=bar"), FAST, tmp_path, incremental=False)
-
-
-def test_reddit_bare_jwt_gives_bearer_and_netscape_file(tmp_path: Path) -> None:
-    import time
-
-    tok = _jwt(time.time() + 3600)
-    configure(src(), _reddit_raw(f"  {tok}\n"), FAST, tmp_path, incremental=False)
-    assert config.get(("extractor", "reddit"), "_bearer") == tok
-    lines = Path(config.get(("extractor", "reddit"), "cookies")).read_text().splitlines()
-    parts = lines[-1].split("\t")
-    assert len(parts) == 7
-    assert parts[:4] == [".reddit.com", "TRUE", "/", "TRUE"]
-    assert parts[5:] == ["token_v2", tok]
-    assert tok not in lines[0]
+JSON_LIST = [
+    {
+        "name": "reddit_session",
+        "value": "abc123",
+        "domain": ".reddit.com",
+        "path": "/",
+        "secure": True,
+        "httpOnly": True,
+        "expirationDate": 1900000000.5,
+    },
+    {"name": "pref", "value": "v1", "domain": "www.reddit.com", "path": "/x", "session": True},
+]
 
 
-def test_reddit_header_style_string(tmp_path: Path) -> None:
-    import time
-
-    tok = _jwt(time.time() + 3600)
-    configure(
-        src(),
-        _reddit_raw(f"Cookie: token_v2={tok}; reddit_session=abc"),
-        FAST,
-        tmp_path,
-        incremental=False,
-    )
-    assert config.get(("extractor", "reddit"), "_bearer") == tok
-    rows = Path(config.get(("extractor", "reddit"), "cookies")).read_text().splitlines()[1:]
-    assert [r.split("\t")[5] for r in rows] == ["token_v2", "reddit_session"]
-    assert all(len(r.split("\t")) == 7 for r in rows)
+def test_json_list_converted(tmp_path: Path) -> None:
+    rows = _cookie_text(tmp_path, json.dumps(JSON_LIST)).splitlines()
+    assert rows[1] == "#HttpOnly_.reddit.com\tTRUE\t/\tTRUE\t1900000000\treddit_session\tabc123"
+    assert rows[2] == "www.reddit.com\tFALSE\t/x\tFALSE\t0\tpref\tv1"
 
 
-def test_reddit_expired_bare_jwt_raises(tmp_path: Path) -> None:
-    from app.rip.gdl import CredentialError
-
-    with pytest.raises(CredentialError, match="expired"):
-        configure(src(), _reddit_raw(_jwt(1)), FAST, tmp_path, incremental=False)
+def test_json_wrapper_converted(tmp_path: Path) -> None:
+    text = _cookie_text(tmp_path, json.dumps({"cookies": JSON_LIST}))
+    assert "reddit_session\tabc123" in text
 
 
-def test_reddit_expired_token_raises(tmp_path: Path) -> None:
-    from app.rip.gdl import CredentialError
-
-    with pytest.raises(CredentialError, match="expired"):
-        configure(src(), _reddit_cookies(_jwt(1)), FAST, tmp_path, incremental=False)
-
-
-@pytest.mark.parametrize("tok", ["notajwt", "a.%%%.c"])
-def test_reddit_unparseable_or_missing_exp_skips_check(tmp_path: Path, tok: str) -> None:
-    configure(src(), _reddit_cookies(tok), FAST, tmp_path, incremental=False)
-    assert config.get(("extractor", "reddit"), "_bearer") == tok
-    configure(src(), _reddit_cookies(_jwt(None)), FAST, tmp_path, incremental=False)
-    assert config.get(("extractor", "reddit"), "_bearer")
+def test_reddit_header_string(tmp_path: Path) -> None:
+    text = _cookie_text(tmp_path, "Cookie: reddit_session=abc; loid=x")
+    rows = text.splitlines()[1:]
+    assert rows == [
+        ".reddit.com\tTRUE\t/\tTRUE\t0\treddit_session\tabc",
+        ".reddit.com\tTRUE\t/\tTRUE\t0\tloid\tx",
+    ]
 
 
-def test_reddit_api_uses_bearer_without_token_post() -> None:
-    from types import SimpleNamespace
-    from unittest.mock import MagicMock
+def test_reddit_missing_session_raises(tmp_path: Path) -> None:
+    for secret in ("loid=abc; foo=bar", ".reddit.com\tTRUE\t/\tTRUE\t0\tloid\tabc\n"):
+        with pytest.raises(CredentialError, match="missing reddit_session"):
+            configure(src(), _cookie_cred(secret), FAST, tmp_path, incremental=False)
 
-    from gallery_dl.extractor.reddit import RedditAPI
 
-    opts = {"_bearer": "TOK", "user-agent": "UA/1"}
-    ex = SimpleNamespace(
-        config=lambda k, d=None: opts.get(k, d), log=MagicMock(), request=MagicMock()
-    )
-    api = RedditAPI(ex)
-    assert api.root == "https://oauth.reddit.com"
-    assert api.headers["Authorization"] == "Bearer TOK"
-    assert api.headers["User-Agent"] == "UA/1"
-    api.authenticate()
-    ex.request.assert_not_called()
-    ex2 = SimpleNamespace(config=lambda k, d=None: {"_bearer": "T"}.get(k, d), log=MagicMock())
-    assert "Firefox" in RedditAPI(ex2).headers["User-Agent"]
+def test_reddit_api_rest_set_without_client_id(tmp_path: Path) -> None:
+    configure(src(), _cookie_cred(NS), FAST, tmp_path, incremental=False)
+    assert config.get(("extractor", "reddit"), "api") == "rest"
+    assert config.get(("extractor", "reddit"), "client-id") is None
+
+
+@pytest.mark.parametrize("secret", ["a=b; c=d", "Cookie: a=b"])
+def test_non_reddit_header_string_raises(tmp_path: Path, secret: str) -> None:
+    with pytest.raises(CredentialError, match="Netscape cookies.txt or a JSON export"):
+        configure(src(), _cookie_cred(secret, "pixiv"), FAST, tmp_path, incremental=False)
+
+
+@pytest.mark.parametrize("secret", ["garbage", "[1, 2]", "{}", "[{bad", "[]"])
+def test_garbage_cookies_raise(tmp_path: Path, secret: str) -> None:
+    with pytest.raises(CredentialError, match="Netscape cookies.txt or a JSON export"):
+        configure(src(), _cookie_cred(secret, "pixiv"), FAST, tmp_path, incremental=False)
 
 
 def test_reddit_oauth_credential_default_and_custom_user_agent(tmp_path: Path) -> None:

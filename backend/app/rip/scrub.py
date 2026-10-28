@@ -6,6 +6,7 @@ from typing import Any
 from urllib.parse import quote, urlsplit
 
 from app.db.models import CredentialKind
+from app.rip.cookies import CredentialError, to_netscape
 from app.rip.snapshot import CredentialSnapshot
 
 _MIN_LEN = 4
@@ -28,7 +29,12 @@ def secret_fragments(cred: CredentialSnapshot | None) -> frozenset[str]:
     secret = cred.secret.get_secret_value()
     out: set[str] = {secret}
     if cred.kind == CredentialKind.cookies:
-        for line in secret.splitlines():
+        try:
+            text = to_netscape(secret, cred.site)
+        except CredentialError:
+            text = secret
+        out.add(text)
+        for line in (secret + "\n" + text).splitlines():
             parts = line.split("\t")
             if len(parts) >= 7:
                 out.add(parts[6].strip())
