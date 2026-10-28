@@ -88,10 +88,10 @@ function Shell({ me }: { me: MeOut }) {
             <button
               type="button"
               onClick={openPalette}
-              aria-label="Open command palette"
               className="inline-flex h-9 items-center gap-2 rounded-lg border bg-muted/40 px-3 text-sm text-muted-foreground transition-colors hover:bg-accent focus-visible:outline-2 focus-visible:outline-ring md:w-72 lg:w-96"
             >
               <Search className="size-4 shrink-0" aria-hidden />
+              <span className="sr-only">Open command palette</span>
               <span className="hidden flex-1 truncate text-left md:inline">Search or jump to…</span>
               <kbd className="hidden rounded-md border bg-background px-1.5 py-0.5 font-mono text-[11px] md:inline">{modLabel()} K</kbd>
             </button>
