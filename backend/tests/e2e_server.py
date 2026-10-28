@@ -77,7 +77,8 @@ class AutoLogin:
 
 def _session_cookie(user_id: int) -> str:
     # Same encoding as Starlette's SessionMiddleware.
-    data = base64.b64encode(json.dumps({"user_id": user_id}).encode("utf-8"))
+    # "sg" must match User.session_gen (0 for a fresh seed); see auth/deps.current_principal.
+    data = base64.b64encode(json.dumps({"user_id": user_id, "sg": 0}).encode("utf-8"))
     return TimestampSigner(SESSION_SECRET).sign(data).decode("utf-8")
 
 
