@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.3](https://github.com/metril/immich-hoarder/compare/v0.5.2...v0.5.3) (2026-10-28)
+
+
+### Bug Fixes
+
+* **reddit:** use REST API with logged-in cookies; drop token_v2 bearer path ([df76690](https://github.com/metril/immich-hoarder/commit/df76690ca5614277806f06f15e2deb09f71d4160))
+
 ## [0.5.2](https://github.com/metril/immich-hoarder/compare/v0.5.1...v0.5.2) (2026-10-28)
 
 
