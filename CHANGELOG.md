@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.1](https://github.com/metril/immich-hoarder/compare/v0.5.0...v0.5.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **reddit:** bypass network-security block via token_v2 bearer and OAuth user-agent ([d0bed1f](https://github.com/metril/immich-hoarder/commit/d0bed1f319604a8d5dd4cc8972181bcf99df26d2))
+
 ## [0.5.0](https://github.com/metril/immich-hoarder/compare/v0.4.0...v0.5.0) (2026-10-27)
 
 
