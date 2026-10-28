@@ -68,3 +68,7 @@ The target **Test** reports one of: `unauthorized` (the API key is wrong), `unre
 ### The dashboard or log does not update
 
 **Cause:** a reverse proxy in front of the app buffers the server-sent event streams (`/api/v1/jobs/stream`, `/api/v1/jobs/{id}/stream`). **Fix:** disable response buffering for `/api/*` (for nginx, `proxy_buffering off;`), and do not enable response compression for `text/event-stream`. Traefik does not buffer by default. Streams send a ping every 15 seconds, so keep proxy idle timeouts above that.
+
+## Reddit: "You've been blocked by network security"
+
+**Cause:** Reddit rejects non-browser TLS fingerprints and many datacenter IPs. **Fix:** Reddit sources default to Chrome-like TLS; try `{"reddit": {"browser": "firefox"}}` in the source's gallery-dl options, and add a logged-in `cookies` credential (see [Reddit setup](sources.md#reddit-setup)).

@@ -80,7 +80,7 @@ export function VirtualTable<T>({
   return (
     <div className={cn("overflow-x-auto", !mobile && "rounded-xl border bg-card")}>
       <div role="table" aria-label={label} aria-rowcount={mobile ? rows.length : rows.length + 1} className={cn("flex min-h-0 flex-col", !mobile && minWidth)}>
-        <div ref={scrollRef} role="rowgroup" className="min-h-0 flex-1 overflow-y-auto max-h-[calc(100dvh-14rem)]">
+        <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto max-h-[calc(100dvh-14rem)]">
           {!mobile && (
             <div role="rowgroup" className="sticky top-0 z-10 border-b bg-muted">
               <div role="row" className="grid gap-3 px-4 py-3 text-xs font-medium text-muted-foreground" style={{ gridTemplateColumns: template }}>
@@ -92,7 +92,7 @@ export function VirtualTable<T>({
               </div>
             </div>
           )}
-          <div style={{ height: v.getTotalSize(), position: "relative" }}>
+          <div role="rowgroup" style={{ height: v.getTotalSize(), position: "relative" }}>
             {items.map((vi) => {
               const r = rows[vi.index];
               if (r === undefined) return null;

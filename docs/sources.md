@@ -81,11 +81,22 @@ A source can set `log_level` (`trace`, `debug`, `info`, `warn`, `error`) and a s
 
 ## Rate limits
 
-Rate limits are per site and set by an admin in Settings (`rate_limits`, keyed by extractor name, or `default`): `sleep_request` (seconds between requests, default 1.0), `sleep` (seconds between file downloads) and `retries` (default 4). Per-source `gdl_options` cannot weaken the sleeps below these limits; allowed keys are `sleep`, `sleep-request`, `retries`, `timeout`, `include`, `recursion` and `previews`.
+Rate limits are per site and set by an admin in Settings (`rate_limits`, keyed by extractor name, or `default`): `sleep_request` (seconds between requests, default 1.0), `sleep` (seconds between file downloads) and `retries` (default 4). Per-source `gdl_options` cannot weaken the sleeps or retries below these limits (per site too).
+
+## gallery-dl options
+
+A source's **Advanced → gallery-dl options (JSON)** (`gdl_options`) accepts any [gallery-dl extractor option](https://codeberg.org/mikf/gallery-dl/src/branch/master/docs/configuration.rst), plus per-site nesting, e.g. `{"sleep-request": 2, "reddit": {"comments": 500}}`. Dict values are allowed only for `headers`, `keywords`, `keywords-global` and `extension-map`. These are rejected:
+
+- **Code execution:** `actions`, `postprocessors`, `postprocessor-options`, any `*-filter`, `keywords-eval`, `follow`; any string value starting with a form-feed (`\f`) and `user-agent` set to `browser` or `@...` are also rejected.
+- **File access:** `cookies*`, `verify`, `truststore`, `netrc`, `tags-blacklist`, `tags-whitelist`, `base-directory`, `directory`, `filename`, `archive*`, `write-pages`, `part-directory`.
+- **SSRF bypass:** `proxy`, `proxy-env`, `source-address`. Use the source's own proxy field.
+- **App-owned:** `skip`, `download`, `path-*`, `videos`.
+
+gallery-dl is pinned to the Codeberg master branch (not a PyPI release), so new extractor options and site fixes arrive with image updates.
 
 ## Reddit setup
 
-Reddit blocks anonymous gallery-dl requests ("blocked by network security"). Use one of:
+Reddit blocks non-browser TLS fingerprints with "You've been blocked by network security". By default Reddit sources send `ciphers: "chrome"` and `tls12: false`. Override per source, e.g. `{"reddit": {"browser": "firefox"}}`. Cookies or OAuth credentials still work on top of these defaults:
 
 - **Logged-in cookies (kind `cookies`, site `reddit`).** Export ALL reddit.com cookies while logged in, in Netscape `cookies.txt` or JSON form, e.g. with the Cookie-Editor or "Get cookies.txt LOCALLY" extension (a `name=value; ...` cookie header also works). A `reddit_session` cookie is required. gallery-dl uses the REST API with these cookies. A datacenter IP may still be blocked.
 - **Your own OAuth app (kind `oauth`, site `reddit`).** JSON with `client-id`, `client-secret` and `refresh-token`, plus an optional `user-agent` (default `immich-hoarder/<version>`). It does not expire, but Reddit requires approval for new apps.

@@ -562,3 +562,67 @@ def test_reddit_oauth_credential_default_and_custom_user_agent(tmp_path: Path) -
     assert config.get(("extractor", "reddit"), "user-agent") == f"immich-hoarder/{__version__}"
     configure(src(), cred({"client-id": "c", "user-agent": "mine"}), FAST, tmp_path, False)
     assert config.get(("extractor", "reddit"), "user-agent") == "mine"
+
+
+def test_reddit_tls_defaults(tmp_path: Path) -> None:
+    configure(src(), None, FAST, tmp_path, incremental=False)
+    assert config.get(("extractor", "reddit"), "ciphers") == "chrome"
+    assert config.get(("extractor", "reddit"), "tls12") is False
+
+
+def test_user_option_overrides_reddit_tls(tmp_path: Path) -> None:
+    o = {"reddit": {"browser": "firefox", "tls12": True}}
+    configure(src(gdl_options=o), None, FAST, tmp_path, incremental=False)
+    assert config.get(("extractor", "reddit"), "browser") == "firefox"
+    assert config.get(("extractor", "reddit"), "tls12") is True
+
+
+def test_global_user_option(tmp_path: Path) -> None:
+    configure(src(gdl_options={"browser": "chrome"}), None, FAST, tmp_path, incremental=False)
+    assert config.get(("extractor",), "browser") == "chrome"
+
+
+def test_per_site_sleep_floored(tmp_path: Path) -> None:
+    admin = RipSettings(rate_limits={"default": RateLimit(sleep_request=2.0, sleep=1, retries=3)})
+    o = {"reddit": {"sleep-request": 0.1, "sleep": 0, "retries": 1}}
+    configure(src(gdl_options=o), None, admin, tmp_path, incremental=False)
+    assert config.get(("extractor", "reddit"), "sleep-request") == 2.0
+    assert config.get(("extractor", "reddit"), "sleep") == 1
+    assert config.get(("extractor", "reddit"), "retries") == 3
+
+
+@pytest.mark.parametrize(
+    "opts",
+    [
+        {"verify": False},
+        {"netrc": True},
+        {"proxy-env": True},
+        {"write-pages": True},
+        {"path-restrict": "unix"},
+        {"file-filter": "True"},
+        {"reddit": {"verify": False}},
+    ],
+)
+def test_hardening_cannot_be_overridden(tmp_path: Path, opts: dict[str, Any]) -> None:
+    with pytest.raises(ValueError):
+        configure(src(gdl_options=opts), None, FAST, tmp_path, incremental=False)
+
+
+def test_top_level_rate_options_floored(tmp_path: Path) -> None:
+    admin = RipSettings(rate_limits={"default": RateLimit(sleep_request=2.0, sleep=1, retries=3)})
+    o = {"sleep-request": 0, "sleep": 0, "retries": 0}
+    configure(src(gdl_options=o), None, admin, tmp_path, incremental=False)
+    assert config.get(("extractor",), "sleep-request") == 2.0
+    assert config.get(("extractor",), "sleep") == 1
+    assert config.get(("extractor",), "retries") == 3
+
+
+@pytest.mark.parametrize("ua", ["browser", "@firefox"])
+def test_credential_user_agent_rejected(tmp_path: Path, ua: str) -> None:
+    cred = CredentialSnapshot(
+        site="reddit",
+        kind=CredentialKind.token,
+        secret=SecretStr(json.dumps({"client-id": "x", "user-agent": ua})),
+    )
+    with pytest.raises(ValueError):
+        configure(src(), cred, FAST, tmp_path, incremental=False)

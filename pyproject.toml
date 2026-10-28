@@ -23,7 +23,7 @@ dependencies = [
     "pyjwt[crypto]>=2.15.1",
     "argon2-cffi>=25.1.0",
     "croniter>=6.2.4",
-    "gallery-dl==1.32.18",
+    "gallery-dl",
     "pillow>=13.0.0",
     "numpy>=2.5.4",
     "xxhash>=4.0.2",
@@ -52,6 +52,10 @@ docs = [
     "mkdocs==1.6.1",
     "mkdocs-material==9.7.7",
 ]
+
+[tool.uv.sources]
+# gallery-dl tracks Codeberg master (upstream); bump = change rev + `uv lock`.
+gallery-dl = { git = "https://codeberg.org/mikf/gallery-dl", rev = "516f703f437b1a22bfe984f511e86a18cf8a3900" }
 
 [tool.hatch.version]
 path = "backend/app/_version.py"

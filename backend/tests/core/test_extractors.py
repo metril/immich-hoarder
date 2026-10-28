@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 
 from app.core.extractors import (
@@ -132,3 +134,59 @@ def test_userinfo_host_is_real_host() -> None:
 
 def test_list_extractors_is_tuple() -> None:
     assert isinstance(list_extractors(), tuple)
+
+
+@pytest.mark.parametrize(
+    "opts",
+    [
+        {"browser": "firefox"},
+        {"ciphers": ["a", "b"]},
+        {"headers": {"X": "y"}},
+        {"reddit": {"comments": 500}},
+        {"reddit": {"headers": {"X": "y"}}},
+    ],
+)
+def test_blocklist_accepts(opts: dict[str, Any]) -> None:
+    assert validate_gdl_options(opts) == opts
+
+
+@pytest.mark.parametrize(
+    "opts",
+    [
+        {"postprocessors": ["x"]},
+        {"cookies": "x"},
+        {"verify": False},
+        {"proxy": "http://x"},
+        {"image-filter": "x"},
+        {"archive-format": "x"},
+        {"reddit": {"cookies": "/etc/passwd"}},
+        {"notasite": {"a": 1}},
+        {"reddit": {"headers": {"a": {"b": 1}}}},
+        {"reddit": {"comments": {"a": 1}}},
+        {1: "x"},
+    ],
+)
+def test_blocklist_rejects(opts: dict[Any, Any]) -> None:
+    with pytest.raises(ValueError):
+        validate_gdl_options(opts)
+
+
+@pytest.mark.parametrize(
+    "opts",
+    [
+        {"follow": "x"},
+        {"browser": "\fE 1"},
+        {"reddit": {"browser": "\fE 1"}},
+        {"include": ["a", "\fE 1"]},
+        {"headers": {"X": "\fE 1"}},
+        {"user-agent": "browser"},
+        {"user-agent": "@firefox"},
+        {"reddit": {"user-agent": "@firefox"}},
+        {"retries": -1},
+        {"reddit": {"retries": -1}},
+        {"reddit": 1},
+    ],
+)
+def test_review_fixes_rejected(opts: dict[str, Any]) -> None:
+    with pytest.raises(ValueError):
+        validate_gdl_options(opts)

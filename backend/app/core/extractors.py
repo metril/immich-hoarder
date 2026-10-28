@@ -9,9 +9,25 @@ from gallery_dl import extractor as gdl_extractor
 from pydantic import BaseModel
 from urllib3.util import parse_url
 
-GDL_OPTION_ALLOWLIST = frozenset(
-    {"sleep", "sleep-request", "retries", "timeout", "include", "recursion", "previews"}
-)
+GDL_OPTION_BLOCKLIST = frozenset(
+    {
+        # code execution
+        "actions", "postprocessors", "postprocessor-options", "file-filter", "post-filter",
+        "child-filter", "skip-filter", "image-filter", "chapter-filter", "keywords-eval", "exec",
+        "follow",
+        # file access
+        "cookies", "cookies-update", "cookies-select", "verify", "truststore", "netrc",
+        "tags-blacklist", "tags-whitelist", "base-directory", "directory", "filename",
+        "archive", "archive-event", "archive-format", "archive-mode", "archive-prefix",
+        "archive-pragma", "archive-reuse", "archive-table", "write-pages", "part-directory",
+        # ssrf bypass
+        "proxy", "proxy-env", "source-address",
+        # app-owned
+        "skip", "download", "path-restrict", "path-replace", "path-remove", "path-strip",
+        "path-sub", "path-convert", "path-extended", "videos",
+    }
+)  # fmt: skip
+_DICT_OPTIONS = frozenset({"headers", "keywords", "keywords-global", "extension-map"})
 _SCALARS = (str, int, float, bool)
 
 
@@ -122,11 +138,59 @@ def list_extractors() -> tuple[ExtractorInfo, ...]:
     )
 
 
-def validate_gdl_options(opts: dict[str, Any]) -> dict[str, Any]:
-    for key, val in opts.items():
-        if key not in GDL_OPTION_ALLOWLIST:
-            raise ValueError(f"gdl option not allowed: {key}")
+@cache
+def _categories() -> frozenset[str]:
+    return frozenset(e.category for e in list_extractors())
+
+
+def _blocked(key: str) -> bool:
+    return (
+        key in GDL_OPTION_BLOCKLIST
+        or key.endswith("-filter")
+        or key.startswith(("archive", "path-", "cookies"))
+    )
+
+
+def bad_user_agent(val: Any) -> bool:
+    """`browser` / `@...` make gallery-dl spawn a process to look up a user agent."""
+    return isinstance(val, str) and (val == "browser" or val.startswith("@"))
+
+
+def _check_option(key: Any, val: Any) -> None:
+    if not isinstance(key, str) or _blocked(key):
+        raise ValueError(f"gdl option not allowed: {key}")
+    if isinstance(val, dict):
+        if key not in _DICT_OPTIONS or not all(
+            isinstance(k, str) and isinstance(v, _SCALARS) for k, v in val.items()
+        ):
+            raise ValueError(f"gdl option must be a scalar or list of scalars: {key}")
+        items = list(val.values())
+    else:
         items = val if isinstance(val, list) else [val]
         if not all(isinstance(i, _SCALARS) for i in items):
             raise ValueError(f"gdl option must be a scalar or list of scalars: {key}")
+    # "\f" prefixes make gallery-dl evaluate a format string as Python
+    if any(isinstance(i, str) and i.startswith("\f") for i in items):
+        raise ValueError(f"gdl option value not allowed: {key}")
+    if key == "user-agent" and any(bad_user_agent(i) for i in items):
+        raise ValueError(f"gdl option value not allowed: {key}")
+    if key == "retries" and any(
+        isinstance(i, int | float) and not isinstance(i, bool) and i < 0 for i in items
+    ):
+        raise ValueError(f"gdl option value not allowed: {key}")
+
+
+def validate_gdl_options(opts: dict[str, Any]) -> dict[str, Any]:
+    for key, val in opts.items():
+        if isinstance(key, str) and key in _categories() and not isinstance(val, dict):
+            raise ValueError(f"per-site options must be an object: {key}")
+        if isinstance(val, dict) and isinstance(key, str) and key in _categories():
+            for ik, iv in val.items():
+                _check_option(ik, iv)
+        elif isinstance(val, dict) and not (isinstance(key, str) and key in _DICT_OPTIONS):
+            if isinstance(key, str) and not _blocked(key):
+                raise ValueError(f"unknown extractor for per-site options: {key}")
+            raise ValueError(f"gdl option not allowed: {key}")
+        else:
+            _check_option(key, val)
     return opts

@@ -534,7 +534,7 @@ def test_blocked_by_network_security_gives_hint(env: Env, monkeypatch: pytest.Mo
 
     monkeypatch.setattr("app.rip.pipeline.run_job", fake)
     r = env.run("/img/a.jpg")
-    assert r.status == "failed" and r.error and "logged-in reddit.com browser session" in r.error
+    assert r.status == "failed" and r.error and "TLS fingerprints" in r.error
 
 
 def test_reddit_cookies_missing_session_fails_with_message(env: Env) -> None:

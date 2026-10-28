@@ -174,7 +174,7 @@ export function SourceForm({ initial, onSaved, onCancel, onDraft, extra }: { ini
           <details className="rounded-lg border p-4">
             <summary className="cursor-pointer text-sm font-medium">Advanced</summary>
             <div className="mt-4 grid gap-5">
-              <FormField label="gallery-dl options (JSON)" error={e.gdl_options?.message} hint="Allow-listed options only; the server validates.">
+              <FormField label="gallery-dl options (JSON)" error={e.gdl_options?.message} hint='Any gallery-dl extractor option; per-site as {"reddit": {...}}. Code-execution, file-path, proxy and cookie options are rejected.'>
                 <Textarea className="h-28 font-mono" spellCheck={false} {...form.register("gdl_options")} />
               </FormField>
               <FormField label="Proxy" error={e.proxy?.message}>

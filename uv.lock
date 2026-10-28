@@ -395,14 +395,10 @@ wheels = [
 
 [[package]]
 name = "gallery-dl"
-version = "1.32.18"
-source = { registry = "https://pypi.org/simple" }
+version = "1.33.0.dev0"
+source = { git = "https://codeberg.org/mikf/gallery-dl?rev=516f703f437b1a22bfe984f511e86a18cf8a3900#516f703f437b1a22bfe984f511e86a18cf8a3900" }
 dependencies = [
     { name = "requests" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/ec/55/e40b8ce403489e7b3122eee28693efd885ca68256a9c6344fdfbd0842c3e/gallery_dl-1.32.18.tar.gz", hash = "sha256:1c5562af3799a0bec96be0f64d95a416aee688fd09fe3893ca3a6c87bbe65bcd", size = 763172, upload-time = "2026-10-25T09:06:40.817Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f5/81/03b8f628bd5c91a62c9c8152358c3b381933dc3fdf6c5aea100e8582da80/gallery_dl-1.32.18-py3-none-any.whl", hash = "sha256:f9081654ee4a0d6f2778376882ab7cecbf3e7ba15ed65b20416388b8789be535", size = 943606, upload-time = "2026-10-25T09:06:36.888Z" },
 ]
 
 [[package]]
@@ -563,7 +559,7 @@ requires-dist = [
     { name = "croniter", specifier = ">=6.2.4" },
     { name = "cryptography", specifier = ">=43" },
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "gallery-dl", specifier = "==1.32.18" },
+    { name = "gallery-dl", git = "https://codeberg.org/mikf/gallery-dl?rev=516f703f437b1a22bfe984f511e86a18cf8a3900" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "itsdangerous", specifier = ">=2.2.0" },
     { name = "numpy", specifier = ">=2.5.4" },
