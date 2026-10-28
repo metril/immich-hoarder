@@ -18,7 +18,7 @@ import urllib3.util.connection as _uconn
 from gallery_dl import cache, config, downloader, exception, extractor, formatter, job
 
 from app import __version__
-from app.core.extractors import _ip_private, validate_gdl_options
+from app.core.extractors import _categories, _ip_private, bad_user_agent, validate_gdl_options
 from app.db.models import CredentialKind
 from app.rip.cookies import to_netscape
 from app.rip.dedupe import url_key
@@ -84,6 +84,8 @@ def _credential_options(cred: CredentialSnapshot, job_dir: Path) -> dict[str, An
             raise ValueError(f"credential key not allowed: {k}")
         if isinstance(v, bool) or not isinstance(v, str | int):
             raise ValueError(f"credential value must be a string or int: {k}")
+        if k == "user-agent" and bad_user_agent(v):
+            raise ValueError("credential user-agent not allowed")
         out[k] = v
     if cred.site == "reddit" and "client-id" in out and "user-agent" not in out:
         out["user-agent"] = f"immich-hoarder/{__version__}"
@@ -118,10 +120,18 @@ def configure(
     cache.database = _no_cache
     ext: tuple[str, ...] = ("extractor",)
     config.set(ext, "base-directory", str(job_dir))
-    config.set(ext, "file-filter", f"extension not in {VIDEO_EXTS!r}")
     config.set(("extractor", "reddit"), "videos", False)
-    for k, v in validate_gdl_options(src.gdl_options).items():
-        config.set(ext, k, v)
+    config.set(("extractor", "reddit"), "ciphers", "chrome")
+    config.set(("extractor", "reddit"), "tls12", False)
+    user_opts = validate_gdl_options(src.gdl_options)
+    sites = _categories()
+    for k, v in user_opts.items():
+        if isinstance(v, dict) and k in sites:
+            for ik, iv in v.items():
+                config.set(("extractor", k), ik, iv)
+        else:
+            config.set(ext, k, v)
+    config.set(ext, "file-filter", f"extension not in {VIDEO_EXTS!r}")
     fo = gdl_filter_options(src.filters, src.backfill_mode, src.backfill_value, incremental)
     for k, v in fo["extractor"].items():
         config.set(ext, k, v)
@@ -134,7 +144,13 @@ def configure(
     rl = settings.rate_limits.get(src.extractor) or settings.rate_limits.get("default")
     rl = rl or RateLimit()
     cat = ("extractor", src.extractor)
-    opts = src.gdl_options
+    opts = user_opts
+    if "sleep-request" in opts:
+        config.set(ext, "sleep-request", _at_least(opts["sleep-request"], rl.sleep_request))
+    if "sleep" in opts:
+        config.set(ext, "sleep", _at_least(opts["sleep"], rl.sleep))
+    if "retries" in opts:
+        config.set(ext, "retries", _retries(opts["retries"], rl.retries))
     sleep_request = _at_least(opts.get("sleep-request"), rl.sleep_request)
     sleep = _at_least(opts.get("sleep"), rl.sleep)
     retries = _retries(opts.get("retries"), rl.retries)
@@ -142,6 +158,16 @@ def configure(
     config.set(cat, "sleep", sleep)
     config.set(cat, "retries", retries)
     config.set(("downloader",), "retries", retries)
+    for site, so in user_opts.items():
+        if not (isinstance(so, dict) and site in sites):
+            continue
+        sc = ("extractor", site)
+        if "sleep-request" in so:
+            config.set(sc, "sleep-request", _at_least(so["sleep-request"], rl.sleep_request))
+        if "sleep" in so:
+            config.set(sc, "sleep", _at_least(so["sleep"], rl.sleep))
+        if "retries" in so:
+            config.set(sc, "retries", _retries(so["retries"], rl.retries))
     if cred is not None:
         for k, v in _credential_options(cred, job_dir).items():
             config.set(("extractor", cred.site), k, v)

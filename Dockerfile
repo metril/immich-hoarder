@@ -19,7 +19,8 @@ COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /build
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy
 COPY pyproject.toml uv.lock README.md LICENSE ./
-RUN uv sync --frozen --no-dev --no-editable --no-install-project
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/* \
+    && uv sync --frozen --no-dev --no-editable --no-install-project
 
 FROM python:3.12-slim@sha256:a0f57064cbdcd6285fa45f51237ab0b35ea8ebaed06a1f5973e89e19dfb86704
 LABEL org.opencontainers.image.source="https://github.com/metril/immich-hoarder" \

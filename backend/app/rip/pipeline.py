@@ -105,9 +105,9 @@ def build_description(meta: dict[str, Any]) -> str:
 
 _BLOCKED = "blocked by network security"
 _BLOCKED_HINT = (
-    "Reddit blocked the request; add a cookies credential exported from a logged-in "
-    "reddit.com browser session (all cookies, Netscape or JSON), or an OAuth credential "
-    "with your own client-id"
+    "Reddit blocks non-browser TLS fingerprints; chrome ciphers are applied by default. "
+    'Try source gallery-dl options {"reddit": {"browser": "firefox"}}, or add logged-in '
+    "cookies / an OAuth credential"
 )
 
 
