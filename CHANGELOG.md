@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.4](https://github.com/metril/immich-hoarder/compare/v0.5.3...v0.5.4) (2026-10-28)
+
+
+### Bug Fixes
+
+* **reddit:** send browser TLS fingerprint; open per-source gallery-dl options ([#22](https://github.com/metril/immich-hoarder/issues/22)) ([37a55f1](https://github.com/metril/immich-hoarder/commit/37a55f173be288a33e1c5d58de9137524c230a4e))
+
 ## [0.5.3](https://github.com/metril/immich-hoarder/compare/v0.5.2...v0.5.3) (2026-10-28)
 
 
