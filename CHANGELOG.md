@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2](https://github.com/metril/immich-hoarder/compare/v0.5.1...v0.5.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* **reddit:** accept bare token_v2 value and error when missing ([9ebf1f4](https://github.com/metril/immich-hoarder/commit/9ebf1f47306890c44d2d7d48c516f17e5be82710))
+
 ## [0.5.1](https://github.com/metril/immich-hoarder/compare/v0.5.0...v0.5.1) (2026-10-28)
 
 
