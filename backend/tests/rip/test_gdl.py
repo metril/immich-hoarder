@@ -497,10 +497,55 @@ def test_reddit_token_v2_extracted_and_cookies_kept(tmp_path: Path) -> None:
     assert Path(config.get(("extractor", "reddit"), "cookies")).exists()
 
 
-def test_reddit_cookies_without_token_unchanged(tmp_path: Path) -> None:
-    configure(src(), _reddit_cookies(None), FAST, tmp_path, incremental=False)
-    assert config.get(("extractor", "reddit"), "_bearer") is None
-    assert config.get(("extractor", "reddit"), "cookies")
+def _reddit_raw(secret: str) -> CredentialSnapshot:
+    return CredentialSnapshot(site="reddit", kind=CredentialKind.cookies, secret=SecretStr(secret))
+
+
+def test_reddit_cookies_without_token_raises(tmp_path: Path) -> None:
+    from app.rip.gdl import CredentialError
+
+    with pytest.raises(CredentialError, match="must include token_v2"):
+        configure(src(), _reddit_cookies(None), FAST, tmp_path, incremental=False)
+    with pytest.raises(CredentialError, match="must include token_v2"):
+        configure(src(), _reddit_raw("loid=abc; foo=bar"), FAST, tmp_path, incremental=False)
+
+
+def test_reddit_bare_jwt_gives_bearer_and_netscape_file(tmp_path: Path) -> None:
+    import time
+
+    tok = _jwt(time.time() + 3600)
+    configure(src(), _reddit_raw(f"  {tok}\n"), FAST, tmp_path, incremental=False)
+    assert config.get(("extractor", "reddit"), "_bearer") == tok
+    lines = Path(config.get(("extractor", "reddit"), "cookies")).read_text().splitlines()
+    parts = lines[-1].split("\t")
+    assert len(parts) == 7
+    assert parts[:4] == [".reddit.com", "TRUE", "/", "TRUE"]
+    assert parts[5:] == ["token_v2", tok]
+    assert tok not in lines[0]
+
+
+def test_reddit_header_style_string(tmp_path: Path) -> None:
+    import time
+
+    tok = _jwt(time.time() + 3600)
+    configure(
+        src(),
+        _reddit_raw(f"Cookie: token_v2={tok}; reddit_session=abc"),
+        FAST,
+        tmp_path,
+        incremental=False,
+    )
+    assert config.get(("extractor", "reddit"), "_bearer") == tok
+    rows = Path(config.get(("extractor", "reddit"), "cookies")).read_text().splitlines()[1:]
+    assert [r.split("\t")[5] for r in rows] == ["token_v2", "reddit_session"]
+    assert all(len(r.split("\t")) == 7 for r in rows)
+
+
+def test_reddit_expired_bare_jwt_raises(tmp_path: Path) -> None:
+    from app.rip.gdl import CredentialError
+
+    with pytest.raises(CredentialError, match="expired"):
+        configure(src(), _reddit_raw(_jwt(1)), FAST, tmp_path, incremental=False)
 
 
 def test_reddit_expired_token_raises(tmp_path: Path) -> None:

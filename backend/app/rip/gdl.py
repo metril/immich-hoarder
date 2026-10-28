@@ -8,6 +8,7 @@ import json
 import logging
 import math
 import os
+import re
 import socket
 import threading
 import time
@@ -116,21 +117,67 @@ def _jwt_exp(token: str) -> float | None:
     return float(exp)
 
 
+_BARE_JWT = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$")
+_NO_TOKEN = (
+    "Reddit cookies must include token_v2 "
+    "(paste the token_v2 value or a cookies.txt export containing it)"
+)
+
+
+def _is_netscape(text: str) -> bool:
+    return any(
+        len(ln.strip().removeprefix("#HttpOnly_").split("\t")) >= 7 for ln in text.splitlines()
+    )
+
+
+def _cookie_pairs(text: str) -> dict[str, str]:
+    """Pairs from a bare JWT (token_v2) or a `[Cookie:] a=b; c=d` header string."""
+    text = text.strip()
+    if _BARE_JWT.match(text):
+        return {"token_v2": text}
+    text = text.removeprefix("Cookie:").removeprefix("cookie:").strip()
+    pairs: dict[str, str] = {}
+    for part in text.split(";"):
+        name, sep, val = part.strip().partition("=")
+        name, val = name.strip(), val.strip()
+        if sep and name and val and not any(c in name + val for c in "\t\r\n"):
+            pairs[name] = val
+    return pairs
+
+
+def _netscape_text(pairs: dict[str, str]) -> str:
+    rows = ["# Netscape HTTP Cookie File"]
+    for name, val in pairs.items():
+        exp = _jwt_exp(val) if name == "token_v2" else None
+        rows.append(f".reddit.com\tTRUE\t/\tTRUE\t{int(exp) if exp else 0}\t{name}\t{val}")
+    return "\n".join(rows) + "\n"
+
+
 def _credential_options(cred: CredentialSnapshot, job_dir: Path) -> dict[str, Any]:
     """Return extractor.<site> options for a credential (cookies written to job_dir)."""
     secret = cred.secret.get_secret_value()
     if cred.kind == CredentialKind.cookies:
-        path = job_dir / ".cookies.txt"
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w") as f:
-            f.write(secret)
-        os.chmod(path, 0o600)
-        opts: dict[str, Any] = {"cookies": str(path)}
-        bearer = _cookie_value(secret, "token_v2") if cred.site == "reddit" else None
-        if bearer:
+        reddit = cred.site == "reddit"
+        text, bearer = secret, None
+        if reddit:
+            if _is_netscape(secret):
+                bearer = _cookie_value(secret, "token_v2")
+            else:
+                pairs = _cookie_pairs(secret)
+                bearer = pairs.get("token_v2")
+                text = _netscape_text(pairs)
+            if not bearer:
+                raise CredentialError(_NO_TOKEN)
             exp = _jwt_exp(bearer)
             if exp is not None and exp <= time.time():
                 raise CredentialError("Reddit token_v2 expired; re-export cookies")
+        path = job_dir / ".cookies.txt"
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
+        os.chmod(path, 0o600)
+        opts: dict[str, Any] = {"cookies": str(path)}
+        if bearer:
             opts[_BEARER_OPT] = bearer
         return opts
     data = json.loads(secret)

@@ -42,7 +42,7 @@ describe("credentials", () => {
     await user.click(await screen.findByRole("button", { name: "Add credential" }));
     await user.type(screen.getByLabelText("Site"), "reddit");
     await user.selectOptions(screen.getByLabelText("Kind"), "cookies");
-    expect(screen.getByText(/must include token_v2/)).toBeInTheDocument();
+    expect(screen.getByText(/paste just the token_v2 value/)).toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Kind"), "oauth");
     expect(screen.getByText(/"client-id"/)).toBeInTheDocument();
   });
