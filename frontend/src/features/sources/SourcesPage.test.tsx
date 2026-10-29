@@ -123,4 +123,17 @@ describe("sources page", () => {
       expect(ks).toContain(JSON.stringify(keys.detail("sources", 3)));
     });
   });
+
+  it("forget seen URLs confirms in-page, toasts the count and invalidates", async () => {
+    const { toast } = await import("sonner");
+    const { queryClient } = setup();
+    server.use(http.post("*/api/v1/sources/3/forget-seen", () => HttpResponse.json({ forgotten: 7 })));
+    const spy = vi.spyOn(queryClient, "invalidateQueries");
+    await user.click(await screen.findByRole("button", { name: "More actions for Cats" }));
+    await user.click(screen.getByRole("menuitem", { name: "Forget seen URLs for Cats" }));
+    await user.click(screen.getByRole("button", { name: "Forget" }));
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Forgot 7 seen URLs"));
+    const ks = spy.mock.calls.map((c) => JSON.stringify(c[0]?.queryKey));
+    expect(ks).toContain(JSON.stringify(["list", "jobs"]));
+  });
 });

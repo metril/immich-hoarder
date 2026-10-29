@@ -7,7 +7,7 @@ import anyio.to_thread
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, exists, select
+from sqlalchemy import delete, exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.common import get_obj, secret_box
@@ -26,7 +26,7 @@ from app.auth.principal import Principal
 from app.core.crypto import SecretBox
 from app.core.extractors import UnsupportedURL, validate_proxy, validate_url
 from app.db.engine import get_session
-from app.db.models import BackfillMode, Job, JobStatus, Perm, Source
+from app.db.models import AssetSeen, BackfillMode, Job, JobStatus, Perm, Source
 from app.rip.build import check_notify_refs, check_refs, credential_snapshot
 from app.rip.filters import FilterSpec, validate_backfill
 from app.rip.preview import (
@@ -294,6 +294,33 @@ async def delete_source(
     await delete_shares(session, Source.share_type, obj_id)
     await _sync(request, session, obj_id)
     return Response(status_code=204)
+
+
+@router.post("/{obj_id}/forget-seen")
+async def forget_seen(
+    obj_id: int,
+    p: Principal = Depends(current_principal),
+    session: AsyncSession = Depends(get_session, scope="function"),
+) -> dict[str, int]:
+    """Detach this source's seen-URL rows so the next run re-processes everything.
+
+    Rows are kept (source_id -> NULL): sha1/phash still drive per-target dedupe.
+    """
+    require_scope(p, "sources:write")
+    await get_obj(session, Source, obj_id, p, Perm.edit)
+    active = await session.scalar(
+        select(Job.id)
+        .where(Job.source_id == obj_id, Job.status.in_((JobStatus.queued, JobStatus.running)))
+        .limit(1)
+    )
+    if active is not None:
+        raise HTTPException(409, "source has an active job")
+    res = await session.execute(
+        update(AssetSeen).where(AssetSeen.source_id == obj_id).values(source_id=None)
+    )
+    n = int(res.rowcount)  # type: ignore[attr-defined]
+    log.info("source %s: forgot %d seen URLs (by %s)", obj_id, n, p.user_id)
+    return {"forgotten": n}
 
 
 router.include_router(shares_router(Source, "sources"))

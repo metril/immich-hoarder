@@ -67,6 +67,8 @@ De-duplication is per Immich target, so the same image from two sources goes to 
 
 A match is not uploaded again; the existing asset is linked into the album instead and counted as `linked`. If a match was deleted or trashed in Immich, the image is not re-uploaded: it is counted as `deleted_in_immich`.
 
+A source also remembers the URLs it has already processed and skips them on later runs. **Forget seen URLs** (source row menu) makes the next run re-process everything, re-linking assets the target already has into the album. It does not undo deletions in Immich, and it is refused while the source has an active job.
+
 ## Dry-run preview
 
 **Preview** in the source editor runs the source's URL, filters and credential against the site and lists up to 50 items without uploading anything (`POST /api/v1/sources/preview`, limit 1 to 50, 60 second timeout).
