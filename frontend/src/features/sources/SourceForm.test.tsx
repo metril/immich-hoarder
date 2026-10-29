@@ -20,7 +20,7 @@ const creds = [
 ];
 const src: SourceOut = {
   id: 7, name: "Cats", url: "https://reddit.com/r/cats", target_id: 3, credential_id: null, album_template: "{subreddit}",
-  schedule_cron: null, backfill_mode: "full", backfill_value: null, allow_animated: false,
+  schedule_cron: null, backfill_mode: "full", backfill_value: null, allow_animated: false, reupload_deleted: false,
   filters: { phash_distance: 3 }, notify: { credential_ids: [], on: ["failure"] }, gdl_options: {}, proxy: null, log_level: null,
   enabled: true, ephemeral: false, extractor: "reddit", owner_id: 1, visibility: "private", can_edit: true, can_use: true,
 };

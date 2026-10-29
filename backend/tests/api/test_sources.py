@@ -212,3 +212,17 @@ async def test_forget_seen_409_with_active_job(client: httpx.AsyncClient) -> Non
     r = await client.post(f"/api/v1/sources/{sid}/forget-seen", headers=h)
     assert r.status_code == 409
     assert await _count(sid) == 1
+
+
+async def test_reupload_deleted_round_trip(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    tid = await _target(client, h)
+    r = await client.post("/api/v1/sources", json={**SRC, "target_id": tid}, headers=h)
+    assert r.json()["reupload_deleted"] is False
+    sid = r.json()["id"]
+    r = await client.patch(f"/api/v1/sources/{sid}", json={"reupload_deleted": True}, headers=h)
+    assert r.json()["reupload_deleted"] is True
+    r = await client.post(
+        "/api/v1/sources", json={**SRC, "target_id": tid, "reupload_deleted": True}, headers=h
+    )
+    assert r.json()["reupload_deleted"] is True

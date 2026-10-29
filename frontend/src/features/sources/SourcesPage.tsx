@@ -55,7 +55,7 @@ function draftOf(s: SourceOut): SourceIn {
   return {
     name: s.name, url: s.url, target_id: s.target_id, credential_id: s.credential_id, album_template: s.album_template,
     schedule_cron: s.schedule_cron, backfill_mode: s.backfill_mode, backfill_value: s.backfill_value,
-    allow_animated: s.allow_animated, filters: s.filters, notify: s.notify, gdl_options: s.gdl_options,
+    allow_animated: s.allow_animated, reupload_deleted: s.reupload_deleted, filters: s.filters, notify: s.notify, gdl_options: s.gdl_options,
     proxy: s.proxy, log_level: s.log_level, enabled: s.enabled, ephemeral: s.ephemeral, visibility: s.visibility,
   };
 }

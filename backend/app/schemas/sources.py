@@ -98,6 +98,7 @@ class SourceIn(_Validated):
     backfill_mode: BackfillMode = BackfillMode.full
     backfill_value: str | None = None
     allow_animated: bool = False
+    reupload_deleted: bool = False
     filters: FiltersT = {}
     notify: NotifyT = {}
     gdl_options: dict[str, Any] = {}
@@ -124,6 +125,7 @@ class SourcePatch(_Validated):
     backfill_mode: BackfillMode | None = None
     backfill_value: str | None = None
     allow_animated: bool | None = None
+    reupload_deleted: bool | None = None
     filters: FiltersT | None = None
     notify: NotifyT | None = None
     gdl_options: dict[str, Any] | None = None
@@ -146,6 +148,7 @@ class SourceOut(BaseModel):
     backfill_mode: BackfillMode
     backfill_value: str | None
     allow_animated: bool
+    reupload_deleted: bool
     filters: FiltersT
     notify: NotifyT
     gdl_options: dict[str, Any]

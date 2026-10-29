@@ -177,6 +177,7 @@ class Source(Ownable, Timestamps, Base):
     )
     backfill_value: Mapped[str | None] = mapped_column(String(64))
     allow_animated: Mapped[bool] = mapped_column(Boolean, default=False)
+    reupload_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
     filters: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     notify: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     gdl_options: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)

@@ -33,7 +33,7 @@ function Body({ onDone }: { onDone: () => void }) {
         e.preventDefault();
         const body: RipIn = {
           url: url.trim(), target_id: Number(target), credential_id: cred ? Number(cred) : null, album_template: album,
-          name: "", visibility: "private", enabled: true, ephemeral: false, allow_animated: false, backfill_mode: "full",
+          name: "", visibility: "private", enabled: true, ephemeral: false, allow_animated: false, reupload_deleted: false, backfill_mode: "full",
           filters: { phash_distance: 3 }, gdl_options: {}, notify: { credential_ids: [], on: ["failure"] },
         };
         rip.mutate(

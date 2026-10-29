@@ -1,3 +1,4 @@
+import json
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -343,3 +344,11 @@ def test_thumbnail_rejects_content_encoding_and_asks_identity(client: ImmichClie
     with pytest.raises(ImmichError):
         client.thumbnail("z", "thumbnail")
     assert route.calls[0].request.headers["accept-encoding"] == "identity"
+
+
+def test_restore_assets(client: ImmichClient) -> None:
+    route = respx.post(f"{BASE}/trash/restore/assets").mock(
+        return_value=httpx.Response(200, json={"count": 1})
+    )
+    client.restore_assets(["a1"])
+    assert json.loads(route.calls[0].request.content) == {"ids": ["a1"]}

@@ -6,11 +6,11 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import xxhash
-from sqlalchemy import Engine, cast, func, select, union
+from sqlalchemy import Engine, cast, func, select, union, update
 from sqlalchemy.dialects.postgresql import BIT
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-from sqlalchemy.sql import Select
+from sqlalchemy.sql import ColumnElement, Select
 
 from app.db.models import AssetSeen
 from app.rip.media import chunks16, to_signed64
@@ -31,6 +31,10 @@ class Recorder(Protocol):
         sha1: bytes | None,
         phash: int | None,
         immich_asset_id: str | None,
+    ) -> None: ...
+
+    def rebind_asset(
+        self, *, target_id: int, sha1: bytes, new_asset_id: str, old_asset_id: str | None
     ) -> None: ...
 
 
@@ -177,3 +181,22 @@ class DedupeStore:
         stmt = insert_ignore(self._engine.dialect.name, AssetSeen).values(values)
         with self._engine.begin() as c:
             c.execute(stmt)
+
+    def rebind_asset(
+        self, *, target_id: int, sha1: bytes, new_asset_id: str, old_asset_id: str | None
+    ) -> None:
+        """Point this content's dead/NULL rows (same sha1 only) at its live asset."""
+        stmt = rebind_stmt(target_id, sha1, new_asset_id, old_asset_id)
+        with self._engine.begin() as c:
+            c.execute(stmt)
+
+
+def rebind_stmt(target_id: int, sha1: bytes, new_asset_id: str, old_asset_id: str | None) -> Any:
+    dead: ColumnElement[bool] = AssetSeen.immich_asset_id.is_(None)
+    if old_asset_id is not None:
+        dead = dead | (AssetSeen.immich_asset_id == uuid.UUID(old_asset_id).bytes)
+    return (
+        update(AssetSeen)
+        .where(AssetSeen.target_id == target_id, AssetSeen.sha1 == sha1, dead)
+        .values(immich_asset_id=uuid.UUID(new_asset_id).bytes)
+    )

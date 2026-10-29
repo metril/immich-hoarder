@@ -72,6 +72,7 @@ async def build_snapshots(
         backfill_mode=source.backfill_mode,
         backfill_value=source.backfill_value,
         allow_animated=source.allow_animated,
+        reupload_deleted=source.reupload_deleted,
         filters=FilterSpec.model_validate(source.filters or {}),
         gdl_options=dict(source.gdl_options or {}),
         proxy=source.proxy,

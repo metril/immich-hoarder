@@ -33,6 +33,7 @@ def src(**kw: Any) -> SourceSnapshot:
         "backfill_mode": BackfillMode.full,
         "backfill_value": None,
         "allow_animated": False,
+        "reupload_deleted": False,
         "filters": FilterSpec(),
         "gdl_options": {},
         "proxy": None,

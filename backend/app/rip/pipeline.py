@@ -121,6 +121,7 @@ class _Rip:
         self._emit_fn = emit
         self.cancel = cancel
         self.src = ctx.source
+        self._restore_warned = False
         self.counters = dict.fromkeys(_COUNTERS, 0)
         self.bytes = 0
         self.inflight = 0
@@ -328,6 +329,8 @@ class _Rip:
         tid = ctx.target.id
         existing: str | None = None
         how = ""
+        reup = self.src.reupload_deleted
+        sha1hex = info.sha1.hex()
         ref = ctx.store.match_sha1(tid, info.sha1)
         if ref is not None:
             how = "sha1"
@@ -336,26 +339,57 @@ class _Rip:
             how = "phash"
         if ref is not None and ref.immich_asset_id:
             existing = ref.immich_asset_id
-        elif ctx.store.match_deleted(tid, info.sha1, info.phash, self.src.filters.phash_distance):
+        elif not reup and ctx.store.match_deleted(
+            tid, info.sha1, info.phash, self.src.filters.phash_distance
+        ):
             self._deleted(url, key, info, None)
             return
         else:
-            sha1hex = info.sha1.hex()
             res = self.client.bulk_check([("x", sha1hex)]).get("x")
             if res is not None and res.action == "reject" and res.reason == "duplicate":
                 if res.is_trashed:
-                    self._deleted(url, key, info, None)
-                    return
-                existing, how = res.asset_id, "immich"
+                    if not reup:
+                        self._deleted(url, key, info, None)
+                        return
+                    if res.asset_id is None:
+                        self._deleted(url, key, info, None)
+                        return
+                    rs = self._restore(res.asset_id)
+                    if rs == "denied":
+                        self._deleted(url, key, info, None)
+                        return
+                    if rs == "failed":
+                        self._fail(url, "restore_failed")
+                        return
+                    existing, how = res.asset_id, "restored"
+                else:
+                    existing, how = res.asset_id, "immich"
         fresh = False
-        if existing is None:
+        asset_id = existing or ""
+        outcome: Literal["ok", "gone", "failed", "denied", "restore_failed"] = "gone"
+        if existing is not None:
+            outcome = self._link(existing, meta)
+            if outcome == "gone" and reup:
+                outcome = self._revive(existing, meta)
+                if outcome == "denied":
+                    self._deleted(url, key, info, existing)
+                    return
+                if outcome == "restore_failed":
+                    self._fail(url, "restore_failed")
+                    return
+                if outcome == "ok":
+                    how = "restored"
+            if outcome == "gone" and not reup:
+                self._deleted(url, key, info, existing)
+                return
+        if existing is None or outcome == "gone":
             created = meta.get("date")
             if not isinstance(created, datetime):
                 created = datetime.now(UTC)
             did = f"{meta.get('category')}-{meta.get('id', key.hex())}-{meta.get('num', 0)}"
             up = self.client.upload(
                 path,
-                sha1hex=info.sha1.hex(),
+                sha1hex=sha1hex,
                 device_asset_id=did,
                 file_created_at=created,
                 file_modified_at=created,
@@ -366,17 +400,19 @@ class _Rip:
                 how = "upload"
             else:
                 fresh = True
-        else:
-            asset_id = existing
-        outcome = self._link(asset_id, meta)
-        if outcome == "gone":
-            self._deleted(url, key, info, asset_id)
-            return
+            outcome = self._link(asset_id, meta)
+            if outcome == "gone":
+                self._deleted(url, key, info, asset_id)
+                return
         if outcome == "failed":
             self._fail(url, "link_failed")
             return
         if fresh:
             self._describe(asset_id, meta)
+        if reup:
+            self.ctx.recorder.rebind_asset(
+                target_id=tid, sha1=info.sha1, new_asset_id=asset_id, old_asset_id=existing
+            )
         self._record(key, info.sha1, info.phash, asset_id)
         if fresh:
             self.bump("uploaded")
@@ -414,6 +450,42 @@ class _Rip:
                 return "gone"
             return "gone" if info.is_trashed else "failed"
         return "failed"
+
+    def _restore(self, asset_id: str) -> Literal["ok", "denied", "failed"]:
+        try:
+            self.client.restore_assets([asset_id])
+        except ImmichAuthError as e:
+            if e.status != 403:
+                raise
+            with self.lock:
+                first = not self._restore_warned
+                self._restore_warned = True
+            if first:
+                self.log_error(
+                    "Immich API key lacks the asset.delete permission needed to restore "
+                    "trashed assets; enable it on the key or turn off "
+                    "'Bring back assets deleted in Immich'"
+                )
+            return "denied"
+        except (ImmichError, ImmichUnavailable):
+            return "failed"
+        return "ok"
+
+    def _revive(
+        self, asset_id: str, meta: dict[str, Any]
+    ) -> Literal["ok", "gone", "failed", "denied", "restore_failed"]:
+        """Restore a trashed asset and retry the link once; "gone" if it no longer exists."""
+        try:
+            if not self.client.get_asset(asset_id).is_trashed:
+                return "failed"
+        except AssetGone:
+            return "gone"
+        rs = self._restore(asset_id)
+        if rs == "denied":
+            return "denied"
+        if rs == "failed":
+            return "restore_failed"
+        return self._link(asset_id, meta)
 
     def _describe(self, asset_id: str, meta: dict[str, Any]) -> None:
         d = meta.get("date")
