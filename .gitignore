@@ -19,3 +19,8 @@ frontend/test-results/
 frontend/playwright-report/
 frontend/coverage/
 site/
+
+# local cookie exports (secrets)
+cookies
+cookies.txt
+*.cookies.txt

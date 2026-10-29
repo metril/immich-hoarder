@@ -534,7 +534,13 @@ def test_blocked_by_network_security_gives_hint(env: Env, monkeypatch: pytest.Mo
 
     monkeypatch.setattr("app.rip.pipeline.run_job", fake)
     r = env.run("/img/a.jpg")
-    assert r.status == "failed" and r.error and "TLS fingerprints" in r.error
+    assert r.status == "failed" and r.error and "no credential attached" in r.error
+    cred = CredentialSnapshot(
+        site="reddit", kind=CredentialKind.token, secret=SecretStr(json.dumps({"token": "x"}))
+    )
+    r = env.run("/img/a.jpg", credential=cred)
+    assert r.status == "failed" and r.error and "cookies credential" in r.error
+    assert "no credential attached" not in r.error
 
 
 def test_reddit_cookies_missing_session_fails_with_message(env: Env) -> None:

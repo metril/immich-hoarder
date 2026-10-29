@@ -91,16 +91,16 @@ def preview(
 
     configure(src, cred, settings, job_dir, incremental=False)
     config.set(("extractor",), "download", False)
-    job = HoarderJob(
-        src.url,
-        archive_check=lambda _k: False,
-        on_discovered=on_discovered,
-        on_file=lambda _p, _m: None,
-        cancel=Event(),
-    )
     with capture_logs(
         collect, "error", categories=(src.extractor,), fragments=secret_fragments(cred)
     ):
+        job = HoarderJob(
+            src.url,
+            archive_check=lambda _k: False,
+            on_discovered=on_discovered,
+            on_file=lambda _p, _m: None,
+            cancel=Event(),
+        )
         status = run_job(job, src, settings)
     if status != 0 and not items:
         raise PreviewError(_summary(errors, status, cred))
