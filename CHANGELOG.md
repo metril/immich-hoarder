@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/metril/immich-hoarder/compare/v0.6.0...v0.7.0) (2026-10-29)
+
+
+### Features
+
+* **sources:** option to bring back assets deleted in Immich ([#28](https://github.com/metril/immich-hoarder/issues/28)) ([9e8d283](https://github.com/metril/immich-hoarder/commit/9e8d2835881ecb111e32fb655d612ae39f7a5a0c))
+
 ## [0.6.0](https://github.com/metril/immich-hoarder/compare/v0.5.5...v0.6.0) (2026-10-29)
 
 
