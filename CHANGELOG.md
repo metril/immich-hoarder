@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.5](https://github.com/metril/immich-hoarder/compare/v0.5.4...v0.5.5) (2026-10-29)
+
+
+### Bug Fixes
+
+* **rip:** clearer reddit block hint; capture extractor setup logs ([#24](https://github.com/metril/immich-hoarder/issues/24)) ([968317a](https://github.com/metril/immich-hoarder/commit/968317a3cf3eafd94a56d14e529524378821fec7))
+
 ## [0.5.4](https://github.com/metril/immich-hoarder/compare/v0.5.3...v0.5.4) (2026-10-28)
 
 
