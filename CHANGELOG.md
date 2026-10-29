@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/metril/immich-hoarder/compare/v0.5.5...v0.6.0) (2026-10-29)
+
+
+### Features
+
+* **sources:** add "Forget seen URLs" action ([#26](https://github.com/metril/immich-hoarder/issues/26)) ([160cad8](https://github.com/metril/immich-hoarder/commit/160cad81dde2de31bbf44b0d12740bbfb6254fb8))
+
 ## [0.5.5](https://github.com/metril/immich-hoarder/compare/v0.5.4...v0.5.5) (2026-10-29)
 
 
