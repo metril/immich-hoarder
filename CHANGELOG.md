@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.1](https://github.com/metril/immich-hoarder/compare/v0.7.0...v0.7.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* **ui:** describe source schedules in local time ([#30](https://github.com/metril/immich-hoarder/issues/30)) ([cf1cb4e](https://github.com/metril/immich-hoarder/commit/cf1cb4e9abfc7ef93f1bb21556eaf4a6be0fa804))
+
 ## [0.7.0](https://github.com/metril/immich-hoarder/compare/v0.6.0...v0.7.0) (2026-10-29)
 
 
