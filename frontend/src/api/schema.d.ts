@@ -1341,6 +1341,11 @@ export interface components {
             };
             /** Proxy */
             proxy?: string | null;
+            /**
+             * Reupload Deleted
+             * @default false
+             */
+            reupload_deleted: boolean;
             /** Schedule Cron */
             schedule_cron?: string | null;
             /** Target Id */
@@ -1499,6 +1504,11 @@ export interface components {
             };
             /** Proxy */
             proxy?: string | null;
+            /**
+             * Reupload Deleted
+             * @default false
+             */
+            reupload_deleted: boolean;
             /** Schedule Cron */
             schedule_cron?: string | null;
             /** Target Id */
@@ -1710,6 +1720,11 @@ export interface components {
             };
             /** Proxy */
             proxy?: string | null;
+            /**
+             * Reupload Deleted
+             * @default false
+             */
+            reupload_deleted: boolean;
             /** Schedule Cron */
             schedule_cron?: string | null;
             /** Target Id */
@@ -1799,6 +1814,8 @@ export interface components {
             owner_id: number;
             /** Proxy */
             proxy: string | null;
+            /** Reupload Deleted */
+            reupload_deleted: boolean;
             /** Schedule Cron */
             schedule_cron: string | null;
             /** Target Id */
@@ -1877,6 +1894,8 @@ export interface components {
             } | null;
             /** Proxy */
             proxy?: string | null;
+            /** Reupload Deleted */
+            reupload_deleted?: boolean | null;
             /** Schedule Cron */
             schedule_cron?: string | null;
             /** Target Id */
@@ -1933,6 +1952,11 @@ export interface components {
             missing_permissions: string[];
             /** Ok */
             ok: boolean;
+            /**
+             * Optional Missing
+             * @default []
+             */
+            optional_missing: string[];
             /** Version */
             version?: string | null;
         };

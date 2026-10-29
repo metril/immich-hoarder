@@ -20,6 +20,7 @@ REQUIRED_PERMISSIONS = [
     "albumAsset.create",
     "user.read",
 ]
+OPTIONAL_PERMISSIONS = ["asset.delete"]  # needed only to restore trashed assets
 DEVICE_ID = "immich-hoarder"
 _RETRY_STATUSES = {429, 502, 503, 504}
 _CONNECT_ERRORS = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
@@ -74,6 +75,12 @@ def missing_permissions(perms: list[str]) -> list[str]:
     if "all" in perms:
         return []
     return [p for p in REQUIRED_PERMISSIONS if p not in perms]
+
+
+def optional_missing(perms: list[str]) -> list[str]:
+    if "all" in perms:
+        return []
+    return [p for p in OPTIONAL_PERMISSIONS if p not in perms]
 
 
 def _iso(dt: datetime) -> str:
@@ -261,6 +268,10 @@ class ImmichClient:
             raise AssetGone(resp.status_code, _message(resp))
         d = self._check(resp).json()
         return AssetInfo(id=d["id"], is_trashed=bool(d.get("isTrashed", False)))
+
+    @_shaped
+    def restore_assets(self, asset_ids: list[str]) -> None:
+        self._check(self._request("POST", "/trash/restore/assets", json={"ids": asset_ids}))
 
     @_shaped
     def thumbnail(

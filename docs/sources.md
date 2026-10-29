@@ -69,6 +69,8 @@ A match is not uploaded again; the existing asset is linked into the album inste
 
 A source also remembers the URLs it has already processed and skips them on later runs. **Forget seen URLs** (source row menu) makes the next run re-process everything, re-linking assets the target already has into the album. It does not undo deletions in Immich, and it is refused while the source has an active job.
 
+By default an asset that was deleted or trashed in Immich stays deleted: matching items are counted as `deleted_in_immich` and not uploaded again. Turn on **Bring back assets deleted in Immich** (`reupload_deleted`) to restore trashed matches from the Immich trash and re-upload permanently deleted ones. Restored items count as `linked` (reason `restored`); re-uploaded ones count as `uploaded`. The switch only affects items the run actually processes, so for URLs the source already recorded use **Forget seen URLs** (or a full backfill) first. Restoring needs the API key to have the `asset.delete` permission.
+
 ## Dry-run preview
 
 **Preview** in the source editor runs the source's URL, filters and credential against the site and lists up to 50 items without uploading anything (`POST /api/v1/sources/preview`, limit 1 to 50, 60 second timeout).

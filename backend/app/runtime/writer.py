@@ -15,7 +15,7 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import AssetSeen, Job, JobEvent, JobItem, JobStatus
-from app.rip.dedupe import assets_seen_row, insert_ignore
+from app.rip.dedupe import assets_seen_row, insert_ignore, rebind_stmt
 from app.runtime.bus import EventBus
 
 log = logging.getLogger(__name__)
@@ -270,6 +270,8 @@ class JobWriter:
             elif kind == "record":
                 row = assets_seen_row(**msg[1])
                 await session.execute(insert_ignore(dialect, AssetSeen).values(row))
+            elif kind == "rebind":
+                await session.execute(rebind_stmt(**msg[1]))
             elif kind == "status":
                 statuses.append(msg)
         await session.flush()
@@ -298,6 +300,7 @@ def _canon_id(v: Any) -> str | None:
 
 _TERMINAL = (JobStatus.succeeded, JobStatus.failed, JobStatus.cancelled)
 _STATUS_FIELDS = {"error", "started_at", "finished_at", "counters"}
+_REBIND_KEYS = {"target_id", "sha1", "new_asset_id", "old_asset_id"}
 _RECORD_KEYS = {"target_id", "source_id", "key", "sha1", "phash", "immich_asset_id"}
 
 
@@ -317,6 +320,10 @@ def _validate(msg: Any) -> str | None:
             if not isinstance(msg[1], dict) or set(msg[1]) != _RECORD_KEYS:
                 return "bad record"
             assets_seen_row(**msg[1])
+        elif kind == "rebind":
+            if not isinstance(msg[1], dict) or set(msg[1]) != _REBIND_KEYS:
+                return "bad rebind"
+            rebind_stmt(**msg[1])
         elif kind == "status":
             _, job_id, status, fields = msg
             if not isinstance(job_id, int) or not isinstance(fields, dict):

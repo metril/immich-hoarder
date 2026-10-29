@@ -20,7 +20,7 @@ import { useCreateSource, useUpdateSource, type FilterSpec, type SourceIn, type 
 import { LOG_LEVELS, defaultValues, sourceSchema, type SourceFormOutput } from "./schema";
 
 const PATCH_KEYS = ["name", "url", "target_id", "credential_id", "album_template", "schedule_cron", "backfill_mode", "backfill_value",
-  "allow_animated", "filters", "notify", "gdl_options", "proxy", "log_level", "enabled", "ephemeral"] as const;
+  "allow_animated", "reupload_deleted", "filters", "notify", "gdl_options", "proxy", "log_level", "enabled", "ephemeral"] as const;
 
 /** Only the fields whose value differs from the loaded source. Mode and value travel together. */
 function dirtyPatch(next: SourceFormOutput, base: SourceFormOutput): SourcePatch {
@@ -50,6 +50,7 @@ function Section({ title, description, children }: { title: string; description?
 const TOGGLES = [
   { key: "enabled", label: "Enabled", hint: "Scheduled runs happen only while enabled." },
   { key: "allow_animated", label: "Allow animated", hint: "Also grab GIFs and videos." },
+  { key: "reupload_deleted", label: "Bring back assets deleted in Immich", hint: "Restores trashed matches, re-uploads permanently deleted ones. Off: deleted assets stay deleted." },
   { key: "ephemeral", label: "Ephemeral", hint: "Remove the source after it finishes once." },
 ] as const;
 

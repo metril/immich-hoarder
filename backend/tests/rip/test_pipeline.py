@@ -135,6 +135,7 @@ class Env:
         incremental: bool = False,
         client_factory: Callable[[TargetSnapshot], ImmichClient] | None = None,
         credential: CredentialSnapshot | None = None,
+        reupload_deleted: bool = False,
     ) -> RipResult:
         url = f"{self.base}{path}"
         if extractor == "recursive":
@@ -149,6 +150,7 @@ class Env:
             backfill_mode=BackfillMode.full,
             backfill_value=None,
             allow_animated=False,
+            reupload_deleted=reupload_deleted,
             filters=filters or FilterSpec(),
             gdl_options={},
             proxy=None,
@@ -572,3 +574,171 @@ def test_reddit_cookies_missing_session_fails_with_message(env: Env) -> None:
     )
     r = env.run("/img/a.jpg", credential=cred, extractor="reddit")
     assert r.status == "failed" and r.error and "missing reddit_session" in r.error
+
+
+def _trashed(i: str) -> dict[str, Any]:
+    return {"id": i, "action": "reject", "reason": "duplicate", "assetId": ASSET, "isTrashed": True}
+
+
+def test_reupload_off_keeps_deleted_behaviour(env: Env) -> None:
+    env.bulk_response = _trashed
+    restore = env.router.post(f"{BASE}/trash/restore/assets").mock(return_value=httpx.Response(204))
+    r = env.run("/img/a.jpg", reupload_deleted=False)
+    assert r.counters["deleted_in_immich"] == 1 and not restore.called and env.uploads == []
+
+
+def test_reupload_known_deleted_is_uploaded(env: Env, tmp_path: Path) -> None:
+    info = a_info(env, tmp_path)
+    env.store.record(
+        target_id=1,
+        source_id=1,
+        key=b"k" * 16,
+        sha1=info.sha1,
+        phash=info.phash,
+        immich_asset_id=None,
+    )
+    r = env.run("/img/a.jpg", reupload_deleted=True)
+    assert r.counters["uploaded"] == 1 and r.counters["deleted_in_immich"] == 0
+    assert len(env.uploads) == 1
+
+
+def test_reupload_trashed_duplicate_is_restored(env: Env) -> None:
+    env.bulk_response = _trashed
+    restore = env.router.post(f"{BASE}/trash/restore/assets").mock(return_value=httpx.Response(204))
+    r = env.run("/img/a.jpg", reupload_deleted=True)
+    assert restore.called and json.loads(restore.calls[0].request.content) == {"ids": [ASSET]}
+    assert r.counters["linked"] == 1 and r.counters["deleted_in_immich"] == 0
+    assert env.uploads == [] and env.linked == [ASSET]
+    assert [e["reason"] for e in env.events if e["type"] == "item.linked"] == ["restored"]
+
+
+def test_reupload_link_gone_trashed_restores_and_retries(env: Env) -> None:
+    env.bulk_response = lambda i: {
+        "id": i,
+        "action": "reject",
+        "reason": "duplicate",
+        "assetId": ASSET,
+    }
+    env.add_error = "not_found"
+    env.router.get(f"{BASE}/assets/{ASSET}").mock(
+        return_value=httpx.Response(200, json={"id": ASSET, "isTrashed": True})
+    )
+    restore = env.router.post(f"{BASE}/trash/restore/assets").mock(return_value=httpx.Response(204))
+    original_add = env._add
+
+    def add(request: httpx.Request) -> httpx.Response:
+        if restore.called:
+            env.add_error = None
+        return original_add(request)
+
+    env.router.put(f"{BASE}/albums/{ALBUM}/assets").mock(side_effect=add)
+    r = env.run("/img/a.jpg", reupload_deleted=True)
+    assert restore.called and r.counters["linked"] == 1 and env.uploads == []
+    assert [e["reason"] for e in env.events if e["type"] == "item.linked"] == ["restored"]
+
+
+def test_reupload_link_404_uploads_fresh(env: Env) -> None:
+    env.bulk_response = lambda i: {
+        "id": i,
+        "action": "reject",
+        "reason": "duplicate",
+        "assetId": ASSET,
+    }
+    env.router.get(url__regex=rf"{BASE}/assets/.+").mock(
+        return_value=httpx.Response(404, json={"message": "gone"})
+    )
+
+    def add(request: httpx.Request) -> httpx.Response:
+        ids = json.loads(request.content)["ids"]
+        err = {"error": "not_found"} if ids == [ASSET] else {}
+        return httpx.Response(200, json=[{"id": i, "success": not err, **err} for i in ids])
+
+    env.router.put(f"{BASE}/albums/{ALBUM}/assets").mock(side_effect=add)
+    r = env.run("/img/a.jpg", reupload_deleted=True)
+    assert r.counters["uploaded"] == 1 and r.counters["deleted_in_immich"] == 0
+    assert len(env.uploads) == 1
+
+
+def _restore_err(env: Env, status: int) -> None:
+    env.bulk_response = _trashed
+    env.router.post(f"{BASE}/trash/restore/assets").mock(
+        return_value=httpx.Response(status, json={"message": "x"})
+    )
+
+
+def test_reupload_restore_403_logs_once_and_counts_deleted(env: Env) -> None:
+    _restore_err(env, 403)
+    r = env.run("/img/a.jpg", reupload_deleted=True)
+    assert r.counters["deleted_in_immich"] == 1 and env.uploads == []
+    errs = [e for e in env.events if e["type"] == "log" and "asset.delete" in e["msg"]]
+    assert len(errs) == 1 and errs[0]["level"] == "error"
+
+
+def test_reupload_restore_500_fails_item(env: Env) -> None:
+    _restore_err(env, 500)
+    r = env.run("/img/a.jpg", reupload_deleted=True)
+    assert r.counters["failed"] == 1 and r.counters["deleted_in_immich"] == 0
+    assert any(e.get("reason") == "restore_failed" for e in env.events)
+
+
+def _ids(engine: Engine) -> list[bytes | None]:
+    with engine.connect() as c:
+        return [r[0] for r in c.execute(select(AssetSeen.immich_asset_id))]
+
+
+def test_reupload_rebinds_null_rows_so_second_run_links(env: Env, tmp_path: Path) -> None:
+    info = a_info(env, tmp_path)
+    env.store.record(
+        target_id=1,
+        source_id=1,
+        key=b"k" * 16,
+        sha1=info.sha1,
+        phash=info.phash,
+        immich_asset_id=None,
+    )
+    r = env.run("/img/a.jpg", reupload_deleted=True)
+    assert r.counters["uploaded"] == 1 and len(env.uploads) == 1
+    r = env.run("/img/a2.jpg", reupload_deleted=True)  # same content, URL not yet seen
+    assert len(env.uploads) == 1 and r.counters["linked"] == 1
+
+
+def test_reupload_rebinds_dead_asset_id(env: Env, engine: Engine, tmp_path: Path) -> None:
+    info = a_info(env, tmp_path)
+    env.store.record(
+        target_id=1,
+        source_id=1,
+        key=b"k" * 16,
+        sha1=info.sha1,
+        phash=info.phash,
+        immich_asset_id=ASSET,
+    )
+    env.add_error = "not_found"
+    env.router.get(url__regex=rf"{BASE}/assets/.+").mock(
+        return_value=httpx.Response(404, json={"message": "gone"})
+    )
+
+    def add(request: httpx.Request) -> httpx.Response:
+        ids = json.loads(request.content)["ids"]
+        err = {"error": "not_found"} if ids == [ASSET] else {}
+        return httpx.Response(200, json=[{"id": i, "success": not err, **err} for i in ids])
+
+    env.router.put(f"{BASE}/albums/{ALBUM}/assets").mock(side_effect=add)
+    env.run("/img/a.jpg", reupload_deleted=True)
+    assert len(env.uploads) == 1
+    assert {uuid.UUID(bytes=b) for b in _ids(engine) if b} == {uuid.UUID(env.uploads[0])}
+
+
+def test_reupload_then_flag_off_links_not_deleted(env: Env, tmp_path: Path) -> None:
+    info = a_info(env, tmp_path)
+    env.store.record(
+        target_id=1,
+        source_id=1,
+        key=b"k" * 16,
+        sha1=info.sha1,
+        phash=info.phash,
+        immich_asset_id=None,
+    )
+    env.run("/img/a.jpg", reupload_deleted=True)
+    r = env.run("/img/a2.jpg", reupload_deleted=False)
+    assert r.counters["linked"] == 1 and r.counters["deleted_in_immich"] == 0
+    assert len(env.uploads) == 1

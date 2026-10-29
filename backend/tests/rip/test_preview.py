@@ -55,6 +55,7 @@ def _src(url: str, filters: FilterSpec | None = None) -> SourceSnapshot:
         backfill_mode=BackfillMode.full,
         backfill_value=None,
         allow_animated=False,
+        reupload_deleted=False,
         filters=filters or FilterSpec(),
         gdl_options={},
         proxy=None,

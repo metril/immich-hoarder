@@ -20,7 +20,7 @@ from app.auth.principal import Principal
 from app.core.crypto import SecretBox
 from app.db.engine import get_session
 from app.db.models import ImmichTarget, Perm, Source
-from app.immich.client import Album, ImmichClient, missing_permissions
+from app.immich.client import Album, ImmichClient, missing_permissions, optional_missing
 from app.immich.errors import ImmichAuthError, ImmichError, ImmichUnavailable
 from app.schemas.immich import AlbumList, AlbumOut, TargetTestOut
 from app.schemas.targets import TargetIn, TargetOut, TargetPatch
@@ -118,14 +118,18 @@ def _check_target(
     try:
         with ImmichClient(url, box.decrypt(key_enc).decode(), transport=transport) as c:
             version = c.version()
-            missing = missing_permissions(c.key_permissions())
+            perms = c.key_permissions()
+            missing = missing_permissions(perms)
+            optional = optional_missing(perms)
     except ImmichAuthError:
         return TargetTestOut(ok=False, version=version, error="unauthorized")
     except ImmichUnavailable:
         return TargetTestOut(ok=False, version=version, error="unreachable")
     except ImmichError as e:
         return TargetTestOut(ok=False, version=version, error=f"immich error {e.status}")
-    return TargetTestOut(ok=not missing, version=version, missing_permissions=missing)
+    return TargetTestOut(
+        ok=not missing, version=version, missing_permissions=missing, optional_missing=optional
+    )
 
 
 def _list_albums(

@@ -66,6 +66,7 @@ export const sourceSchema = z
     backfill_mode: z.enum(["full", "last_n", "since"]),
     backfill_value: z.string(),
     allow_animated: z.boolean(),
+    reupload_deleted: z.boolean(),
     filters,
     notify,
     gdl_options: z.string().transform((s, ctx) => {
@@ -139,6 +140,7 @@ export function defaultValues(s?: SourceOut): SourceFormValues {
     backfill_mode: s?.backfill_mode ?? "full",
     backfill_value: s?.backfill_value ?? "",
     allow_animated: s?.allow_animated ?? false,
+    reupload_deleted: s?.reupload_deleted ?? false,
     filters: emptyFilters(s?.filters),
     notify: normNotify(s?.notify),
     gdl_options: s && Object.keys(s.gdl_options).length > 0 ? JSON.stringify(s.gdl_options, null, 2) : "",

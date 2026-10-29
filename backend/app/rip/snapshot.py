@@ -18,6 +18,7 @@ class SourceSnapshot(BaseModel):
     backfill_mode: BackfillMode
     backfill_value: str | None
     allow_animated: bool
+    reupload_deleted: bool
     filters: FilterSpec
     gdl_options: dict[str, Any]
     proxy: str | None

@@ -1559,6 +1559,11 @@
             ],
             "title": "Proxy"
           },
+          "reupload_deleted": {
+            "default": false,
+            "title": "Reupload Deleted",
+            "type": "boolean"
+          },
           "schedule_cron": {
             "anyOf": [
               {
@@ -1985,6 +1990,11 @@
               }
             ],
             "title": "Proxy"
+          },
+          "reupload_deleted": {
+            "default": false,
+            "title": "Reupload Deleted",
+            "type": "boolean"
           },
           "schedule_cron": {
             "anyOf": [
@@ -2562,6 +2572,11 @@
             ],
             "title": "Proxy"
           },
+          "reupload_deleted": {
+            "default": false,
+            "title": "Reupload Deleted",
+            "type": "boolean"
+          },
           "schedule_cron": {
             "anyOf": [
               {
@@ -2873,6 +2888,10 @@
             ],
             "title": "Proxy"
           },
+          "reupload_deleted": {
+            "title": "Reupload Deleted",
+            "type": "boolean"
+          },
           "schedule_cron": {
             "anyOf": [
               {
@@ -2908,6 +2927,7 @@
           "backfill_mode",
           "backfill_value",
           "allow_animated",
+          "reupload_deleted",
           "filters",
           "notify",
           "gdl_options",
@@ -3248,6 +3268,17 @@
             ],
             "title": "Proxy"
           },
+          "reupload_deleted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reupload Deleted"
+          },
           "schedule_cron": {
             "anyOf": [
               {
@@ -3435,6 +3466,14 @@
           "ok": {
             "title": "Ok",
             "type": "boolean"
+          },
+          "optional_missing": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Optional Missing",
+            "type": "array"
           },
           "version": {
             "anyOf": [

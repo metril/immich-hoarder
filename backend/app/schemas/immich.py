@@ -5,6 +5,7 @@ class TargetTestOut(BaseModel):
     ok: bool
     version: str | None = None
     missing_permissions: list[str] = []
+    optional_missing: list[str] = []
     error: str | None = None
 
 

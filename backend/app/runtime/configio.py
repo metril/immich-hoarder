@@ -55,7 +55,7 @@ SHARE_MODELS: dict[str, Any] = {
 # Source columns carried through verbatim (target/credential/notify/proxy are mapped).
 SOURCE_PLAIN = (
     "name url album_template schedule_cron backfill_mode backfill_value allow_animated "
-    "filters gdl_options log_level enabled visibility"
+    "reupload_deleted filters gdl_options log_level enabled visibility"
 ).split()
 SOURCE_KEYS = {*SOURCE_PLAIN, "owner", "target", "credential", "notify", "proxy", "proxy_enc"}
 

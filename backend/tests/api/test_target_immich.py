@@ -34,6 +34,7 @@ async def test_target_test_ok_reports_missing_permissions(client: httpx.AsyncCli
         "ok": False,
         "version": "1.2.3",
         "missing_permissions": ["album.create"],
+        "optional_missing": ["asset.delete"],
         "error": None,
     }
 

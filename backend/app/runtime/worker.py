@@ -146,6 +146,23 @@ class OverlayStore:
             )
         )
 
+    def rebind_asset(
+        self, *, target_id: int, sha1: bytes, new_asset_id: str, old_asset_id: str | None
+    ) -> None:
+        with self._lock:
+            self._sha1[(target_id, sha1)] = new_asset_id
+        self._q.put(
+            (
+                "rebind",
+                {
+                    "target_id": target_id,
+                    "sha1": sha1,
+                    "new_asset_id": new_asset_id,
+                    "old_asset_id": old_asset_id,
+                },
+            )
+        )
+
 
 def _result(r: RipResult) -> dict[str, Any]:
     return {"status": r.status, "error": r.error, "counters": r.counters}
