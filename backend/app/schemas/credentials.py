@@ -1,5 +1,6 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.core.extractors import normalize_site
 from app.db.models import Credential, CredentialKind, Visibility
 
 
@@ -10,6 +11,11 @@ class CredentialIn(BaseModel):
     secret: str = Field(min_length=1)  # write-only
     visibility: Visibility = Visibility.private
 
+    @field_validator("site")
+    @classmethod
+    def _site(cls, v: str) -> str:
+        return normalize_site(v)
+
 
 class CredentialPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -17,6 +23,11 @@ class CredentialPatch(BaseModel):
     site: str | None = Field(default=None, min_length=1, max_length=255)
     kind: CredentialKind | None = None
     secret: str | None = Field(default=None, min_length=1)
+
+    @field_validator("site")
+    @classmethod
+    def _site(cls, v: str | None) -> str | None:
+        return None if v is None else normalize_site(v)
 
 
 class CredentialOut(BaseModel):

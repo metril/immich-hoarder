@@ -24,7 +24,7 @@ from app.rip.gdl import HoarderJob, capture_logs, configure, run_job
 from app.rip.media import MediaInfo, NotAnImage, analyze
 from app.rip.scrub import safe_url, scrub_data, secret_fragments
 from app.rip.settings import RipSettings
-from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot
+from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot, for_extractor
 
 _DESC_MAX = 2000
 _MIN_FREE_RATIO = 0.05
@@ -155,6 +155,9 @@ class _Rip:
 
     def log_error(self, msg: str) -> None:
         self.emit({"type": "log", "level": "error", "msg": msg, "logger": "pipeline"})
+
+    def log_warning(self, msg: str) -> None:
+        self.emit({"type": "log", "level": "warning", "msg": msg, "logger": "pipeline"})
 
     def progress(self) -> None:
         try:
@@ -447,7 +450,14 @@ class _Rip:
             self.client = ctx.client_factory(ctx.target)
             self.albums = AlbumResolver(self.client)
             self.pool = ThreadPoolExecutor(ctx.settings.upload_concurrency)
-            configure(self.src, ctx.credential, ctx.settings, self.job_dir, ctx.incremental)
+            cred = ctx.credential
+            if cred is not None and cred.site != self.src.extractor:
+                self.log_warning(
+                    f"credential site {cred.site!r} differs from this source's extractor "
+                    f"{self.src.extractor!r}; applying it to {self.src.extractor!r}"
+                )
+                cred = for_extractor(cred, self.src.extractor)
+            configure(self.src, cred, ctx.settings, self.job_dir, ctx.incremental)
             self.emit({"type": "phase", "name": "extracting"})
             with capture_logs(
                 self.emit,

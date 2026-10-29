@@ -28,6 +28,7 @@ from app.db.models import (
 from app.immich.client import ImmichClient
 from app.rip.dedupe import DedupeStore
 from app.rip.filters import FilterSpec
+from app.rip.gdl import configure
 from app.rip.media import analyze
 from app.rip.pipeline import RipContext, RipResult, _Rip, build_description, run_rip, sweep_scratch
 from app.rip.settings import RateLimit, RipSettings
@@ -543,11 +544,31 @@ def test_blocked_by_network_security_gives_hint(env: Env, monkeypatch: pytest.Mo
     assert "no credential attached" not in r.error
 
 
+def test_credential_with_other_site_label_is_applied_to_extractor(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[Any] = []
+    real = configure
+
+    def spy(src: Any, cred: Any, *a: Any, **kw: Any) -> None:
+        seen.append(cred)
+        real(src, cred, *a, **kw)
+
+    monkeypatch.setattr("app.rip.pipeline.configure", spy)
+    cred = CredentialSnapshot(
+        site="reddit.com", kind=CredentialKind.token, secret=SecretStr(json.dumps({"token": "x"}))
+    )
+    env.run("/img/a.jpg", credential=cred)
+    assert seen and seen[0].site == "directlink"
+    warnings = [e for e in env.events if e.get("type") == "log" and e.get("level") == "warning"]
+    assert any("differs from" in str(e.get("msg")) for e in warnings)
+
+
 def test_reddit_cookies_missing_session_fails_with_message(env: Env) -> None:
     cred = CredentialSnapshot(
         site="reddit",
         kind=CredentialKind.cookies,
         secret=SecretStr(".reddit.com\tTRUE\t/\tTRUE\t0\tloid\tabc\n"),
     )
-    r = env.run("/img/a.jpg", credential=cred)
+    r = env.run("/img/a.jpg", credential=cred, extractor="reddit")
     assert r.status == "failed" and r.error and "missing reddit_session" in r.error

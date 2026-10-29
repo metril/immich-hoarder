@@ -34,3 +34,14 @@ class CredentialSnapshot(BaseModel):
     site: str
     kind: CredentialKind
     secret: SecretStr
+
+
+def for_extractor(cred: CredentialSnapshot, extractor: str) -> CredentialSnapshot:
+    """The credential attached to a source always applies to that source's extractor.
+
+    gallery-dl scopes options per extractor name, so a credential whose `site` label
+    differs (e.g. "reddit.com" vs "reddit") would otherwise be silently ignored.
+    """
+    if cred.site == extractor:
+        return cred
+    return CredentialSnapshot(site=extractor, kind=cred.kind, secret=cred.secret)

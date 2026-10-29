@@ -17,7 +17,7 @@ from app.rip.filters import check_meta
 from app.rip.gdl import HoarderJob, capture_logs, configure, run_job
 from app.rip.scrub import scrub, secret_fragments
 from app.rip.settings import RipSettings
-from app.rip.snapshot import CredentialSnapshot, SourceSnapshot
+from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, for_extractor
 
 PREVIEW_MAX = 50
 
@@ -89,6 +89,8 @@ def preview(
         if ev.get("level") == "error":
             errors.append(str(ev.get("msg", "")))
 
+    if cred is not None:
+        cred = for_extractor(cred, src.extractor)
     configure(src, cred, settings, job_dir, incremental=False)
     config.set(("extractor",), "download", False)
     with capture_logs(
