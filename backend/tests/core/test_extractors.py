@@ -190,3 +190,24 @@ def test_blocklist_rejects(opts: dict[Any, Any]) -> None:
 def test_review_fixes_rejected(opts: dict[str, Any]) -> None:
     with pytest.raises(ValueError):
         validate_gdl_options(opts)
+
+
+@pytest.mark.parametrize(
+    ("raw", "want"),
+    [
+        ("reddit", "reddit"),
+        ("  Reddit ", "reddit"),
+        ("reddit.com", "reddit"),
+        ("www.reddit.com", "reddit"),
+        ("old.reddit.com", "reddit"),
+        ("https://reddit.com", "reddit"),
+        ("https://www.reddit.com/r/pics?x=1", "reddit"),
+        ("imgur.com", "imgur"),
+        ("apprise", "apprise"),
+        ("not-a-known-site.example", "not-a-known-site.example"),
+    ],
+)
+def test_normalize_site(raw: str, want: str) -> None:
+    from app.core.extractors import normalize_site
+
+    assert normalize_site(raw) == want

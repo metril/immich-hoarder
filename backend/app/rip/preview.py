@@ -17,7 +17,7 @@ from app.rip.filters import check_meta
 from app.rip.gdl import HoarderJob, capture_logs, configure, run_job
 from app.rip.scrub import scrub, secret_fragments
 from app.rip.settings import RipSettings
-from app.rip.snapshot import CredentialSnapshot, SourceSnapshot
+from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, for_extractor
 
 PREVIEW_MAX = 50
 
@@ -89,18 +89,20 @@ def preview(
         if ev.get("level") == "error":
             errors.append(str(ev.get("msg", "")))
 
+    if cred is not None:
+        cred = for_extractor(cred, src.extractor)
     configure(src, cred, settings, job_dir, incremental=False)
     config.set(("extractor",), "download", False)
-    job = HoarderJob(
-        src.url,
-        archive_check=lambda _k: False,
-        on_discovered=on_discovered,
-        on_file=lambda _p, _m: None,
-        cancel=Event(),
-    )
     with capture_logs(
         collect, "error", categories=(src.extractor,), fragments=secret_fragments(cred)
     ):
+        job = HoarderJob(
+            src.url,
+            archive_check=lambda _k: False,
+            on_discovered=on_discovered,
+            on_file=lambda _p, _m: None,
+            cancel=Event(),
+        )
         status = run_job(job, src, settings)
     if status != 0 and not items:
         raise PreviewError(_summary(errors, status, cred))

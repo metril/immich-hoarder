@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth.authz import visible_to
 from app.auth.principal import Principal
 from app.core.crypto import SecretBox
+from app.core.extractors import normalize_site
 from app.db.models import Credential, CredentialKind, ImmichTarget, Perm, Source, User
 from app.rip.filters import FilterSpec
 from app.rip.settings import load_rip_settings
@@ -45,7 +46,7 @@ async def credential_snapshot(
     if cred is None:
         raise HTTPException(422, "invalid credential")
     return CredentialSnapshot(
-        site=cred.site, kind=cred.kind, secret=box.decrypt(cred.secret_enc).decode()
+        site=normalize_site(cred.site), kind=cred.kind, secret=box.decrypt(cred.secret_enc).decode()
     )
 
 

@@ -24,7 +24,7 @@ from app.rip.gdl import HoarderJob, capture_logs, configure, run_job
 from app.rip.media import MediaInfo, NotAnImage, analyze
 from app.rip.scrub import safe_url, scrub_data, secret_fragments
 from app.rip.settings import RipSettings
-from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot
+from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot, for_extractor
 
 _DESC_MAX = 2000
 _MIN_FREE_RATIO = 0.05
@@ -105,9 +105,13 @@ def build_description(meta: dict[str, Any]) -> str:
 
 _BLOCKED = "blocked by network security"
 _BLOCKED_HINT = (
-    "Reddit blocks non-browser TLS fingerprints; chrome ciphers are applied by default. "
-    'Try source gallery-dl options {"reddit": {"browser": "firefox"}}, or add logged-in '
-    "cookies / an OAuth credential"
+    "Reddit blocked the request. From most networks Reddit now requires a logged-in session: "
+    "attach a reddit cookies credential to this source (chrome ciphers are already applied). "
+    'Otherwise try gallery-dl options {"reddit": {"browser": "firefox"}} or an OAuth credential'
+)
+_BLOCKED_NO_CRED = (
+    "Reddit blocked the request and this source has no credential attached: "
+    "create a reddit cookies credential and select it on the source"
 )
 
 
@@ -151,6 +155,9 @@ class _Rip:
 
     def log_error(self, msg: str) -> None:
         self.emit({"type": "log", "level": "error", "msg": msg, "logger": "pipeline"})
+
+    def log_warning(self, msg: str) -> None:
+        self.emit({"type": "log", "level": "warning", "msg": msg, "logger": "pipeline"})
 
     def progress(self) -> None:
         try:
@@ -443,14 +450,14 @@ class _Rip:
             self.client = ctx.client_factory(ctx.target)
             self.albums = AlbumResolver(self.client)
             self.pool = ThreadPoolExecutor(ctx.settings.upload_concurrency)
-            configure(self.src, ctx.credential, ctx.settings, self.job_dir, ctx.incremental)
-            job = HoarderJob(
-                self.src.url,
-                archive_check=lambda k: ctx.store.url_seen(self.src.id, k),
-                on_discovered=self.on_discovered,
-                on_file=self.on_file,
-                cancel=self.cancel,
-            )
+            cred = ctx.credential
+            if cred is not None and cred.site != self.src.extractor:
+                self.log_warning(
+                    f"credential site {cred.site!r} differs from this source's extractor "
+                    f"{self.src.extractor!r}; applying it to {self.src.extractor!r}"
+                )
+                cred = for_extractor(cred, self.src.extractor)
+            configure(self.src, cred, ctx.settings, self.job_dir, ctx.incremental)
             self.emit({"type": "phase", "name": "extracting"})
             with capture_logs(
                 self.emit,
@@ -458,6 +465,14 @@ class _Rip:
                 categories=(self.src.extractor,),
                 fragments=self.fragments,
             ):
+                # inside the capture so the "Using <Extractor>" line obeys the job log level
+                job = HoarderJob(
+                    self.src.url,
+                    archive_check=lambda k: ctx.store.url_seen(self.src.id, k),
+                    on_discovered=self.on_discovered,
+                    on_file=self.on_file,
+                    cancel=self.cancel,
+                )
                 gdl_status = run_job(job, self.src, ctx.settings)
         except CredentialError as e:
             self.log_error(str(e))
@@ -487,9 +502,10 @@ class _Rip:
                 self.counters[k] for k in ("uploaded", "linked", "filtered", "deleted_in_immich")
             )
             if error is None and gdl_status != 0 and ok == 0:
-                error = (
-                    _BLOCKED_HINT if self.blocked else f"gallery-dl exited with status {gdl_status}"
-                )
+                if self.blocked:
+                    error = _BLOCKED_NO_CRED if ctx.credential is None else _BLOCKED_HINT
+                else:
+                    error = f"gallery-dl exited with status {gdl_status}"
             status = "failed" if error else "succeeded"
         self.emit({"type": "phase", "name": "done"})
         return RipResult(counters=dict(self.counters), status=status, error=error)

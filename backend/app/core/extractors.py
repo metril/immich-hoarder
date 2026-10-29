@@ -180,6 +180,22 @@ def _check_option(key: Any, val: Any) -> None:
         raise ValueError(f"gdl option value not allowed: {key}")
 
 
+def normalize_site(value: str) -> str:
+    """Map a credential's site to a gallery-dl extractor name.
+
+    Accepts the bare name ("reddit"), a host ("reddit.com", "www.reddit.com") or a URL
+    ("https://reddit.com/r/pics"). Unknown values are only lowercased and trimmed.
+    """
+    s = value.strip().lower()
+    for prefix in ("https://", "http://"):
+        s = s.removeprefix(prefix)
+    s = s.split("/", 1)[0].split("?", 1)[0].removeprefix("www.").removeprefix("old.")
+    if not s or s in _categories():
+        return s
+    head = s.split(".", 1)[0]
+    return head if head in _categories() else s
+
+
 def validate_gdl_options(opts: dict[str, Any]) -> dict[str, Any]:
     for key, val in opts.items():
         if isinstance(key, str) and key in _categories() and not isinstance(val, dict):

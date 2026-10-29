@@ -9,6 +9,7 @@ import { FormField, FormRootError } from "../../components/common/FormField";
 import { SecretInput } from "../../components/common/SecretInput";
 import { omitEmpty } from "../../components/common/omitEmpty";
 import { useApiForm } from "../../components/common/useApiForm";
+import { useExtractors } from "../sources/hooks";
 import { useCreateCredential, useUpdateCredential, type CredentialIn, type CredentialKind, type CredentialOut } from "./hooks";
 
 const KIND_HELP = {
@@ -43,6 +44,7 @@ function Fields({
 }) {
   const e = form.formState.errors;
   const kind = form.watch("kind");
+  const { data: extractors } = useExtractors();
   const site = form.watch("site").trim().toLowerCase();
   const redditHelp = site === "reddit" && (kind === "cookies" || kind === "oauth") ? REDDIT_HELP[kind] : "";
   const base = saved && kind === "cookies" ? `${KIND_HELP[kind]} Saved — enter a new value to replace.` : KIND_HELP[kind];
@@ -53,9 +55,14 @@ function Fields({
       <FormField label="Name" error={e.name?.message}>
         <Input {...form.register("name")} />
       </FormField>
-      <FormField label="Site" error={e.site?.message}>
-        <Input {...form.register("site")} />
+      <FormField label="Site" error={e.site?.message} hint="gallery-dl site name, e.g. reddit (a host like reddit.com is accepted)">
+        <Input list="credential-sites" {...form.register("site")} />
       </FormField>
+      <datalist id="credential-sites">
+        {(extractors?.items ?? []).map((x) => (
+          <option key={x.category} value={x.category} />
+        ))}
+      </datalist>
       <FormField label="Kind" error={e.kind?.message}>
         <Select {...form.register("kind")}>
           {KINDS.map((k) => (
