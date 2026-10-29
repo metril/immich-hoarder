@@ -1,3 +1,4 @@
+import { toast } from "sonner";
 import { useEffect, useMemo, useState } from "react";
 import { getRouteApi, useNavigate } from "@tanstack/react-router";
 import { MoreHorizontal, Search } from "lucide-react";
@@ -21,7 +22,7 @@ import { PreviewPanel } from "./PreviewPanel";
 import { RipDialog } from "./RipDialog";
 import { RunDialog } from "./RunDialog";
 import { SourceSheet } from "./SourceSheet";
-import { useDeleteSource, useSources, useToggleSource, type SourceIn, type SourceOut } from "./hooks";
+import { useDeleteSource, useForgetSeen, useSources, useToggleSource, type SourceIn, type SourceOut } from "./hooks";
 
 const route = getRouteApi("/_app/sources");
 
@@ -94,6 +95,8 @@ function EnabledSwitch({ s }: { s: SourceOut }) {
 
 function Actions({ s }: { s: SourceOut }) {
   const del = useDeleteSource();
+  const forget = useForgetSeen();
+  const [confirmForget, setConfirmForget] = useState(false);
   const me = useMe().data;
   const navigate = useNavigate();
   const [preview, setPreview] = useState(false);
@@ -109,10 +112,25 @@ function Actions({ s }: { s: SourceOut }) {
         {s.can_edit && (
           <MenuItem aria-label={`Edit ${s.name}`} onAction={() => void navigate({ to: "/sources", search: (p) => ({ ...p, edit: s.id }) })}>Edit</MenuItem>
         )}
+        {s.can_edit && <MenuItem aria-label={`Forget seen URLs for ${s.name}`} onAction={() => setConfirmForget(true)}>Forget seen URLs</MenuItem>}
         {owns && <MenuItem aria-label={`Delete ${s.name}`} className="text-destructive" onAction={() => setConfirm(true)}>Delete</MenuItem>}
       </Menu>
       <PreviewDialog s={s} open={preview} onOpenChange={setPreview} />
       {owns && <SharingDialog resource="sources" id={s.id} ownerId={s.owner_id} name={s.name} open={share} onOpenChange={setShare} hideTrigger />}
+      {s.can_edit && (
+        <ConfirmDialog
+          open={confirmForget}
+          onOpenChange={setConfirmForget}
+          title={`Forget seen URLs for ${s.name}?`}
+          body="The next run re-processes every item, re-linking assets the target already has. Deletions in Immich are not undone. Not allowed while a job is active."
+          confirmLabel="Forget"
+          onConfirm={() =>
+            forget.mutateAsync(s.id).then((r) => {
+              toast.success(`Forgot ${r.forgotten} seen URL${r.forgotten === 1 ? "" : "s"}`);
+            })
+          }
+        />
+      )}
       {owns && (
         <ConfirmDialog
           open={confirm}

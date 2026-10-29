@@ -577,6 +577,28 @@ export interface paths {
         patch: operations["patch_source_api_v1_sources__obj_id__patch"];
         trace?: never;
     };
+    "/api/v1/sources/{obj_id}/forget-seen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Forget Seen
+         * @description Detach this source's seen-URL rows so the next run re-processes everything.
+         *
+         *     Rows are kept (source_id -> NULL): sha1/phash still drive per-target dedupe.
+         */
+        post: operations["forget_seen_api_v1_sources__obj_id__forget_seen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sources/{obj_id}/shares": {
         parameters: {
             query?: never;
@@ -3197,6 +3219,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    forget_seen_api_v1_sources__obj_id__forget_seen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                obj_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: number;
+                    };
                 };
             };
             /** @description Validation Error */

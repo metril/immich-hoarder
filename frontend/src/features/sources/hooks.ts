@@ -93,6 +93,14 @@ export function useDeleteSource() {
   });
 }
 
+export function useForgetSeen() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => unwrap(await api.POST("/api/v1/sources/{obj_id}/forget-seen", { params: { path: { obj_id: id } } })),
+    onSuccess: (_d, id) => invalidateSource(qc, id),
+  });
+}
+
 export function useRunSource() {
   const qc = useQueryClient();
   return useMutation({

@@ -5389,6 +5389,53 @@
         ]
       }
     },
+    "/api/v1/sources/{obj_id}/forget-seen": {
+      "post": {
+        "description": "Detach this source's seen-URL rows so the next run re-processes everything.\n\nRows are kept (source_id -> NULL): sha1/phash still drive per-target dedupe.",
+        "operationId": "forget_seen_api_v1_sources__obj_id__forget_seen_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "obj_id",
+            "required": true,
+            "schema": {
+              "title": "Obj Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "integer"
+                  },
+                  "title": "Response Forget Seen Api V1 Sources  Obj Id  Forget Seen Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Forget Seen",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
     "/api/v1/sources/{obj_id}/shares": {
       "get": {
         "operationId": "get_shares_api_v1_sources__obj_id__shares_get",

@@ -138,3 +138,77 @@ async def test_scheduler_failure_does_not_500(client: httpx.AsyncClient) -> None
     r = await client.post("/api/v1/sources", json={**SRC, "target_id": tid}, headers=h)
     assert r.status_code == 201
     assert (await client.get(f"/api/v1/sources/{r.json()['id']}", headers=h)).status_code == 200
+
+
+async def _seen(sid: int, tid: int, n: int, sha1: bytes | None = None) -> None:
+    from app.db.engine import session_scope
+    from app.db.models import AssetSeen
+
+    async with session_scope() as s:
+        for i in range(n):
+            s.add(
+                AssetSeen(
+                    target_id=tid,
+                    source_id=sid,
+                    url_hash=bytes([i]) * 16,
+                    sha1=sha1,
+                    seen_at=1,
+                )
+            )
+
+
+async def _count(sid: int | None) -> int:
+    from sqlalchemy import func, select
+
+    from app.db.engine import session_scope
+    from app.db.models import AssetSeen
+
+    async with session_scope() as s:
+        cond = AssetSeen.source_id.is_(None) if sid is None else AssetSeen.source_id == sid
+        return int(await s.scalar(select(func.count()).select_from(AssetSeen).where(cond)) or 0)
+
+
+async def _mk(c: httpx.AsyncClient, h: dict[str, str], tid: int) -> int:
+    r = await c.post("/api/v1/sources", json={**SRC, "target_id": tid}, headers=h)
+    return int(r.json()["id"])
+
+
+async def test_forget_seen_detaches_only_this_source(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    tid = await _target(client, h)
+    s1, s2 = await _mk(client, h, tid), await _mk(client, h, tid)
+    await _seen(s1, tid, 3, sha1=b"s" * 20)
+    await _seen(s2, tid, 2)
+    r = await client.post(f"/api/v1/sources/{s1}/forget-seen", headers=h)
+    assert r.status_code == 200 and r.json() == {"forgotten": 3}
+    assert await _count(s1) == 0 and await _count(s2) == 2
+    assert await _count(None) == 3  # rows kept (sha1 dedupe intact)
+    r = await client.post(f"/api/v1/sources/{s1}/forget-seen", headers=h)
+    assert r.json() == {"forgotten": 0}
+
+
+async def test_forget_seen_permissions_and_404(client: httpx.AsyncClient) -> None:
+    _, ha = await actor("a")
+    _, hb = await actor("b")
+    tid = await _target(client, ha)
+    sid = await _mk(client, ha, tid)
+    assert (await client.post(f"/api/v1/sources/{sid}/forget-seen", headers=hb)).status_code in (
+        403,
+        404,
+    )
+    assert (await client.post("/api/v1/sources/9999/forget-seen", headers=ha)).status_code == 404
+
+
+async def test_forget_seen_409_with_active_job(client: httpx.AsyncClient) -> None:
+    from app.db.engine import session_scope
+    from app.db.models import Job, JobStatus
+
+    _, h = await actor("a")
+    tid = await _target(client, h)
+    sid = await _mk(client, h, tid)
+    await _seen(sid, tid, 1)
+    async with session_scope() as s:
+        s.add(Job(source_id=sid, status=JobStatus.queued))
+    r = await client.post(f"/api/v1/sources/{sid}/forget-seen", headers=h)
+    assert r.status_code == 409
+    assert await _count(sid) == 1
