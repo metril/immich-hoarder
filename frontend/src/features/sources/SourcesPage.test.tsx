@@ -34,10 +34,21 @@ function setup(route = "/sources", sources: unknown[] = [s3]) {
 
 describe("sources page", () => {
   it("lists sources with target name and schedule", async () => {
+    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(0);
     setup();
     expect(await screen.findByText("Cats")).toBeInTheDocument();
     expect(await screen.findByText("Home")).toBeInTheDocument();
-    expect(screen.getByText(/03:00/)).toBeInTheDocument();
+    expect(await screen.findByText(/03:00/)).toBeInTheDocument();
+  });
+
+  it("describes the schedule in local time (cron is stored as UTC)", async () => {
+    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(300); // UTC-5
+    setup();
+    expect(await screen.findByText("Cats")).toBeInTheDocument();
+    // "0 3 * * *" UTC is 22:00 the previous day at UTC-5
+    const el = await screen.findByText(/22:00/);
+    expect(el).toBeInTheDocument();
+    expect(el.closest("[title]")?.getAttribute("title")).toBe("0 3 * * * (UTC)");
   });
 
   it("enabled switch is optimistic", async () => {

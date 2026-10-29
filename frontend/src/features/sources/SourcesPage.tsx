@@ -26,6 +26,8 @@ import { useDeleteSource, useForgetSeen, useSources, useToggleSource, type Sourc
 
 const route = getRouteApi("/_app/sources");
 
+import { buildLocal, localOffset, parse } from "./cron";
+
 type Cronstrue = typeof import("cronstrue").default;
 let cronLib: Cronstrue | null = null;
 
@@ -42,13 +44,18 @@ function Schedule({ cron }: { cron: string | null }) {
     return () => { live = false; };
   }, [cron, lib]);
   if (!cron) return <Truncate>Manual</Truncate>;
+  // Stored crons are UTC; describe builder schedules in local time like the editor does,
+  // and label anything that cannot be converted as UTC.
+  const spec = parse(cron, localOffset());
+  const local = spec.mode === "custom" ? null : buildLocal(spec);
   let text = cron;
   if (lib) {
     try {
-      text = lib.c.toString(cron, { use24HourTimeFormat: true, verbose: false });
+      text = lib.c.toString(local ?? cron, { use24HourTimeFormat: true, verbose: false });
+      if (!local) text += " (UTC)";
     } catch { /* keep raw */ }
   }
-  return <Truncate title={cron}>{text}</Truncate>;
+  return <Truncate title={`${cron} (UTC)`}>{text}</Truncate>;
 }
 
 function draftOf(s: SourceOut): SourceIn {
