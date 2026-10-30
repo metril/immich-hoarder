@@ -165,7 +165,7 @@ export interface paths {
         };
         /**
          * List API keys
-         * @description Lists active keys (all keys for admins, own keys otherwise). Requires `keys:read`.
+         * @description Lists active keys (all for admins, own otherwise). Requires `keys:read`.
          */
         get: operations["list_keys_api_v1_api_keys_get"];
         put?: never;

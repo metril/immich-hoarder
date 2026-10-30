@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +28,7 @@ def _out(k: ApiKey) -> ApiKeyOut:
     )
 
 
-def _check_grantable(p: Principal, scopes: list[str]) -> None:
+def _check_grantable(p: Principal, scopes: Sequence[str]) -> None:
     if "admin" in scopes and not p.is_admin:
         raise HTTPException(403, "admin scope requires an admin")
     if p.scopes is not None and not p.is_admin and not set(scopes) <= p.scopes:
@@ -122,7 +124,7 @@ async def update_key(
     if body.name is not None:
         key.name = body.name
     if body.scopes is not None:
-        scopes = sorted(set(body.scopes))
+        scopes: list[str] = sorted(set(body.scopes))
         _check_grantable(p, scopes)
         key.scopes = scopes
     await session.flush()

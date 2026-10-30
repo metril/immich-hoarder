@@ -4144,7 +4144,7 @@
     },
     "/api/v1/api-keys": {
       "get": {
-        "description": "Lists active keys (all keys for admins, own keys otherwise). Requires `keys:read`.",
+        "description": "Lists active keys (all for admins, own otherwise). Requires `keys:read`.",
         "operationId": "list_keys_api_v1_api_keys_get",
         "parameters": [
           {
