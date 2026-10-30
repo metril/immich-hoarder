@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime
 from typing import Literal
 
 import anyio.to_thread
@@ -20,6 +19,7 @@ from app.db.models import ImmichTarget, Job, JobItem, Perm, Source
 from app.immich.client import ImmichClient
 from app.immich.errors import AssetGone, ImmichAuthError, ImmichError, ImmichUnavailable
 from app.runtime.visibility import visible_jobs_stmt
+from app.schemas import UtcDatetime
 
 _IMAGE_TYPES = {"image/jpeg", "image/webp", "image/png", "image/avif", "image/gif"}
 
@@ -34,7 +34,7 @@ class UploadOut(BaseModel):
     immich_asset_id: str | None
     url: str
     outcome: str
-    created_at: datetime | None
+    created_at: UtcDatetime | None
 
 
 @router.get("/uploads", response_model=Page[UploadOut])
