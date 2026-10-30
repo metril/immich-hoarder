@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.0](https://github.com/metril/immich-hoarder/compare/v0.9.0...v0.10.0) (2026-10-30)
+
+
+### Features
+
+* **api:** manage local users ([#39](https://github.com/metril/immich-hoarder/issues/39)) ([6a0e106](https://github.com/metril/immich-hoarder/commit/6a0e106acd59ee467c7eec856c37599fc71d9bc6))
+
 ## [0.9.0](https://github.com/metril/immich-hoarder/compare/v0.8.0...v0.9.0) (2026-10-30)
 
 
