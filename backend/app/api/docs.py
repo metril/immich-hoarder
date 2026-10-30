@@ -44,8 +44,9 @@ case-insensitive substring.
 
 ## Errors
 
-Errors are JSON `{"detail": "message"}` with the matching HTTP status. Validation failures are 422 with
-`{"detail": [{"loc": [...], "msg": "...", "type": "..."}]}`. A few errors carry extra context in `detail`
+Errors are JSON `{"detail": "message"}` with the matching HTTP status. A 422 is either a request
+validation failure, `{"detail": [{"loc": [...], "msg": "...", "type": "..."}]}`, or a rule violation with a
+string detail such as `{"detail": "invalid cursor"}`. A few errors carry extra context in `detail`
 (for example a 409 with the id of the already-active job). Rate-limited calls return 429, with
 `Retry-After` on login.
 
@@ -107,7 +108,7 @@ class ValidationIssue(BaseModel):
 
 
 class ValidationErrorResponse(BaseModel):
-    """Body of a 422 response."""
+    """Body of a 422 caused by request validation (other 422s use ErrorResponse)."""
 
     detail: list[ValidationIssue] = Field(description="One entry per invalid field.")
 
@@ -538,7 +539,16 @@ def enrich(schema: dict[str, Any]) -> None:
     """Merge OPS docs, error bodies and non-JSON success responses into a generated schema."""
     comps = schema.setdefault("components", {}).setdefault("schemas", {})
     err = _error_content(comps, ErrorResponse)
-    verr = _error_content(comps, ValidationErrorResponse)
+    verr = {
+        "application/json": {
+            "schema": {
+                "anyOf": [
+                    _model_ref(comps, ValidationErrorResponse),
+                    _model_ref(comps, ErrorResponse),
+                ]
+            }
+        }
+    }
     for path, item in schema["paths"].items():
         for op in item.values():
             doc = OPS.get(op["operationId"])

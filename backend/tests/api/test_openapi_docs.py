@@ -82,3 +82,45 @@ def test_metrics_documents_scope_and_text(doc: dict[str, Any]) -> None:
     op = doc["paths"]["/metrics"]["get"]
     assert "metrics:read" in op["description"]
     assert "text/plain" in op["responses"]["200"]["content"]
+
+
+def test_422_schema_accepts_both_body_shapes(doc: dict[str, Any]) -> None:
+    from pydantic import TypeAdapter
+
+    from app.api.docs import ErrorResponse, ValidationErrorResponse
+
+    resp = doc["paths"]["/api/v1/targets"]["get"]["responses"]["422"]
+    refs = {
+        r["$ref"].rsplit("/", 1)[1] for r in resp["content"]["application/json"]["schema"]["anyOf"]
+    }
+    assert refs == {"ValidationErrorResponse", "ErrorResponse"}
+    ta = TypeAdapter(ValidationErrorResponse | ErrorResponse)
+    ta.validate_python({"detail": [{"loc": ["query", "limit"], "msg": "bad", "type": "x"}]})
+    ta.validate_python({"detail": "invalid cursor"})
+
+
+async def test_real_422_bodies_match_documented_models(settings: Settings) -> None:
+    import httpx
+    from helpers import actor
+    from pydantic import TypeAdapter
+
+    from app.api.docs import ErrorResponse, ValidationErrorResponse
+    from app.db.models import Role
+
+    app = create_app(settings)
+    app.state.runtime_enabled = False
+    ta = TypeAdapter(ValidationErrorResponse | ErrorResponse)
+    async with (
+        app.router.lifespan_context(app),
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as c,
+    ):
+        _, h = await actor("adm", Role.admin)
+        bad_cursor = await c.get("/api/v1/targets", params={"cursor": "!!"}, headers=h)
+        bad_body = await c.post("/api/v1/targets", json={}, headers=h)
+    for r in (bad_cursor, bad_body):
+        assert r.status_code == 422
+        ta.validate_python(r.json())
+    assert isinstance(bad_cursor.json()["detail"], str)
+    assert isinstance(bad_body.json()["detail"], list)
