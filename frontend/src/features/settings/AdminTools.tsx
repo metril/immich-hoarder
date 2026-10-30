@@ -9,13 +9,131 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Truncate } from "@/components/ui/truncate";
 import { useMediaQuery } from "../../components/common/useMediaQuery";
 import { fmtBytes } from "../sources/schema";
-import { downloadExport, importYaml, useBackup, useBackups, usePrune, type ImportResult } from "./hooks";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  downloadBackup,
+  downloadExport,
+  importYaml,
+  useBackup,
+  useBackups,
+  useCancelRestore,
+  useDeleteBackup,
+  usePrune,
+  useRestoreBackup,
+  type ImportResult,
+} from "./hooks";
 
 const MAX_IMPORT = 5 * 1024 * 1024;
+
+const RESTORE_WORD = "RESTORE";
+
+function RestoreDialog({ name, onClose }: { name: string; onClose: () => void }) {
+  const restore = useRestoreBackup();
+  const [typed, setTyped] = useState("");
+  const [restart, setRestart] = useState(false);
+  const go = () =>
+    restore.mutate(
+      { name, restart },
+      {
+        onSuccess: (r) => {
+          toast.success(r.restarting ? "Restore staged; restarting" : "Restore staged; restart the app to apply it");
+          onClose();
+        },
+        onError: (e) =>
+          toast.error(
+            e instanceof ApiError && e.status === 409 ? `Cannot restore now: ${e.message}` : e.message,
+          ),
+      },
+    );
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Restore {name}?</DialogTitle>
+        </DialogHeader>
+        <DialogBody className="grid gap-3">
+          <DialogDescription>
+            The backup replaces the current database the next time the app starts. Anything changed since
+            the backup is lost (the current database is kept as a pre-restore file) and everyone is signed out.
+          </DialogDescription>
+          <label className="grid gap-1 text-sm">
+            <span>Type {RESTORE_WORD} to confirm</span>
+            <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoComplete="off" />
+          </label>
+          <label className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={restart} onChange={(e) => setRestart(e.target.checked)} />
+            Restart the app now (needs an automatic restart policy)
+          </label>
+        </DialogBody>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline">Cancel</Button>
+          </DialogClose>
+          <Button variant="destructive" loading={restore.isPending} disabled={typed !== RESTORE_WORD} onClick={go}>
+            Restore
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BackupActions({ name, onRestore }: { name: string; onRestore: (n: string) => void }) {
+  const del = useDeleteBackup();
+  const [delOpen, setDelOpen] = useState(false);
+  return (
+    <div className="flex flex-wrap justify-end gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        aria-label={`Download ${name}`}
+        onClick={() => void downloadBackup(name).catch((e: unknown) => toast.error(e instanceof Error ? e.message : "Download failed"))}
+      >
+        Download
+      </Button>
+      <Button variant="outline" size="sm" aria-label={`Restore ${name}`} onClick={() => onRestore(name)}>
+        Restore
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        aria-label={`Delete ${name}`}
+        className="border-destructive text-destructive hover:bg-destructive/10"
+        onClick={() => setDelOpen(true)}
+      >
+        Delete
+      </Button>
+      <ConfirmDialog
+        open={delOpen}
+        onOpenChange={setDelOpen}
+        title="Delete backup?"
+        body={`${name} will be permanently deleted.`}
+        confirmLabel="Delete"
+        destructive
+        onConfirm={async () => {
+          await del.mutateAsync(name);
+          toast.success("Backup deleted");
+        }}
+      />
+    </div>
+  );
+}
 
 function Backups() {
   const list = useBackups();
   const backup = useBackup();
+  const cancel = useCancelRestore();
+  const [restoring, setRestoring] = useState<string>();
   const narrow = useMediaQuery("(max-width: 767px)");
   const run = () =>
     backup.mutate(undefined, {
@@ -35,6 +153,20 @@ function Backups() {
         <h2 id="h-backups" className="text-base font-semibold">Backups</h2>
         <Button variant="outline" size="sm" loading={backup.isPending} onClick={run}>Back up now</Button>
       </div>
+      {list.data?.restore_pending && (
+        <div role="status" className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-destructive/50 p-3 text-sm">
+          <span>A restore is staged. Restart the app to apply it; the current database will be replaced.</span>
+          <Button
+            variant="outline"
+            size="sm"
+            loading={cancel.isPending}
+            onClick={() => cancel.mutate(undefined, { onSuccess: () => toast.success("Restore cancelled"), onError: (e) => toast.error(e.message) })}
+          >
+            Cancel restore
+          </Button>
+        </div>
+      )}
+      {restoring && <RestoreDialog name={restoring} onClose={() => setRestoring(undefined)} />}
       {list.isError ? (
         <p role="alert" className="text-sm text-destructive">{list.error.message}</p>
       ) : (list.data?.items.length ?? 0) === 0 ? (
@@ -47,6 +179,7 @@ function Backups() {
               <span className="text-xs text-muted-foreground">
                 <RelativeTime iso={b.mtime} /> · {fmtBytes(b.size)}
               </span>
+              <BackupActions name={b.file} onRestore={setRestoring} />
             </li>
           ))}
         </ul>
@@ -58,6 +191,7 @@ function Backups() {
                 <TableHead>File</TableHead>
                 <TableHead>Created</TableHead>
                 <TableHead className="text-right">Size</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -68,6 +202,7 @@ function Backups() {
                   </TableCell>
                   <TableCell><RelativeTime iso={b.mtime} /></TableCell>
                   <TableCell className="text-right">{fmtBytes(b.size)}</TableCell>
+                  <TableCell><BackupActions name={b.file} onRestore={setRestoring} /></TableCell>
                 </TableRow>
               ))}
             </TableBody>

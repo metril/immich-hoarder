@@ -281,6 +281,15 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "restore_pending": {
+            "default": false,
+            "description": "True when a restore is staged and will replace the database at next startup.",
+            "examples": [
+              false
+            ],
+            "title": "Restore Pending",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1720,6 +1729,30 @@
           }
         },
         "title": "RateLimit",
+        "type": "object"
+      },
+      "RestoreOut": {
+        "properties": {
+          "restart_required": {
+            "default": true,
+            "description": "The staged backup only takes effect after the app restarts.",
+            "examples": [
+              true
+            ],
+            "title": "Restart Required",
+            "type": "boolean"
+          },
+          "restarting": {
+            "default": false,
+            "description": "True when a graceful shutdown was scheduled (restart=true was requested).",
+            "examples": [
+              false
+            ],
+            "title": "Restarting",
+            "type": "boolean"
+          }
+        },
+        "title": "RestoreOut",
         "type": "object"
       },
       "RipIn": {
@@ -3738,6 +3771,7 @@
     },
     "/api/v1/admin/backups": {
       "get": {
+        "description": "Lists SQLite backups newest first, and whether a restore is staged.",
         "operationId": "get_backups_api_v1_admin_backups_get",
         "responses": {
           "200": {
@@ -3749,9 +3783,182 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Admin access required"
           }
         },
-        "summary": "Get Backups",
+        "summary": "List backups",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/backups/pending-restore": {
+      "delete": {
+        "description": "Discards a restore staged by the restore endpoint, so the next startup keeps the current database.",
+        "operationId": "cancel_restore_api_v1_admin_backups_pending_restore_delete",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Admin access required"
+          },
+          "404": {
+            "description": "No restore is pending"
+          }
+        },
+        "summary": "Cancel a staged restore",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/backups/{name}": {
+      "delete": {
+        "description": "Permanently deletes one backup file. The deletion is audit-logged.",
+        "operationId": "delete_backup_api_v1_admin_backups__name__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Admin access required"
+          },
+          "404": {
+            "description": "No backup with that name"
+          },
+          "422": {
+            "description": "Validation error"
+          }
+        },
+        "summary": "Delete a backup",
+        "tags": [
+          "admin"
+        ]
+      },
+      "get": {
+        "description": "Streams a SQLite backup file as an attachment. The download is audit-logged.",
+        "operationId": "download_backup_api_v1_admin_backups__name__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "The SQLite database file"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Admin access required"
+          },
+          "404": {
+            "description": "No backup with that name"
+          },
+          "422": {
+            "description": "Validation error"
+          }
+        },
+        "summary": "Download a backup",
+        "tags": [
+          "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/backups/{name}/restore": {
+      "post": {
+        "description": "Validates the backup (integrity check, known migration revision) and stages it. The live database is not touched: the staged file replaces it at the next startup, and the previous database is kept as pre-restore-<timestamp>.db. All sessions are signed out after a restore. Pass restart=true to shut the app down gracefully after responding so the container's restart policy brings it back.",
+        "operationId": "restore_backup_api_v1_admin_backups__name__restore_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "name",
+            "required": true,
+            "schema": {
+              "title": "Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "restart",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Restart",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestoreOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated"
+          },
+          "403": {
+            "description": "Admin access required"
+          },
+          "404": {
+            "description": "No backup with that name"
+          },
+          "409": {
+            "description": "A job is active, or the database is not SQLite"
+          },
+          "422": {
+            "description": "Backup is corrupt or from a newer app version"
+          },
+          "507": {
+            "description": "Could not write the staged file"
+          }
+        },
+        "summary": "Restore a backup",
         "tags": [
           "admin"
         ]

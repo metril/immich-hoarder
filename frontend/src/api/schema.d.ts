@@ -28,10 +28,77 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Backups */
+        /**
+         * List backups
+         * @description Lists SQLite backups newest first, and whether a restore is staged.
+         */
         get: operations["get_backups_api_v1_admin_backups_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/backups/pending-restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Cancel a staged restore
+         * @description Discards a restore staged by the restore endpoint, so the next startup keeps the current database.
+         */
+        delete: operations["cancel_restore_api_v1_admin_backups_pending_restore_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/backups/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download a backup
+         * @description Streams a SQLite backup file as an attachment. The download is audit-logged.
+         */
+        get: operations["download_backup_api_v1_admin_backups__name__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a backup
+         * @description Permanently deletes one backup file. The deletion is audit-logged.
+         */
+        delete: operations["delete_backup_api_v1_admin_backups__name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/backups/{name}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a backup
+         * @description Validates the backup (integrity check, known migration revision) and stages it. The live database is not touched: the staged file replaces it at the next startup, and the previous database is kept as pre-restore-<timestamp>.db. All sessions are signed out after a restore. Pass restart=true to shut the app down gracefully after responding so the container's restart policy brings it back.
+         */
+        post: operations["restore_backup_api_v1_admin_backups__name__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -911,6 +978,13 @@ export interface components {
         BackupList: {
             /** Items */
             items: components["schemas"]["BackupInfo"][];
+            /**
+             * Restore Pending
+             * @description True when a restore is staged and will replace the database at next startup.
+             * @default false
+             * @example false
+             */
+            restore_pending: boolean;
         };
         /** BackupOut */
         BackupOut: {
@@ -1405,6 +1479,23 @@ export interface components {
              * @default 1
              */
             sleep_request: number;
+        };
+        /** RestoreOut */
+        RestoreOut: {
+            /**
+             * Restart Required
+             * @description The staged backup only takes effect after the app restarts.
+             * @default true
+             * @example true
+             */
+            restart_required: boolean;
+            /**
+             * Restarting
+             * @description True when a graceful shutdown was scheduled (restart=true was requested).
+             * @default false
+             * @example false
+             */
+            restarting: boolean;
         };
         /**
          * RipIn
@@ -2071,6 +2162,223 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["BackupList"];
                 };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    cancel_restore_api_v1_admin_backups_pending_restore_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No restore is pending */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    download_backup_api_v1_admin_backups__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The SQLite database file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No backup with that name */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_backup_api_v1_admin_backups__name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No backup with that name */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    restore_backup_api_v1_admin_backups__name__restore_post: {
+        parameters: {
+            query?: {
+                restart?: boolean;
+            };
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestoreOut"];
+                };
+            };
+            /** @description Not authenticated */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Admin access required */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description No backup with that name */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A job is active, or the database is not SQLite */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Backup is corrupt or from a newer app version */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Could not write the staged file */
+            507: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

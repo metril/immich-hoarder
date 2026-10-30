@@ -8,7 +8,13 @@ An admin can take a snapshot on demand with **Backup now** in Settings, or `POST
 
 The `/data` volume holds both the live database and the snapshots, so also copy the snapshots off the host.
 
-## Restore
+## Restore from the UI or API
+
+Admins can download, delete and restore snapshots in Settings, or with `GET /api/v1/admin/backups/{name}`, `DELETE /api/v1/admin/backups/{name}` and `POST /api/v1/admin/backups/{name}/restore`. Downloads and deletions are audit-logged. Restore needs SQLite and no queued or running job (otherwise 409), and the backup must pass an integrity check and come from this or an older app version.
+
+Restore never touches the live database. It stages the backup as `restore-pending.db` next to the database and returns 202 with `restart_required: true`; the swap happens at the next start, before migrations. The old database is kept as `pre-restore-<timestamp>.db`, every user is signed out, and if the swap or migrations fail the original is put back and the app still starts. Add `?restart=true` to shut the app down gracefully after the response; this needs a restart policy such as the `restart: unless-stopped` in the compose example. Cancel a staged restore with `DELETE /api/v1/admin/backups/pending-restore`.
+
+## Restore manually
 
 ```bash
 docker compose stop immich-hoarder

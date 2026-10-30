@@ -1,9 +1,12 @@
 import asyncio
 import logging
-from typing import Literal
+from pathlib import Path
+from typing import Any, Literal
 
 import yaml
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
+from fastapi.responses import FileResponse
+from sqlalchemy import exists, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,16 +16,20 @@ from app.auth.principal import Principal
 from app.core.config import Settings
 from app.core.crypto import SecretBox
 from app.db.engine import get_session
-from app.db.models import User
+from app.db.models import Job, JobStatus, User
 from app.runtime.configio import export_config, import_config
 from app.runtime.maintenance import (
     backup_sqlite,
+    cancel_pending_restore,
     list_backups,
+    pending_path,
     prune_ephemeral_sources,
     prune_jobs,
+    resolve_backup,
+    stage_restore,
 )
 from app.runtime.settings import load_runtime_settings
-from app.schemas.admin import BackupInfo, BackupList, BackupOut, ImportResult, PruneOut
+from app.schemas.admin import BackupInfo, BackupList, BackupOut, ImportResult, PruneOut, RestoreOut
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -50,11 +57,157 @@ async def create_backup(
     return BackupOut(file=path.name)
 
 
-@router.get("/backups", response_model=BackupList)
+@router.get(
+    "/backups",
+    response_model=BackupList,
+    summary="List backups",
+    description="Lists SQLite backups newest first, and whether a restore is staged.",
+    responses={
+        401: {"description": "Not authenticated"},
+        403: {"description": "Admin access required"},
+    },
+)
 async def get_backups(request: Request, _p: Principal = Depends(require_admin)) -> BackupList:
     settings: Settings = request.app.state.settings
     rows = await asyncio.to_thread(list_backups, settings.backup_dir)
-    return BackupList(items=[BackupInfo.model_validate(r) for r in rows])
+    pending = pending_path(settings.database_url)
+    return BackupList(
+        items=[BackupInfo.model_validate(r) for r in rows],
+        restore_pending=bool(pending and pending.exists()),
+    )
+
+
+_AUTH: dict[int | str, dict[str, Any]] = {
+    401: {"description": "Not authenticated"},
+    403: {"description": "Admin access required"},
+}
+
+
+def _backup_or_404(settings: Settings, name: str) -> Path:
+    p = resolve_backup(settings.backup_dir, name)
+    if p is None:
+        raise HTTPException(404, "backup not found")
+    return p
+
+
+# Declared before /backups/{name} so the literal path wins.
+@router.delete(
+    "/backups/pending-restore",
+    status_code=204,
+    summary="Cancel a staged restore",
+    description="Discards a restore staged by the restore endpoint, so the next startup keeps "
+    "the current database.",
+    responses={**_AUTH, 404: {"description": "No restore is pending"}},
+)
+async def cancel_restore(request: Request, _p: Principal = Depends(require_admin)) -> Response:
+    settings: Settings = request.app.state.settings
+    if not await asyncio.to_thread(cancel_pending_restore, settings.database_url):
+        raise HTTPException(404, "no restore is pending")
+    return Response(status_code=204)
+
+
+@router.get(
+    "/backups/{name}",
+    summary="Download a backup",
+    description="Streams a SQLite backup file as an attachment. The download is audit-logged.",
+    response_class=FileResponse,
+    responses={
+        **_AUTH,
+        200: {
+            "description": "The SQLite database file",
+            "content": {
+                "application/octet-stream": {"schema": {"type": "string", "format": "binary"}}
+            },
+        },
+        404: {"description": "No backup with that name"},
+        422: {"description": "Validation error"},
+    },
+)
+async def download_backup(
+    name: str,
+    request: Request,
+    p: Principal = Depends(require_admin),
+    session: AsyncSession = Depends(get_session, scope="function"),
+) -> FileResponse:
+    path = _backup_or_404(request.app.state.settings, name)
+    log.info("backup %s downloaded by admin %s", path.name, await _actor(session, p))
+    return FileResponse(path, media_type="application/octet-stream", filename=path.name)
+
+
+@router.delete(
+    "/backups/{name}",
+    status_code=204,
+    summary="Delete a backup",
+    description="Permanently deletes one backup file. The deletion is audit-logged.",
+    responses={
+        **_AUTH,
+        404: {"description": "No backup with that name"},
+        422: {"description": "Validation error"},
+    },
+)
+async def delete_backup(
+    name: str,
+    request: Request,
+    p: Principal = Depends(require_admin),
+    session: AsyncSession = Depends(get_session, scope="function"),
+) -> Response:
+    path = _backup_or_404(request.app.state.settings, name)
+    path.unlink(missing_ok=True)
+    log.info("backup %s deleted by admin %s", path.name, await _actor(session, p))
+    return Response(status_code=204)
+
+
+@router.post(
+    "/backups/{name}/restore",
+    status_code=202,
+    response_model=RestoreOut,
+    summary="Restore a backup",
+    description="Validates the backup (integrity check, known migration revision) and stages it. "
+    "The live database is not touched: the staged file replaces it at the next startup, and the "
+    "previous database is kept as pre-restore-<timestamp>.db. All sessions are signed out after "
+    "a restore. Pass restart=true to shut the app down gracefully after responding so the "
+    "container's restart policy brings it back.",
+    responses={
+        **_AUTH,
+        404: {"description": "No backup with that name"},
+        409: {"description": "A job is active, or the database is not SQLite"},
+        422: {"description": "Backup is corrupt or from a newer app version"},
+        507: {"description": "Could not write the staged file"},
+    },
+)
+async def restore_backup(
+    name: str,
+    request: Request,
+    background: BackgroundTasks,
+    restart: bool = False,
+    p: Principal = Depends(require_admin),
+    session: AsyncSession = Depends(get_session, scope="function"),
+) -> RestoreOut:
+    settings: Settings = request.app.state.settings
+    if pending_path(settings.database_url) is None:
+        raise HTTPException(409, "restore is not supported for this database")
+    path = _backup_or_404(settings, name)
+    active = await session.scalar(
+        select(exists().where(Job.status.in_((JobStatus.queued, JobStatus.running))))
+    )
+    if active:
+        raise HTTPException(409, "a job is active; wait for it to finish or cancel it")
+    try:
+        await asyncio.to_thread(stage_restore, settings.database_url, path)
+    except ValueError as e:
+        raise HTTPException(422, str(e)) from None
+    except OSError as e:
+        log.error("staging restore failed: %s", type(e).__name__)
+        raise HTTPException(507, "could not stage the restore") from None
+    log.warning(
+        "restore of %s staged by admin %s (restart=%s)",
+        path.name,
+        await _actor(session, p),
+        restart,
+    )
+    if restart:
+        background.add_task(request.app.state.shutdown)
+    return RestoreOut(restart_required=True, restarting=restart)
 
 
 @router.post("/maintenance/prune", response_model=PruneOut)

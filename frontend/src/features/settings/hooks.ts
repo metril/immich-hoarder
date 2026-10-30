@@ -38,6 +38,53 @@ export function useBackup() {
   });
 }
 
+export function useDeleteBackup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (name: string) =>
+      unwrap(await api.DELETE("/api/v1/admin/backups/{name}", { params: { path: { name } } })),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.backups() }),
+  });
+}
+
+export function useRestoreBackup() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (v: { name: string; restart: boolean }) =>
+      unwrap(
+        await api.POST("/api/v1/admin/backups/{name}/restore", {
+          params: { path: { name: v.name }, query: { restart: v.restart } },
+        }),
+      ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.backups() }),
+  });
+}
+
+export function useCancelRestore() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async () => unwrap(await api.DELETE("/api/v1/admin/backups/pending-restore")),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.backups() }),
+  });
+}
+
+export async function downloadBackup(name: string): Promise<void> {
+  const blob = unwrap(
+    await api.GET("/api/v1/admin/backups/{name}", { params: { path: { name } }, parseAs: "blob" }),
+  );
+  const url = URL.createObjectURL(blob);
+  try {
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  } finally {
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+}
+
 export function usePrune() {
   return useMutation({ mutationFn: async () => unwrap(await api.POST("/api/v1/admin/maintenance/prune")) });
 }
