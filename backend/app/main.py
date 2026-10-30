@@ -33,7 +33,7 @@ from app.db.engine import dispose_engine, init_engine, session_scope
 from app.db.migrate import upgrade_head_async
 from app.db.models import Job, JobStatus, User
 from app.runtime.bus import EventBus
-from app.runtime.maintenance import apply_pending_restore, revert_restore
+from app.runtime.maintenance import apply_pending_restore, discard_database, revert_restore
 from app.runtime.metrics import Metrics
 from app.runtime.scheduler import SourceScheduler
 from app.runtime.supervisor import JobSupervisor
@@ -49,20 +49,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        saved = await asyncio.to_thread(apply_pending_restore, settings.database_url)
+        restored = await asyncio.to_thread(apply_pending_restore, settings.database_url)
         try:
             await upgrade_head_async(settings.database_url)
         except Exception:
-            if saved is None:
+            if restored is None:
                 raise
             log.error("migrating the restored database failed; reverting to the previous one")
-            await asyncio.to_thread(revert_restore, settings.database_url, saved)
-            saved = None
+            if restored.saved is not None:
+                await asyncio.to_thread(revert_restore, settings.database_url, restored.saved)
+            else:  # nothing to go back to: drop the unusable DB and start fresh
+                await asyncio.to_thread(discard_database, settings.database_url)
+            restored = None
             await upgrade_head_async(settings.database_url)
         engine = init_engine(settings.database_url)
-        if saved is not None:
-            async with session_scope() as s:  # restored sessions are not trusted
-                await s.execute(update(User).values(session_gen=User.session_gen + 1))
+        if restored is not None:
+            # Old cookies carry the replaced DB's generations; jump past both DBs' counters.
+            async with session_scope() as s:
+                await s.execute(
+                    update(User).values(
+                        session_gen=func.max(User.session_gen, restored.session_floor) + 1
+                    )
+                )
         if settings.break_glass:
             log.warning(
                 "BREAK GLASS is enabled (IH_BREAK_GLASS): local login is forced on%s; "

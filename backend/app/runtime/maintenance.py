@@ -7,6 +7,7 @@ import shutil
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import NamedTuple
 
 from sqlalchemy import delete, exists
 from sqlalchemy.engine import make_url
@@ -189,10 +190,27 @@ def _drop_sidecars(db: Path) -> None:
         Path(str(db) + suffix).unlink(missing_ok=True)
 
 
-def apply_pending_restore(db_url: str) -> Path | None:
+class RestoreResult(NamedTuple):
+    saved: Path | None  # the pre-restore DB, or None when there was no original to keep
+    session_floor: int  # highest session_gen in the replaced DB (0 if none)
+
+
+def _max_session_gen(db: Path) -> int:
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        try:
+            row = con.execute("SELECT max(session_gen) FROM users").fetchone()
+            return int(row[0] or 0)
+        finally:
+            con.close()
+    except sqlite3.Error:
+        return 0
+
+
+def apply_pending_restore(db_url: str) -> RestoreResult | None:
     """Swap a staged restore in. Call at startup before any connection is open.
 
-    Returns the path of the saved pre-restore DB when a restore was applied, else None.
+    Returns a RestoreResult when a restore was applied, else None.
     On any failure the original DB is put back and the pending file is removed.
     """
     db = sqlite_file(db_url)
@@ -207,6 +225,7 @@ def apply_pending_restore(db_url: str) -> Path | None:
         return None
     saved = db.with_name(f"pre-restore-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.db")
     moved = False
+    floor = _max_session_gen(db) if db.exists() else 0
     try:
         if db.exists():
             try:  # fold any WAL into the main file so the saved copy is complete
@@ -232,7 +251,7 @@ def apply_pending_restore(db_url: str) -> Path | None:
             raise
         return None
     log.warning("restored database from staged backup; previous database saved as %s", saved.name)
-    return saved if moved else db
+    return RestoreResult(saved if moved else None, floor)
 
 
 def revert_restore(db_url: str, saved: Path) -> None:
@@ -242,4 +261,13 @@ def revert_restore(db_url: str, saved: Path) -> None:
         return
     _drop_sidecars(db)
     os.replace(saved, db)
+    _drop_sidecars(db)
+
+
+def discard_database(db_url: str) -> None:
+    """Delete the live DB file (used when a restore without an original fails to migrate)."""
+    db = sqlite_file(db_url)
+    if db is None:
+        return
+    db.unlink(missing_ok=True)
     _drop_sidecars(db)

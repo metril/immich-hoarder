@@ -20,6 +20,7 @@ from app.runtime.maintenance import (
 )
 
 B = "/api/v1/admin/backups"
+PENDING = "restore-pending.db"
 
 
 async def _admin() -> dict[str, str]:
@@ -115,8 +116,8 @@ async def test_restore_round_trip(client: httpx.AsyncClient, settings: Settings)
     assert (await client.get(B, headers=h)).json()["restore_pending"] is True
     assert _targets(settings) == 0  # live DB untouched until restart
 
-    saved = apply_pending_restore(settings.database_url)
-    assert saved is not None and saved.exists()
+    res = apply_pending_restore(settings.database_url)
+    assert res is not None and res.saved is not None and res.saved.exists()
     assert _targets(settings) == 1
     assert not _pending(settings).exists()
 
@@ -212,9 +213,9 @@ async def test_revert_restore(client: httpx.AsyncClient, settings: Settings) -> 
     name = await _backup(client, h)
     assert (await client.post("/api/v1/targets", json=TARGET, headers=h)).status_code == 201
     await client.post(f"{B}/{name}/restore", headers=h)
-    saved = apply_pending_restore(settings.database_url)
-    assert saved is not None and _targets(settings) == 0
-    revert_restore(settings.database_url, saved)
+    res = apply_pending_restore(settings.database_url)
+    assert res is not None and res.saved is not None and _targets(settings) == 0
+    revert_restore(settings.database_url, res.saved)
     assert _targets(settings) == 1
 
 
@@ -239,3 +240,48 @@ async def test_startup_applies_restore_and_bumps_sessions(settings: Settings) ->
         row = (await s.execute(select(User.session_gen).where(User.id == aid))).scalar_one()
         assert row == before + 1
     assert list(_pending(settings).parent.glob("pre-restore-*"))
+
+
+def _seed(path: Path, gen: int) -> None:
+    con = sqlite3.connect(path)
+    con.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, session_gen INTEGER)")
+    con.execute("INSERT INTO users VALUES (1, ?)", (gen,))
+    con.commit()
+    con.close()
+
+
+def test_apply_reports_floor_and_handles_missing_original(tmp_path: Path) -> None:
+    url = f"sqlite+aiosqlite:///{tmp_path / 'live.db'}"
+    _seed(tmp_path / "live.db", 4)
+    _seed(tmp_path / PENDING, 3)
+    res = apply_pending_restore(url)
+    assert res is not None and res.session_floor == 4 and res.saved is not None
+    # no original DB at all: still reported as applied, with nothing to revert to
+    (tmp_path / "live.db").unlink()
+    _seed(tmp_path / PENDING, 3)
+    res = apply_pending_restore(url)
+    assert res is not None and res.saved is None and res.session_floor == 0
+    assert (tmp_path / "live.db").exists()
+    revert_restore(url, tmp_path / "missing.db")  # no-op, must not raise
+
+
+async def test_old_cookie_rejected_after_restore_with_lower_gen(settings: Settings) -> None:
+    app = create_app(settings)
+    app.state.runtime_enabled = False
+    async with app.router.lifespan_context(app):
+        aid, _ = await actor("adm", Role.admin)
+        h = await headers_for(aid)
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://testserver"
+        ) as c:
+            name = await _backup(c, h)  # backup has gen 0
+            assert (await c.post(f"{B}/{name}/restore", headers=h)).status_code == 202
+        async with session_scope() as s:
+            u = await s.get(User, aid)
+            assert u is not None
+            u.session_gen = 4  # live DB is ahead of the backup
+    app2 = create_app(settings)
+    app2.state.runtime_enabled = False
+    async with app2.router.lifespan_context(app2), session_scope() as s:
+        gen = (await s.execute(select(User.session_gen).where(User.id == aid))).scalar_one()
+        assert gen == 5  # a cookie with sg=4 (or restored+1 == 1) no longer matches
