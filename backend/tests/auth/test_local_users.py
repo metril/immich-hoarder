@@ -156,3 +156,22 @@ async def test_break_glass_with_pre_migration_state(settings: Settings, reset: b
                     assert u.password_hash and row and row.value["password_hash"] == u.password_hash
                 assert (await _login(c, "root", "recovered pass 1")).status_code == 200
                 assert (await _login(c, "root")).status_code == 401
+
+
+async def test_deleted_user_cookie_does_not_match_reused_id(
+    plain: httpx.AsyncClient, app_plain: FastAPI
+) -> None:
+    async with session_scope() as s:
+        await save_local_admin(s, "root", PW)
+    await _login(plain, "root")
+    h = {"X-CSRF-Token": plain.cookies["ih_csrf"]}
+    mk = {"username": "al", "password": "initial pass 1"}
+    uid = (await plain.post(f"{API}/users/local", json=mk, headers=h)).json()["id"]
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app_plain), base_url="http://testserver"
+    ) as victim:
+        assert (await _login(victim, "al", "initial pass 1")).status_code == 200
+        assert (await plain.delete(f"{API}/users/{uid}", headers=h)).status_code == 204
+        again = await plain.post(f"{API}/users/local", json={**mk, "username": "bo"}, headers=h)
+        assert again.json()["id"] == uid  # SQLite reuses the freed id
+        assert (await victim.get(f"{API}/auth/me")).status_code == 401

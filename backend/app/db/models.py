@@ -1,4 +1,5 @@
 import enum
+import secrets
 from datetime import datetime
 from typing import Any, ClassVar
 
@@ -107,7 +108,10 @@ class User(Timestamps, Base):
     role: Mapped[Role] = mapped_column(_enum(Role), default=Role.user)
     groups: Mapped[list[str]] = mapped_column(JSON, default=list)
     disabled: Mapped[bool] = mapped_column(Boolean, default=False)
-    session_gen: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # random start: SQLite reuses deleted ids, so a stale cookie must not match a new row
+    session_gen: Mapped[int] = mapped_column(
+        Integer, default=lambda: secrets.randbits(31), server_default="0"
+    )
     password_hash: Mapped[str | None] = mapped_column(String(255))
     must_change_password: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default=false()

@@ -270,6 +270,10 @@ async def test_old_cookie_rejected_after_restore_with_lower_gen(settings: Settin
     app.state.runtime_enabled = False
     async with app.router.lifespan_context(app):
         aid, _ = await actor("adm", Role.admin)
+        async with session_scope() as s:
+            u = await s.get(User, aid)
+            assert u is not None
+            u.session_gen = 0
         h = await headers_for(aid)
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app), base_url="http://testserver"

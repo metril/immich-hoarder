@@ -110,7 +110,7 @@ async def save_local_admin(session: AsyncSession, username: str, password: str) 
     sub = f"{LOCAL_PREFIX}{username}"
     user = (await session.execute(select(User).where(User.sub == sub))).scalar_one_or_none()
     if user is None:
-        user = User(sub=sub, role=Role.admin, groups=[], name=username, session_gen=0)
+        user = User(sub=sub, role=Role.admin, groups=[], name=username)
         session.add(user)
     else:
         user.session_gen += 1
