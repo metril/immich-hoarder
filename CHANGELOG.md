@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.0](https://github.com/metril/immich-hoarder/compare/v0.10.0...v0.11.0) (2026-10-30)
+
+
+### Features
+
+* **api:** complete OpenAPI documentation, Swagger auth and ReDoc ([#41](https://github.com/metril/immich-hoarder/issues/41)) ([4e8b954](https://github.com/metril/immich-hoarder/commit/4e8b9545508f4399a28901f72fe66bcc86a1f3bf))
+
 ## [0.10.0](https://github.com/metril/immich-hoarder/compare/v0.9.0...v0.10.0) (2026-10-30)
 
 
