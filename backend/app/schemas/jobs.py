@@ -1,9 +1,9 @@
-from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.db.models import Job, JobEvent, JobItem, JobStatus
+from app.schemas import UtcDatetime
 from app.schemas.sources import SourceIn
 
 LOG_LEVELS = ("trace", "debug", "info", "warn", "error")
@@ -30,9 +30,9 @@ class JobOut(BaseModel):
     counters: dict[str, Any]
     error: str | None
     triggered_by: int | None
-    created_at: datetime
-    started_at: datetime | None
-    finished_at: datetime | None
+    created_at: UtcDatetime
+    started_at: UtcDatetime | None
+    finished_at: UtcDatetime | None
 
     @classmethod
     def of(cls, j: Job, source_name: str | None) -> "JobOut":
@@ -68,7 +68,7 @@ class ItemOut(BaseModel):
 class EventOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
-    ts: datetime
+    ts: UtcDatetime
     level: str
     type: str
     data: dict[str, Any]

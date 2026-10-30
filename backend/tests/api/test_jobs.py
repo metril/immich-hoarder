@@ -390,3 +390,16 @@ async def test_get_job_returns_phase(client: httpx.AsyncClient) -> None:
         assert j
         j.phase = "draining"
     assert (await client.get(f"/api/v1/jobs/{jid}", headers=h)).json()["phase"] == "draining"
+
+
+async def test_job_datetimes_serialize_with_utc_offset(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    sid = await _src(client, h)
+    jid = (await client.post(f"/api/v1/sources/{sid}/run", headers=h)).json()["id"]
+    async with session_scope() as s:
+        j = await s.get(Job, jid)
+        assert j
+        j.started_at = j.created_at
+    j = (await client.get(f"/api/v1/jobs/{jid}", headers=h)).json()
+    for k in ("created_at", "started_at"):
+        assert j[k].endswith(("+00:00", "Z")), j[k]

@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from app.auth.principal import Scope
+from app.schemas import UtcDatetime
 
 
 class ApiKeyIn(BaseModel):
@@ -16,7 +17,7 @@ class ApiKeyOut(BaseModel):
     name: str
     prefix: str
     scopes: list[str]
-    expires_at: datetime | None
+    expires_at: UtcDatetime | None
 
 
 class ApiKeyCreated(ApiKeyOut):
