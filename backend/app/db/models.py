@@ -24,27 +24,37 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
 
 
 class Role(enum.StrEnum):
+    """User role: `admin` manages the instance, `user` manages their own resources."""
+
     admin = "admin"
     user = "user"
 
 
 class Visibility(enum.StrEnum):
+    """Who can see a resource: `private` (owner), `everyone` or `restricted` (shares)."""
+
     private = "private"
     everyone = "everyone"
     restricted = "restricted"
 
 
 class Perm(enum.StrEnum):
+    """Share permission: `use` references or runs the resource, `edit` also changes it."""
+
     use = "use"
     edit = "edit"
 
 
 class PrincipalType(enum.StrEnum):
+    """Kind of share grantee: a `user` or a `group`."""
+
     user = "user"
     group = "group"
 
 
 class JobStatus(enum.StrEnum):
+    """Job lifecycle state."""
+
     queued = "queued"
     running = "running"
     succeeded = "succeeded"
@@ -53,6 +63,8 @@ class JobStatus(enum.StrEnum):
 
 
 class CredentialKind(enum.StrEnum):
+    """How a credential's secret is used."""
+
     oauth = "oauth"
     cookies = "cookies"
     userpass = "userpass"
@@ -61,6 +73,8 @@ class CredentialKind(enum.StrEnum):
 
 
 class BackfillMode(enum.StrEnum):
+    """How much history the first run fetches: `full`, the last N items, or items since a date."""
+
     full = "full"
     last_n = "last_n"
     since = "since"

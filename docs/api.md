@@ -1,6 +1,12 @@
 # API
 
-The interactive OpenAPI docs are served at `/api/docs` on your instance (for example `https://hoarder.example.com/api/docs`), and the schema at `/api/openapi.json`.
+Every endpoint is documented in the OpenAPI schema at `/api/openapi.json` on your instance, with three views:
+
+- **Swagger UI** at `/api/docs`: click **Authorize**, paste an API key (`ApiKeyAuth`, or `BearerAuth` for a key or OIDC token) and use **Try it out**. The browser-session scheme cannot be driven from Swagger because unsafe calls also need the CSRF header; use a key.
+- **ReDoc** at `/api/redoc`: a read-only reference.
+- The [static API reference](reference/api.md) in these docs, rendered from the schema committed with each release (no running instance needed).
+
+Each operation lists the scope it needs, its error responses (all errors are `{"detail": ...}`) and, for the two job streams, the server-sent event payloads.
 
 ## Authentication
 
@@ -17,7 +23,7 @@ CSRF protection applies only to browser cookie sessions. API-key and bearer-toke
 
 ## Scopes
 
-A key can only call endpoints its scopes allow. Admin-only endpoints (`/api/v1/admin/*`, users, settings) need the `admin` scope on an admin's key.
+A key can only call endpoints its scopes allow. Admin-only endpoints (`/api/v1/admin/*`, users, settings) need the `admin` scope, or the matching `users:*` / `settings:*` scope, on an admin's key.
 
 | Scope | Allows |
 |---|---|
@@ -28,10 +34,12 @@ A key can only call endpoints its scopes allow. Admin-only endpoints (`/api/v1/a
 | `targets:write` | Create, edit and delete targets |
 | `credentials:read` | List credentials (metadata only) |
 | `credentials:write` | Create, edit and delete credentials |
-| `jobs:read` | List jobs, items, events, live streams |
-| `jobs:write` | Cancel jobs |
+| `jobs:read` | List jobs, items, events, uploads, live streams |
+| `jobs:write` | Cancel and delete jobs |
 | `keys:read` | List API keys |
-| `keys:write` | Create and revoke API keys |
+| `keys:write` | Create, edit, rotate and revoke API keys |
+| `settings:read` / `settings:write` | Read / change instance settings (admins only) |
+| `users:read` / `users:write` | List / manage users (admins only) |
 | `metrics:read` | Read `/metrics` (Prometheus) |
 | `admin` | Admin endpoints (admins only) |
 

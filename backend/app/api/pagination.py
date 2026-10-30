@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import Select, and_, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,8 +16,12 @@ DEFAULT_LIMIT = 50
 
 
 class Page[T](BaseModel):
-    items: list[T]
-    next_cursor: str | None = None
+    items: list[T] = Field(description="The page of results.")
+    next_cursor: str | None = Field(
+        default=None,
+        description="Opaque cursor for the next page; pass it as `cursor`. Null on the last page.",
+        examples=["MTIz"],
+    )
 
 
 def encode_cursor(last_id: int) -> str:

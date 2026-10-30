@@ -10,13 +10,14 @@ from contextlib import asynccontextmanager
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, PlainTextResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import __version__
+from app.api import docs
 from app.api.v1 import api_router
 from app.api.v1 import auth as auth_api
 from app.auth.authz import require_scope
@@ -130,8 +131,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version=__version__,
         docs_url="/api/docs",
         openapi_url="/api/openapi.json",
-        redoc_url=None,
+        redoc_url="/api/redoc",
+        description=docs.DESCRIPTION,
+        openapi_tags=docs.TAGS,
+        generate_unique_id_function=docs.operation_id,
     )
+    docs.install(app)
     app.state.settings = settings
     app.state.metrics = Metrics()
     app.state.runtime_enabled = True
@@ -163,11 +168,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         detail = [{k: v for k, v in e.items() if k not in ("input", "ctx")} for e in exc.errors()]
         return JSONResponse(status_code=422, content={"detail": jsonable_encoder(detail)})
 
-    @app.get("/healthz", include_in_schema=False)
+    @app.get("/healthz", tags=["ops"], response_model=docs.HealthOut)
     async def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.get("/readyz", include_in_schema=False)
+    @app.get(
+        "/readyz",
+        tags=["ops"],
+        response_model=None,
+        responses={
+            200: {"model": docs.HealthOut, "description": "All components are ready"},
+            503: {"model": docs.NotReadyOut},
+        },
+    )
     async def readyz() -> JSONResponse:
         failing: list[str] = []
 
@@ -197,7 +210,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         return JSONResponse({"status": "ok"})
 
-    @app.get("/metrics", include_in_schema=False)
+    @app.get(
+        "/metrics",
+        tags=["ops"],
+        response_class=PlainTextResponse,
+        responses={200: {"description": "Prometheus text exposition format"}},
+    )
     async def metrics(p: Principal = Depends(current_principal)) -> Response:
         if p.scopes is None:
             if not p.is_admin:  # session/JWT users: admins only

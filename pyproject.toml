@@ -112,3 +112,6 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["apscheduler.*"]
 ignore_missing_imports = true
+
+[tool.ruff.lint.per-file-ignores]
+"backend/app/api/docs.py" = ["E501"]  # documentation prose

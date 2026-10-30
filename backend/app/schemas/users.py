@@ -6,23 +6,36 @@ from app.db.models import Role
 
 class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
-    id: int
-    sub: str
-    email: str | None
-    name: str | None
-    role: Role
-    groups: list[str]
-    disabled: bool
+    id: int = Field(description="User id.", examples=[1])
+    sub: str = Field(
+        description="Stable subject: the OIDC `sub`, or `local:<username>` for local accounts.",
+        examples=["local:alice"],
+    )
+    email: str | None = Field(
+        description="Email address, when known.", examples=["alice@example.com"]
+    )
+    name: str | None = Field(description="Display name, when known.", examples=["Alice"])
+    role: Role = Field(description="The user's role.", examples=["user"])
+    groups: list[str] = Field(
+        description="Group names from the identity provider.", examples=[["hoarder-users"]]
+    )
+    disabled: bool = Field(
+        description="Disabled users cannot sign in or use API keys.", examples=[False]
+    )
 
 
 class UserPatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    disabled: bool | None = None
+    disabled: bool | None = Field(
+        default=None,
+        description="Disable or re-enable the user; omitted keeps the current state.",
+        examples=[True],
+    )
 
 
 class UserRef(BaseModel):
-    id: int
-    name: str | None
+    id: int = Field(description="User id.", examples=[2])
+    name: str | None = Field(description="Display name.", examples=["Bob"])
 
 
 class LocalUserCreate(BaseModel):

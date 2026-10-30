@@ -50,4 +50,4 @@ nav:
       - troubleshooting.md
   - Reference:
       - reference/configuration.md
-      - API (OpenAPI): https://hoarder.example.com/api/docs
+      - reference/api.md
