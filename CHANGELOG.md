@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/metril/immich-hoarder/compare/v0.7.1...v0.7.2) (2026-10-30)
+
+
+### Bug Fixes
+
+* **api:** serialize timestamps with UTC offset ([#32](https://github.com/metril/immich-hoarder/issues/32)) ([1f4ea50](https://github.com/metril/immich-hoarder/commit/1f4ea5037657d7161887bd942bce853e436958e7))
+
 ## [0.7.1](https://github.com/metril/immich-hoarder/compare/v0.7.0...v0.7.1) (2026-10-29)
 
 
