@@ -10,7 +10,8 @@ import { ConfirmDialog } from "../../components/common/ConfirmDialog";
 import { EmptyState } from "../../components/common/EmptyState";
 import { formatRelative } from "../../components/common/formatRelative";
 import { ApiKeyForm } from "./ApiKeyForm";
-import { useApiKeys, useRevokeApiKey, type ApiKeyOut } from "./hooks";
+import { ApiKeyEdit } from "./ApiKeyEdit";
+import { useApiKeys, useRevokeApiKey, useRotateApiKey, type ApiKeyOut } from "./hooks";
 import { KeyRevealDialog } from "./KeyRevealDialog";
 
 function Revoke({ k }: { k: ApiKeyOut }) {
@@ -25,6 +26,23 @@ function Revoke({ k }: { k: ApiKeyOut }) {
       trigger={
         <Button size="sm" variant="outline" aria-label={`Revoke ${k.name}`}>
           Revoke
+        </Button>
+      }
+    />
+  );
+}
+
+function Rotate({ k, onKey }: { k: ApiKeyOut; onKey: (plaintext: string) => void }) {
+  const rotate = useRotateApiKey(onKey);
+  return (
+    <ConfirmDialog
+      title={`Rotate ${k.name}?`}
+      body="A new key with the same name, scopes and expiry is issued and this one stops working immediately."
+      confirmLabel="Rotate"
+      onConfirm={() => rotate.mutateAsync(k.id).then(() => undefined)}
+      trigger={
+        <Button size="sm" variant="outline" aria-label={`Rotate ${k.name}`}>
+          Rotate
         </Button>
       }
     />
@@ -103,7 +121,18 @@ export default function ApiKeysPage() {
                       <Expires iso={k.expires_at} />
                     </TableCell>
                     <TableCell className="py-3 text-right">
-                      <Revoke k={k} />
+                      <div className="flex justify-end gap-2">
+                        <ApiKeyEdit
+                          k={k}
+                          trigger={
+                            <Button size="sm" variant="outline" aria-label={`Edit ${k.name}`}>
+                              Edit
+                            </Button>
+                          }
+                        />
+                        <Rotate k={k} onKey={setSecret} />
+                        <Revoke k={k} />
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

@@ -163,10 +163,16 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Keys */
+        /**
+         * List API keys
+         * @description Lists active keys (all for admins, own otherwise). Requires `keys:read`.
+         */
         get: operations["list_keys_api_v1_api_keys_get"];
         put?: never;
-        /** Create Key */
+        /**
+         * Create an API key
+         * @description Creates a key for the caller. The plaintext key is returned once. Requires `keys:write`; granted scopes may not exceed the caller's own.
+         */
         post: operations["create_key_api_v1_api_keys_post"];
         delete?: never;
         options?: never;
@@ -181,11 +187,42 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get an API key
+         * @description Returns one key's metadata (never the secret). Requires `keys:read`. Non-admins can only see their own keys.
+         */
+        get: operations["get_key_api_v1_api_keys__key_id__get"];
         put?: never;
         post?: never;
-        /** Revoke Key */
+        /**
+         * Revoke an API key
+         * @description Revokes a key immediately. Requires `keys:write`.
+         */
         delete: operations["revoke_key_api_v1_api_keys__key_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit an API key
+         * @description Renames a key and/or replaces its scopes. Requires `keys:write`; scopes may not exceed the caller's own. Admins may edit any key. Revoked or expired keys cannot be edited.
+         */
+        patch: operations["update_key_api_v1_api_keys__key_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/api-keys/{key_id}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate an API key
+         * @description Issues a new key with the same name, scopes and expiry, and revokes the old one atomically. The new plaintext key is returned once. Requires `keys:write`. Only the key's owner may rotate it (admins get 404). Revoked or expired keys cannot be rotated.
+         */
+        post: operations["rotate_key_api_v1_api_keys__key_id__rotate_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -932,6 +969,24 @@ export interface components {
             prefix: string;
             /** Scopes */
             scopes: string[];
+        };
+        /** ApiKeyPatch */
+        ApiKeyPatch: {
+            /**
+             * Name
+             * @description New display name; omitted keeps the current name.
+             * @example ci-pipeline
+             */
+            name?: string | null;
+            /**
+             * Scopes
+             * @description Replacement scope list; omitted keeps the current scopes.
+             * @example [
+             *       "jobs:read",
+             *       "sources:read"
+             *     ]
+             */
+            scopes?: ("sources:read" | "sources:write" | "sources:run" | "targets:read" | "targets:write" | "credentials:read" | "credentials:write" | "jobs:read" | "jobs:write" | "keys:read" | "keys:write" | "metrics:read" | "admin")[] | null;
         };
         /** AuthSettings */
         AuthSettings: {
@@ -2489,14 +2544,26 @@ export interface operations {
                     "application/json": components["schemas"]["Page_ApiKeyOut_"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing scope, or scopes cannot be granted by the caller */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
@@ -2522,14 +2589,76 @@ export interface operations {
                     "application/json": components["schemas"]["ApiKeyCreated"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing scope, or scopes cannot be granted by the caller */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                content?: never;
+            };
+        };
+    };
+    get_key_api_v1_api_keys__key_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyOut"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing scope, or scopes cannot be granted by the caller */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Key not found, or owned by another user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -2551,14 +2680,151 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing scope, or scopes cannot be granted by the caller */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Key not found, or owned by another user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                content?: never;
+            };
+        };
+    };
+    update_key_api_v1_api_keys__key_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApiKeyPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
                 };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyOut"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing scope, or scopes cannot be granted by the caller */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Key not found, or owned by another user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Key is revoked or expired */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rotate_key_api_v1_api_keys__key_id__rotate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                key_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKeyCreated"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing scope, or scopes cannot be granted by the caller */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Key not found, or owned by another user */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Key is revoked or expired */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

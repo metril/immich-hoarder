@@ -12,6 +12,21 @@ class ApiKeyIn(BaseModel):
     expires_at: datetime | None = None
 
 
+class ApiKeyPatch(BaseModel):
+    name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="New display name; omitted keeps the current name.",
+        examples=["ci-pipeline"],
+    )
+    scopes: list[Scope] | None = Field(
+        default=None,
+        description="Replacement scope list; omitted keeps the current scopes.",
+        examples=[["jobs:read", "sources:read"]],
+    )
+
+
 class ApiKeyOut(BaseModel):
     id: int
     name: str

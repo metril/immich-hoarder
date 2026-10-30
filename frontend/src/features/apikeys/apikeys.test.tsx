@@ -109,6 +109,39 @@ describe("api keys", () => {
     await waitFor(() => expect(screen.queryByText("ci")).not.toBeInTheDocument());
   });
 
+  it("edit saves name and scopes", async () => {
+    let body: unknown;
+    server.use(
+      list([{ ...k1, expires_at: null }]),
+      http.patch("*/api/v1/api-keys/1", async ({ request }) => {
+        body = await request.json();
+        return HttpResponse.json({ ...k1, name: "ci2", scopes: ["jobs:read", "sources:read"], expires_at: null });
+      }),
+    );
+    renderWithProviders(null, { me, route: "/api-keys" });
+    await user.click(await screen.findByRole("button", { name: "Edit ci" }));
+    const name = screen.getByLabelText("Name");
+    await user.clear(name);
+    await user.type(name, "ci2");
+    await user.click(screen.getByLabelText("sources:read"));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(body).toEqual({ name: "ci2", scopes: ["sources:read", "jobs:read"] }));
+  });
+
+  it("rotate reveals the new key once and never caches it", async () => {
+    server.use(
+      list([k1]),
+      http.post("*/api/v1/api-keys/1/rotate", () => HttpResponse.json({ ...k1, id: 3, key: PLAIN }, { status: 201 })),
+    );
+    const { queryClient } = renderWithProviders(null, { me, route: "/api-keys" });
+    await user.click(await screen.findByRole("button", { name: "Rotate ci" }));
+    await user.click(screen.getByRole("button", { name: "Rotate" }));
+    await screen.findByText("This key will not be shown again");
+    expect(screen.getByLabelText("API key")).toHaveValue(PLAIN);
+    const dump = JSON.stringify([queryClient.getQueryCache().getAll().map((q) => q.state.data), queryClient.getMutationCache().getAll().map((m) => m.state.data)]);
+    expect(dump).not.toContain("SECRETSECRET");
+  });
+
   it("scope presets", async () => {
     server.use(list([]));
     renderWithProviders(null, { me, route: "/api-keys" });

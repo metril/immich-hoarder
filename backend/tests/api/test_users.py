@@ -1,7 +1,10 @@
+from datetime import datetime
+
 import httpx
 from helpers import actor, headers_for, make_user
 
-from app.db.models import Role
+from app.db.engine import session_scope
+from app.db.models import ApiKey, Role
 
 
 async def test_users_admin_only(client: httpx.AsyncClient) -> None:
@@ -104,3 +107,58 @@ async def test_disabling_already_disabled_admin_is_ok(client: httpx.AsyncClient)
     for _ in range(2):
         r = await client.patch(f"/api/v1/users/{other}", json={"disabled": True}, headers=h)
         assert r.status_code == 200 and r.json()["disabled"] is True
+
+
+async def test_api_key_get_edit_rotate(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    _, hb = await actor("b")
+    r = await client.post(
+        "/api/v1/api-keys",
+        json={"name": "k", "scopes": ["sources:read"], "expires_at": "2099-01-01T00:00:00Z"},
+        headers=h,
+    )
+    kid, raw = r.json()["id"], r.json()["key"]
+    url = f"/api/v1/api-keys/{kid}"
+    assert (await client.get(url, headers=h)).json()["name"] == "k"
+    assert (await client.get(url, headers=hb)).status_code == 404
+    assert (await client.patch(url, json={"name": "x"}, headers=hb)).status_code == 404
+    assert (await client.post(f"{url}/rotate", headers=hb)).status_code == 404
+    up = await client.patch(url, json={"name": "x", "scopes": ["jobs:read"]}, headers=h)
+    assert up.json()["name"] == "x" and up.json()["scopes"] == ["jobs:read"]
+    esc = await client.patch(url, json={"scopes": ["admin"]}, headers=h)
+    assert esc.status_code == 403
+    lim = await headers_for(await make_user("c"), ["keys:write", "keys:read"])
+    mine = (
+        await client.post("/api/v1/api-keys", json={"name": "m", "scopes": []}, headers=lim)
+    ).json()["id"]
+    r2 = await client.patch(f"/api/v1/api-keys/{mine}", json={"scopes": ["jobs:read"]}, headers=lim)
+    assert r2.status_code == 403
+    rot = await client.post(f"{url}/rotate", headers=h)
+    assert rot.status_code == 201
+    new = rot.json()
+    assert new["id"] != kid and new["name"] == "x" and new["scopes"] == ["jobs:read"]
+    assert new["expires_at"] == r.json()["expires_at"] and new["key"] != raw
+    assert (await client.get("/api/v1/sources", headers={"X-API-Key": raw})).status_code == 401
+    assert (await client.patch(url, json={"name": "y"}, headers=h)).status_code == 409
+    assert (await client.post(f"{url}/rotate", headers=h)).status_code == 409
+    assert (
+        await client.get("/api/v1/api-keys", headers={"X-API-Key": new["key"]})
+    ).status_code == 403
+
+
+async def test_api_key_rotate_owner_only_and_expired(client: httpx.AsyncClient) -> None:
+    _, h = await actor("a")
+    _, hadm = await actor("adm", Role.admin)
+    kid = (
+        await client.post("/api/v1/api-keys", json={"name": "k", "scopes": []}, headers=h)
+    ).json()["id"]
+    url = f"/api/v1/api-keys/{kid}"
+    assert (await client.post(f"{url}/rotate", headers=hadm)).status_code == 404
+    assert (await client.get(url, headers=hadm)).status_code == 200
+    assert (await client.patch(url, json={"name": "z"}, headers=hadm)).json()["name"] == "z"
+    async with session_scope() as s:
+        key = await s.get(ApiKey, kid)
+        assert key
+        key.expires_at = datetime(2000, 1, 1)
+    assert (await client.patch(url, json={"name": "y"}, headers=h)).status_code == 409
+    assert (await client.post(f"{url}/rotate", headers=h)).status_code == 409
