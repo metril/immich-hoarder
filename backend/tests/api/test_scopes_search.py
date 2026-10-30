@@ -52,10 +52,19 @@ async def test_only_admins_can_grant_admin_only_scopes(client: httpx.AsyncClient
     ha = await headers_for(uid, ["admin"])
     r = await client.post(f"{API}/api-keys", json=body, headers=ha)
     assert r.status_code == 201, r.text
-    # an admin-role key holding the scope but not `admin` cannot pass it on
-    hk = await headers_for(uid, ["keys:write", "settings:read"])
+    # an admin-role key without `admin` may pass on only the scopes it holds
+    hk = await headers_for(uid, ["keys:write", "keys:read", "settings:read"])
     body = {"name": "k2", "scopes": ["settings:read"]}
+    r = await client.post(f"{API}/api-keys", json=body, headers=hk)
+    assert r.status_code == 201, r.text
+    body = {"name": "k3", "scopes": ["settings:write"]}
     assert (await client.post(f"{API}/api-keys", json=body, headers=hk)).status_code == 403
+    made = await client.post(
+        f"{API}/api-keys", json={"name": "r", "scopes": ["keys:write", "settings:read"]}, headers=ha
+    )
+    hr = {"X-API-Key": made.json()["key"]}
+    r = await client.post(f"{API}/api-keys/{made.json()['id']}/rotate", headers=hr)
+    assert r.status_code == 201, r.text
     # edit path goes through the same helper
     kid = (
         await client.post(f"{API}/api-keys", json={"name": "p", "scopes": []}, headers=hu)
