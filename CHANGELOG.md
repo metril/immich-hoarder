@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.8.0](https://github.com/metril/immich-hoarder/compare/v0.7.2...v0.8.0) (2026-10-30)
+
+
+### Features
+
+* **api:** download, delete and restore backups ([#35](https://github.com/metril/immich-hoarder/issues/35)) ([87c4ef9](https://github.com/metril/immich-hoarder/commit/87c4ef942e0cab7d56557499bdbf5a8835b0cb9f))
+* **api:** get, edit and rotate API keys ([#34](https://github.com/metril/immich-hoarder/issues/34)) ([7781b3e](https://github.com/metril/immich-hoarder/commit/7781b3e7a8aab4975579019c000b063bdb11ccd0))
+
 ## [0.7.2](https://github.com/metril/immich-hoarder/compare/v0.7.1...v0.7.2) (2026-10-30)
 
 
