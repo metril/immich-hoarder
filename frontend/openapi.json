@@ -4323,7 +4323,7 @@
         ]
       },
       "patch": {
-        "description": "Renames a key and/or replaces its scopes. Requires `keys:write`; scopes may not exceed the caller's own. Revoked keys cannot be edited.",
+        "description": "Renames a key and/or replaces its scopes. Requires `keys:write`; scopes may not exceed the caller's own. Admins may edit any key. Revoked or expired keys cannot be edited.",
         "operationId": "update_key_api_v1_api_keys__key_id__patch",
         "parameters": [
           {
@@ -4367,7 +4367,7 @@
             "description": "Key not found, or owned by another user"
           },
           "409": {
-            "description": "Key is already revoked"
+            "description": "Key is revoked or expired"
           },
           "422": {
             "description": "Validation error"
@@ -4381,7 +4381,7 @@
     },
     "/api/v1/api-keys/{key_id}/rotate": {
       "post": {
-        "description": "Issues a new key with the same name, scopes and expiry, and revokes the old one atomically. The new plaintext key is returned once. Requires `keys:write`.",
+        "description": "Issues a new key with the same name, scopes and expiry, and revokes the old one atomically. The new plaintext key is returned once. Requires `keys:write`. Only the key's owner may rotate it (admins get 404). Revoked or expired keys cannot be rotated.",
         "operationId": "rotate_key_api_v1_api_keys__key_id__rotate_post",
         "parameters": [
           {
@@ -4415,7 +4415,7 @@
             "description": "Key not found, or owned by another user"
           },
           "409": {
-            "description": "Key is already revoked"
+            "description": "Key is revoked or expired"
           },
           "422": {
             "description": "Validation error"

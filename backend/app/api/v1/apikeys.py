@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
-from app.auth.apikeys import create_api_key
+from app.auth.apikeys import _naive, _now, create_api_key
 from app.auth.authz import require_scope
 from app.auth.deps import current_principal
 from app.auth.principal import Principal
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api-keys", tags=["api-keys"])
 _R401 = {"description": "Missing or invalid credentials"}
 _R403 = {"description": "Missing scope, or scopes cannot be granted by the caller"}
 _R404 = {"description": "Key not found, or owned by another user"}
-_R409 = {"description": "Key is already revoked"}
+_R409 = {"description": "Key is revoked or expired"}
 _R422 = {"description": "Validation error"}
 
 
@@ -35,11 +35,20 @@ def _check_grantable(p: Principal, scopes: Sequence[str]) -> None:
         raise HTTPException(403, "cannot grant scopes beyond the calling key")
 
 
-async def _owned(session: AsyncSession, p: Principal, key_id: int) -> ApiKey:
+async def _owned(
+    session: AsyncSession, p: Principal, key_id: int, *, owner_only: bool = False
+) -> ApiKey:
     key = await session.get(ApiKey, key_id)
-    if key is None or (key.user_id != p.user_id and not p.is_admin):
+    if key is None or (key.user_id != p.user_id and (owner_only or not p.is_admin)):
         raise HTTPException(404, "not found")
     return key
+
+
+def _require_live(key: ApiKey) -> None:
+    if key.revoked:
+        raise HTTPException(409, "key is revoked")
+    if key.expires_at is not None and _naive(key.expires_at) <= _now():
+        raise HTTPException(409, "key is expired")
 
 
 @router.get(
@@ -108,7 +117,8 @@ async def get_key(
     response_model=ApiKeyOut,
     summary="Edit an API key",
     description="Renames a key and/or replaces its scopes. Requires `keys:write`; "
-    "scopes may not exceed the caller's own. Revoked keys cannot be edited.",
+    "scopes may not exceed the caller's own. Admins may edit any key. "
+    "Revoked or expired keys cannot be edited.",
     responses={401: _R401, 403: _R403, 404: _R404, 409: _R409, 422: _R422},
 )
 async def update_key(
@@ -119,8 +129,7 @@ async def update_key(
 ) -> ApiKeyOut:
     require_scope(p, "keys:write")
     key = await _owned(session, p, key_id)
-    if key.revoked:
-        raise HTTPException(409, "key is revoked")
+    _require_live(key)
     if body.name is not None:
         key.name = body.name
     if body.scopes is not None:
@@ -137,7 +146,9 @@ async def update_key(
     status_code=201,
     summary="Rotate an API key",
     description="Issues a new key with the same name, scopes and expiry, and revokes the old "
-    "one atomically. The new plaintext key is returned once. Requires `keys:write`.",
+    "one atomically. The new plaintext key is returned once. Requires `keys:write`. "
+    "Only the key's owner may rotate it (admins get 404). "
+    "Revoked or expired keys cannot be rotated.",
     responses={401: _R401, 403: _R403, 404: _R404, 409: _R409, 422: _R422},
 )
 async def rotate_key(
@@ -146,9 +157,8 @@ async def rotate_key(
     session: AsyncSession = Depends(get_session, scope="function"),
 ) -> ApiKeyCreated:
     require_scope(p, "keys:write")
-    old = await _owned(session, p, key_id)
-    if old.revoked:
-        raise HTTPException(409, "key is revoked")
+    old = await _owned(session, p, key_id, owner_only=True)
+    _require_live(old)
     scopes = list(old.scopes or [])
     _check_grantable(p, scopes)
     owner = await session.get(User, old.user_id)

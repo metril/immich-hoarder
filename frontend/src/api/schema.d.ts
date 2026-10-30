@@ -203,7 +203,7 @@ export interface paths {
         head?: never;
         /**
          * Edit an API key
-         * @description Renames a key and/or replaces its scopes. Requires `keys:write`; scopes may not exceed the caller's own. Revoked keys cannot be edited.
+         * @description Renames a key and/or replaces its scopes. Requires `keys:write`; scopes may not exceed the caller's own. Admins may edit any key. Revoked or expired keys cannot be edited.
          */
         patch: operations["update_key_api_v1_api_keys__key_id__patch"];
         trace?: never;
@@ -219,7 +219,7 @@ export interface paths {
         put?: never;
         /**
          * Rotate an API key
-         * @description Issues a new key with the same name, scopes and expiry, and revokes the old one atomically. The new plaintext key is returned once. Requires `keys:write`.
+         * @description Issues a new key with the same name, scopes and expiry, and revokes the old one atomically. The new plaintext key is returned once. Requires `keys:write`. Only the key's owner may rotate it (admins get 404). Revoked or expired keys cannot be rotated.
          */
         post: operations["rotate_key_api_v1_api_keys__key_id__rotate_post"];
         delete?: never;
@@ -2755,7 +2755,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Key is already revoked */
+            /** @description Key is revoked or expired */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -2812,7 +2812,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Key is already revoked */
+            /** @description Key is revoked or expired */
             409: {
                 headers: {
                     [name: string]: unknown;
