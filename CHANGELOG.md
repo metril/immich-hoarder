@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/metril/immich-hoarder/compare/v0.8.0...v0.9.0) (2026-10-30)
+
+
+### Features
+
+* **api:** finer admin scopes, job delete, list search and sort ([#37](https://github.com/metril/immich-hoarder/issues/37)) ([d230da9](https://github.com/metril/immich-hoarder/commit/d230da917fd888dd4c11a51adad3bc6092a4f779))
+
 ## [0.8.0](https://github.com/metril/immich-hoarder/compare/v0.7.2...v0.8.0) (2026-10-30)
 
 
