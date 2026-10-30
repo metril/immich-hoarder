@@ -21,7 +21,7 @@ from app.auth.oidc import OidcConfig
 from app.auth.principal import LOCAL_PREFIX, Principal, resolve_role, upsert_user
 from app.db.engine import get_session
 from app.db.models import Role, Setting, User
-from app.schemas.auth import AuthStatus, LocalCredentials, MeOut, SetupIn
+from app.schemas.auth import AuthStatus, LocalCredentials, MeOut, SelfPasswordIn, SetupIn
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -55,6 +55,24 @@ async def get_local_admin(session: AsyncSession) -> dict[str, str] | None:
     if isinstance(v, dict) and v.get("username") and v.get("password_hash"):
         return v
     return None
+
+
+async def sync_local_admin_setting(session: AsyncSession, u: User) -> None:
+    """Keep the legacy local_admin setting row's hash in step when u is that account."""
+    row = await session.get(Setting, "local_admin")
+    if (
+        row is not None
+        and isinstance(row.value, dict)
+        and u.sub == f"{LOCAL_PREFIX}{row.value.get('username')}"
+    ):
+        row.value = {**row.value, "password_hash": u.password_hash}
+
+
+async def _has_local_login(session: AsyncSession) -> bool:
+    if await get_local_admin(session) is not None:
+        return True
+    q = select(User.id).where(User.sub.like(f"{LOCAL_PREFIX}%"), User.password_hash.is_not(None))
+    return (await session.execute(q.limit(1))).first() is not None
 
 
 async def has_enabled_admin(session: AsyncSession, *, local_only: bool = False) -> bool:
@@ -92,10 +110,12 @@ async def save_local_admin(session: AsyncSession, username: str, password: str) 
     sub = f"{LOCAL_PREFIX}{username}"
     user = (await session.execute(select(User).where(User.sub == sub))).scalar_one_or_none()
     if user is None:
-        user = User(sub=sub, role=Role.admin, groups=[], name=username, session_gen=0)
+        user = User(sub=sub, role=Role.admin, groups=[], name=username)
         session.add(user)
     else:
         user.session_gen += 1
+    user.password_hash = value["password_hash"]  # the setting row is kept in step (fallback)
+    user.must_change_password = False
     user.role = Role.admin
     user.disabled = False
     await session.flush()
@@ -108,7 +128,12 @@ def _login(request: Request, user: User) -> Response:
     request.session["sg"] = user.session_gen
     resp = Response(
         MeOut(
-            id=user.id, email=user.email, name=user.name, role=user.role, groups=[]
+            id=user.id,
+            email=user.email,
+            name=user.name,
+            role=user.role,
+            groups=[],
+            must_change_password=user.must_change_password,
         ).model_dump_json(),
         media_type="application/json",
     )
@@ -124,7 +149,7 @@ async def status(
     return AuthStatus(
         setup_required=await _setup_open(request, session),
         oidc_enabled=app.state.oidc_cfg.active,
-        local_login_enabled=local_login_allowed(app) and await get_local_admin(session) is not None,
+        local_login_enabled=local_login_allowed(app) and await _has_local_login(session),
         break_glass=app.state.settings.break_glass,
         reset_token_required=_reset_mode(request),
     )
@@ -179,21 +204,19 @@ async def local_login(
     key = request.client.host if request.client else "-"
     if wait := limiter.retry_after(key):
         raise HTTPException(429, "too many attempts", headers={"Retry-After": str(wait)})
-    admin = await get_local_admin(session)
-    ok = await asyncio.to_thread(
-        verify_password, body.password, admin["password_hash"] if admin else None
-    )
-    user_ok = admin is not None and secrets.compare_digest(
-        admin["username"].encode(), body.username.encode()
-    )
     user = (
-        (
-            await session.execute(select(User).where(User.sub == f"{LOCAL_PREFIX}{body.username}"))
-        ).scalar_one_or_none()
-        if ok and user_ok
-        else None
-    )
-    if user is None or user.disabled:
+        await session.execute(select(User).where(User.sub == f"{LOCAL_PREFIX}{body.username}"))
+    ).scalar_one_or_none()
+    stored = user.password_hash if user is not None else None
+    if user is not None and stored is None:  # not migrated yet: the setting row still holds it
+        admin = await get_local_admin(session)
+        if admin is not None and secrets.compare_digest(
+            admin["username"].encode(), body.username.encode()
+        ):
+            stored = admin["password_hash"]
+    # always one scrypt run (dummy hash for unknown users) so timing doesn't reveal usernames
+    ok = await asyncio.to_thread(verify_password, body.password, stored)
+    if not ok or user is None or user.disabled:
         limiter.failed(key)
         raise HTTPException(401, "invalid credentials")
     limiter.succeeded(key)
@@ -252,4 +275,57 @@ async def me(
 ) -> MeOut:
     user = await session.get(User, p.user_id)
     assert user is not None
-    return MeOut(id=user.id, email=user.email, name=user.name, role=p.role, groups=sorted(p.groups))
+    return MeOut(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        role=p.role,
+        groups=sorted(p.groups),
+        must_change_password=user.must_change_password,
+    )
+
+
+@router.post(
+    "/password",
+    response_model=MeOut,
+    summary="Change your own password",
+    description="Changes the signed-in local user's password (current password required), "
+    "clears the must-change flag and revokes other sessions; the caller stays signed in.",
+    responses={
+        401: {"description": "Not signed in"},
+        403: {"description": "Current password is incorrect, or the account is not local"},
+        422: {"description": "Validation error"},
+    },
+)
+async def change_own_password(
+    body: SelfPasswordIn,
+    request: Request,
+    p: Principal = Depends(current_principal),
+    session: AsyncSession = Depends(get_session, scope="function"),
+) -> MeOut:
+    user = await session.get(User, p.user_id)
+    assert user is not None
+    stored = user.password_hash
+    if stored is None:
+        admin = await get_local_admin(session)
+        if admin is not None and user.sub == f"{LOCAL_PREFIX}{admin['username']}":
+            stored = admin["password_hash"]
+    if not user.sub.startswith(LOCAL_PREFIX) or not await asyncio.to_thread(
+        verify_password, body.current_password, stored
+    ):
+        raise HTTPException(403, "current password is incorrect")
+    user.password_hash = await asyncio.to_thread(hash_password, body.new_password)
+    user.must_change_password = False
+    user.session_gen += 1
+    await sync_local_admin_setting(session, user)
+    await session.commit()
+    if request.session.get("user_id") is not None:
+        request.session["sg"] = user.session_gen
+    return MeOut(
+        id=user.id,
+        email=user.email,
+        name=user.name,
+        role=user.role,
+        groups=sorted(p.groups),
+        must_change_password=False,
+    )

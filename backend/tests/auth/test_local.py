@@ -217,7 +217,7 @@ async def test_reset_reenables_disabled_admin_and_revokes_sessions(settings: Set
         tok = app.state.reset_token
         async with session_scope() as s:
             s.add(Setting(key="local_admin", value={"username": "root", "password_hash": "x"}))
-            s.add(User(sub="local:root", role=Role.admin, groups=[], disabled=True))
+            s.add(User(sub="local:root", role=Role.admin, groups=[], disabled=True, session_gen=0))
         t = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=t, base_url="http://testserver") as c:
             r = await c.post(

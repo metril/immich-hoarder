@@ -10,7 +10,7 @@ import { FakeEventSource } from "../../test/setup";
 const user = userEvent.setup({ delay: null });
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
-const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user" };
+const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user", must_change_password: false };
 const job = (id: number, o: Record<string, unknown> = {}) => ({
   id, status: "running", counters: { uploaded: 2, failed: 0 }, phase: null, source_id: 3, source_name: "Cats",
   created_at: "2026-10-26T10:00:00Z", started_at: "2026-10-26T10:00:00Z", finished_at: null, error: null, log_level: null, triggered_by: 1, ...o,

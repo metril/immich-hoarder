@@ -1,7 +1,9 @@
+import asyncio
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, or_, select
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi.responses import JSONResponse
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.pagination import (
@@ -13,11 +15,30 @@ from app.api.pagination import (
     apply_q,
     paginate,
 )
+from app.api.v1.auth import sync_local_admin_setting
 from app.auth.deps import current_principal, require_admin_scope
-from app.auth.principal import Principal
+from app.auth.local import hash_password
+from app.auth.principal import LOCAL_PREFIX, Principal
 from app.db.engine import get_session
-from app.db.models import Role, User
-from app.schemas.users import UserOut, UserPatch, UserRef
+from app.db.models import (
+    ApiKey,
+    Credential,
+    ImmichTarget,
+    PrincipalType,
+    Role,
+    Share,
+    Source,
+    User,
+)
+from app.schemas.users import (
+    LocalUserCreate,
+    OwnedCounts,
+    PasswordReset,
+    UserInUse,
+    UserOut,
+    UserPatch,
+    UserRef,
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -84,6 +105,162 @@ async def user_directory(
     return [UserRef(id=u.id, name=u.name) for u in rows]
 
 
+async def _ensure_other_admin(session: AsyncSession, u: User) -> None:
+    """409 unless another enabled admin exists.
+
+    Locks the enabled admin rows so the check and the change are one atomic step on
+    Postgres (FOR UPDATE); SQLite serialises writers, and omits the clause.
+    """
+    enabled = (
+        await session.scalars(
+            select(User.id)
+            .where(User.role == Role.admin, User.disabled.is_(False))
+            .with_for_update()
+        )
+    ).all()
+    if not [i for i in enabled if i != u.id]:
+        raise HTTPException(409, "last admin")
+
+
+def _local(u: User | None) -> User:
+    if u is None:
+        raise HTTPException(404, "not found")
+    if not u.sub.startswith(LOCAL_PREFIX):
+        raise HTTPException(409, "not a local user")
+    return u
+
+
+@router.post(
+    "/local",
+    status_code=201,
+    response_model=UserOut,
+    summary="Create a local user",
+    description="Creates a local (password) account. Requires an admin with the `users:write` "
+    "or `admin` scope. 409 when the username is already taken.",
+    responses={
+        401: _R401,
+        403: _R403,
+        409: {"description": "A user with that username already exists"},
+        422: _R422,
+    },
+)
+async def create_local_user(
+    body: LocalUserCreate,
+    _p: Principal = _WRITE,
+    session: AsyncSession = Depends(get_session, scope="function"),
+) -> UserOut:
+    sub = f"{LOCAL_PREFIX}{body.username}"
+    if (await session.scalars(select(User.id).where(User.sub == sub))).first() is not None:
+        raise HTTPException(409, "user already exists")
+    u = User(
+        sub=sub,
+        name=body.username,
+        role=body.role,
+        groups=[],
+        password_hash=await asyncio.to_thread(hash_password, body.password),
+        must_change_password=body.must_change_password,
+    )
+    session.add(u)
+    await session.flush()
+    return UserOut.model_validate(u)
+
+
+@router.post(
+    "/{user_id}/password",
+    response_model=UserOut,
+    summary="Reset a local user's password",
+    description="Sets a new password for a local user and revokes all of their sessions. "
+    "Requires an admin with the `users:write` or `admin` scope. 409 for non-local users.",
+    responses={
+        401: _R401,
+        403: _R403,
+        404: _R404,
+        409: {"description": "The user is not a local account"},
+        422: _R422,
+    },
+)
+async def reset_password(
+    user_id: int,
+    body: PasswordReset,
+    _p: Principal = _WRITE,
+    session: AsyncSession = Depends(get_session, scope="function"),
+) -> UserOut:
+    u = _local(await session.get(User, user_id))
+    u.password_hash = await asyncio.to_thread(hash_password, body.new_password)
+    u.must_change_password = body.must_change_password
+    u.session_gen += 1
+    await sync_local_admin_setting(session, u)
+    await session.flush()
+    return UserOut.model_validate(u)
+
+
+async def _owned_counts(session: AsyncSession, uid: int) -> OwnedCounts:
+    async def n(model: type[ImmichTarget] | type[Credential] | type[Source]) -> int:
+        q = select(func.count()).select_from(model).where(model.owner_id == uid)
+        return int(await session.scalar(q) or 0)
+
+    return OwnedCounts(
+        targets=await n(ImmichTarget), credentials=await n(Credential), sources=await n(Source)
+    )
+
+
+@router.delete(
+    "/{user_id}",
+    status_code=204,
+    summary="Delete a local user",
+    description="Deletes a local user and their API keys and shares. Owned targets, credentials "
+    "and sources block the delete (409 with counts) unless `reassign_to` names another user, "
+    "who then takes them over. The last enabled admin cannot be deleted. Requires an admin "
+    "with the `users:write` or `admin` scope.",
+    responses={
+        401: _R401,
+        403: _R403,
+        404: _R404,
+        409: {
+            "model": UserInUse,
+            "description": "Last enabled admin, not a local user, or the user still owns "
+            "resources (body lists the counts)",
+        },
+        422: _R422,
+    },
+)
+async def delete_user(
+    user_id: int,
+    reassign_to: Annotated[
+        int | None, Query(description="User id that takes over the owned resources.")
+    ] = None,
+    _p: Principal = _WRITE,
+    session: AsyncSession = Depends(get_session, scope="function"),
+) -> Response:
+    u = _local(await session.get(User, user_id))
+    if u.role == Role.admin and not u.disabled:
+        await _ensure_other_admin(session, u)
+    counts = await _owned_counts(session, u.id)
+    if counts.targets + counts.credentials + counts.sources:
+        if reassign_to is None:
+            return JSONResponse(
+                UserInUse(detail="user owns resources", owned=counts).model_dump(), status_code=409
+            )
+        if reassign_to == u.id:
+            raise HTTPException(422, "cannot reassign to the deleted user")
+        dest = await session.get(User, reassign_to)
+        if dest is None or dest.disabled:
+            raise HTTPException(422, "reassign_to must be an existing enabled user")
+        for model in (ImmichTarget, Credential, Source):
+            await session.execute(
+                update(model).where(model.owner_id == u.id).values(owner_id=dest.id)
+            )
+    await session.execute(
+        delete(Share).where(
+            Share.principal_type == PrincipalType.user, Share.principal_id == str(u.id)
+        )
+    )
+    await session.execute(delete(ApiKey).where(ApiKey.user_id == u.id))
+    await session.delete(u)
+    await session.flush()
+    return Response(status_code=204)
+
+
 @router.patch(
     "/{user_id}",
     response_model=UserOut,
@@ -102,17 +279,7 @@ async def patch_user(
     if u is None:
         raise HTTPException(404, "not found")
     if body.disabled and u.role == Role.admin and not u.disabled:
-        # Lock the enabled admin rows so the check and the update are one atomic step on
-        # Postgres (FOR UPDATE); SQLite serialises writers, and omits the clause.
-        enabled = (
-            await session.scalars(
-                select(User.id)
-                .where(User.role == Role.admin, User.disabled.is_(False))
-                .with_for_update()
-            )
-        ).all()
-        if not [i for i in enabled if i != u.id]:
-            raise HTTPException(409, "last admin")
+        await _ensure_other_admin(session, u)
     if body.disabled is not None:
         u.disabled = body.disabled
     await session.flush()

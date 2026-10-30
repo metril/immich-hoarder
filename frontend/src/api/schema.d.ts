@@ -313,6 +313,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/auth/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change your own password
+         * @description Changes the signed-in local user's password (current password required), clears the must-change flag and revokes other sessions; the caller stays signed in.
+         */
+        post: operations["change_own_password_api_v1_auth_password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/auth/setup": {
         parameters: {
             query?: never;
@@ -926,6 +946,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/users/local": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create a local user
+         * @description Creates a local (password) account. Requires an admin with the `users:write` or `admin` scope. 409 when the username is already taken.
+         */
+        post: operations["create_local_user_api_v1_users_local_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/users/{user_id}": {
         parameters: {
             query?: never;
@@ -936,7 +976,11 @@ export interface paths {
         get?: never;
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a local user
+         * @description Deletes a local user and their API keys and shares. Owned targets, credentials and sources block the delete (409 with counts) unless `reassign_to` names another user, who then takes them over. The last enabled admin cannot be deleted. Requires an admin with the `users:write` or `admin` scope.
+         */
+        delete: operations["delete_user_api_v1_users__user_id__delete"];
         options?: never;
         head?: never;
         /**
@@ -944,6 +988,26 @@ export interface paths {
          * @description Enables or disables a user. Requires an admin with the `users:write` or `admin` scope. The last enabled admin cannot be disabled.
          */
         patch: operations["patch_user_api_v1_users__user_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/users/{user_id}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reset a local user's password
+         * @description Sets a new password for a local user and revokes all of their sessions. Requires an admin with the `users:write` or `admin` scope. 409 for non-local users.
+         */
+        post: operations["reset_password_api_v1_users__user_id__password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
 }
@@ -1240,6 +1304,34 @@ export interface components {
             /** Username */
             username?: string | null;
         };
+        /** LocalUserCreate */
+        LocalUserCreate: {
+            /**
+             * Must Change Password
+             * @description Prompt the user to choose a new password at first sign-in.
+             * @default false
+             * @example false
+             */
+            must_change_password: boolean;
+            /**
+             * Password
+             * @description Initial password (at least 8 characters).
+             * @example correct horse battery
+             */
+            password: string;
+            /**
+             * @description Role of the new account.
+             * @default user
+             * @example user
+             */
+            role: components["schemas"]["Role"];
+            /**
+             * Username
+             * @description Login name; the account's sub becomes `local:<username>`.
+             * @example alice
+             */
+            username: string;
+        };
         /** MeOut */
         MeOut: {
             /** Email */
@@ -1248,6 +1340,13 @@ export interface components {
             groups: string[];
             /** Id */
             id: number;
+            /**
+             * Must Change Password
+             * @description True when this local account must choose a new password.
+             * @default false
+             * @example false
+             */
+            must_change_password: boolean;
             /** Name */
             name: string | null;
             role: components["schemas"]["Role"];
@@ -1336,6 +1435,27 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
+        /** OwnedCounts */
+        OwnedCounts: {
+            /**
+             * Credentials
+             * @description Credentials owned by the user.
+             * @example 2
+             */
+            credentials: number;
+            /**
+             * Sources
+             * @description Sources owned by the user.
+             * @example 3
+             */
+            sources: number;
+            /**
+             * Targets
+             * @description Immich targets owned by the user.
+             * @example 1
+             */
+            targets: number;
+        };
         /** Page[ApiKeyOut] */
         Page_ApiKeyOut_: {
             /** Items */
@@ -1398,6 +1518,22 @@ export interface components {
             items: components["schemas"]["UserOut"][];
             /** Next Cursor */
             next_cursor?: string | null;
+        };
+        /** PasswordReset */
+        PasswordReset: {
+            /**
+             * Must Change Password
+             * @description Require the user to change this password at next sign-in.
+             * @default true
+             * @example true
+             */
+            must_change_password: boolean;
+            /**
+             * New Password
+             * @description New password (at least 8 characters).
+             * @example a new long password
+             */
+            new_password: string;
         };
         /**
          * Perm
@@ -1769,6 +1905,21 @@ export interface components {
              * @default 30
              */
             retention_days: number;
+        };
+        /** SelfPasswordIn */
+        SelfPasswordIn: {
+            /**
+             * Current Password
+             * @description Your current password.
+             * @example old password
+             */
+            current_password: string;
+            /**
+             * New Password
+             * @description New password (at least 8 characters).
+             * @example a new long password
+             */
+            new_password: string;
         };
         /**
          * SettingsDoc
@@ -2155,6 +2306,17 @@ export interface components {
             target_id: number;
             /** Url */
             url: string;
+        };
+        /** UserInUse */
+        UserInUse: {
+            /**
+             * Detail
+             * @description Why the delete was refused.
+             * @example user owns resources
+             */
+            detail: string;
+            /** @description Resources that would need reassigning. */
+            owned: components["schemas"]["OwnedCounts"];
         };
         /** UserOut */
         UserOut: {
@@ -2967,6 +3129,51 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["MeOut"];
                 };
+            };
+        };
+    };
+    change_own_password_api_v1_auth_password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SelfPasswordIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeOut"];
+                };
+            };
+            /** @description Not signed in */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Current password is incorrect, or the account is not local */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -4634,6 +4841,118 @@ export interface operations {
             };
         };
     };
+    create_local_user_api_v1_users_local_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalUserCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOut"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller is not an admin, or lacks the required admin scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description A user with that username already exists */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    delete_user_api_v1_users__user_id__delete: {
+        parameters: {
+            query?: {
+                /** @description User id that takes over the owned resources. */
+                reassign_to?: number | null;
+            };
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller is not an admin, or lacks the required admin scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description User not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Last enabled admin, not a local user, or the user still owns resources (body lists the counts) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserInUse"];
+                };
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     patch_user_api_v1_users__user_id__patch: {
         parameters: {
             query?: never;
@@ -4680,6 +4999,67 @@ export interface operations {
                 content?: never;
             };
             /** @description Would disable the last enabled admin */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    reset_password_api_v1_users__user_id__password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PasswordReset"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserOut"];
+                };
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller is not an admin, or lacks the required admin scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description User not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The user is not a local account */
             409: {
                 headers: {
                     [name: string]: unknown;

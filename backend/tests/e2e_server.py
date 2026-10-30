@@ -90,6 +90,7 @@ async def _seed(settings: Settings) -> int:
     async with sf() as s, s.begin():
         admin = User(
             sub="local:e2e-admin",  # local accounts need no OIDC group mapping
+            session_gen=0,  # matches the "sg" in _session_cookie
             email="e2e@example.test",
             name="E2E Admin",
             role=Role.admin,

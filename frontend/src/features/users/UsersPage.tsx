@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { api } from "../../api/client";
 import { ApiError, unwrap } from "../../api/errors";
 import { useMe } from "../../api/me";
-import type { components } from "../../api/schema";
 import { EmptyState } from "../../components/common/EmptyState";
 import { flatItems, useCursorList } from "../../components/common/useCursorList";
 import { Badge } from "@/components/ui/badge";
@@ -14,8 +13,7 @@ import { PageHeader } from "@/components/ui/page";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Truncate } from "@/components/ui/truncate";
-
-type UserOut = components["schemas"]["UserOut"];
+import { CreateUserDialog, DeleteUserDialog, ResetPasswordDialog, type UserOut } from "./UserDialogs";
 
 function useSetDisabled() {
   const qc = useQueryClient();
@@ -64,9 +62,20 @@ const initials = (n: string) =>
 export default function UsersPage() {
   const q = useCursorList("users", "/api/v1/users");
   const rows = flatItems(q);
+  const me = useMe().data;
+  const [creating, setCreating] = useState(false);
+  const [resetting, setResetting] = useState<UserOut | null>(null);
+  const [deleting, setDeleting] = useState<UserOut | null>(null);
   return (
     <>
-      <PageHeader title="Users" description="Roles come from OIDC groups; you can only enable or disable accounts here." />
+      <PageHeader
+        title="Users"
+        description="OIDC roles come from groups; local accounts are managed here."
+        actions={<Button onClick={() => setCreating(true)}>New local user</Button>}
+      />
+      <CreateUserDialog open={creating} onOpenChange={setCreating} />
+      <ResetPasswordDialog user={resetting} onClose={() => setResetting(null)} />
+      <DeleteUserDialog user={deleting} others={rows} onClose={() => setDeleting(null)} />
       {q.isPending ? (
         <p role="status">Loading…</p>
       ) : q.isError ? (
@@ -84,6 +93,9 @@ export default function UsersPage() {
                   <TableHead>Role</TableHead>
                   <TableHead>Groups</TableHead>
                   <TableHead>Disabled</TableHead>
+                  <TableHead>
+                    <span className="sr-only">Actions</span>
+                  </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -111,6 +123,18 @@ export default function UsersPage() {
                     </TableCell>
                     <TableCell className="py-3">
                       <DisabledSwitch u={u} />
+                    </TableCell>
+                    <TableCell className="py-3">
+                      {u.sub.startsWith("local:") && (
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="outline" aria-label={`Reset password: ${u.name ?? u.sub}`} onClick={() => setResetting(u)}>
+                            Reset password
+                          </Button>
+                          <Button size="sm" variant="outline" aria-label={`Delete: ${u.name ?? u.sub}`} disabled={me?.id === u.id} onClick={() => setDeleting(u)}>
+                            Delete
+                          </Button>
+                        </div>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
