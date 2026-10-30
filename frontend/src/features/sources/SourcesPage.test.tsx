@@ -11,7 +11,7 @@ import type { SourceOut } from "./hooks";
 const user = userEvent.setup({ delay: null });
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
-const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user" };
+const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user", must_change_password: false };
 const s3 = {
   id: 3, name: "Cats", url: "https://example.com/cats", extractor: "reddit", target_id: 1, credential_id: null, album_template: "",
   schedule_cron: "0 3 * * *", backfill_mode: "full", backfill_value: null, allow_animated: false, reupload_deleted: false, filters: { phash_distance: 3 }, notify: { credential_ids: [], on: ["failure"] },

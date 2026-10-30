@@ -13,8 +13,8 @@ import { RouteError } from "./RouteError";
 import { useShortcuts } from "./shortcuts";
 import { resetThemeCache, useTheme } from "./theme";
 
-const admin: MeOut = { id: 1, name: "Ada", email: "a@x.io", groups: [], role: "admin" };
-const user: MeOut = { ...admin, id: 2, name: "Bob", role: "user" };
+const admin: MeOut = { id: 1, name: "Ada", email: "a@x.io", groups: [], role: "admin", must_change_password: false };
+const user: MeOut = { ...admin, id: 2, name: "Bob", role: "user", must_change_password: false };
 
 beforeEach(() => {
   server.use(...dashboardDefaults, http.head("*/api/v1/auth/login", () => new HttpResponse(null, { status: 204 })));

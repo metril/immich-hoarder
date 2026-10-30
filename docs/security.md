@@ -20,6 +20,7 @@ User notification URLs (apprise credentials) are blocked from connecting to priv
 - **Losing `MASTER_KEY` makes stored credentials unrecoverable**: site credentials, Immich API keys and notification URLs cannot be decrypted, and encrypted config exports cannot be imported. Back it up separately from the database. Changing it has the same effect.
 - The master key and session secret are auto-generated into `/data/secrets` on first start; back up `/data`. They can be overridden with `IH_MASTER_KEY[_FILE]`, `IH_SESSION_SECRET[_FILE]` and `IH_DATABASE_URL_FILE`. The OIDC client secret lives encrypted in the database (Settings → Auth).
 - `IH_BREAK_GLASS` forces local login on and logs a warning at start; `IH_BREAK_GLASS_RESET` additionally allows resetting the local admin. Leave both unset in normal operation.
+- **Local users.** Admins can create more local accounts (Users page, or `POST /api/v1/users/local` with the `users:write` scope), reset their passwords (which signs them out and can force a change at next sign-in) and delete them (owned targets, credentials and sources must be reassigned first). Passwords are stored as scrypt hashes on the user row; the original `local_admin` setting keeps a copy of the first admin's hash as a fallback and is updated alongside it. Take a backup before upgrading to the release that adds this (migration 0007); downgrading copies the hash back into the setting.
 
 ## Private addresses and SSRF
 

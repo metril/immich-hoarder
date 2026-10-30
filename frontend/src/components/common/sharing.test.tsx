@@ -7,7 +7,7 @@ import { server } from "../../test/server";
 import { renderWithProviders } from "../../test/render";
 import { SharingDialog } from "./SharingDialog";
 
-const owner: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: ["ops"], role: "user" };
+const owner: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: ["ops"], role: "user", must_change_password: false };
 
 describe("SharingDialog", () => {
   it("sharing: restricted enables list, put sends entries", async () => {

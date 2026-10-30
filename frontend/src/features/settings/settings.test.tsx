@@ -10,7 +10,7 @@ import { server } from "../../test/server";
 const user = userEvent.setup({ delay: null });
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
-const admin: MeOut = { id: 1, name: "Boss", email: "b@x.io", groups: ["ih-admin"], role: "admin" };
+const admin: MeOut = { id: 1, name: "Boss", email: "b@x.io", groups: ["ih-admin"], role: "admin", must_change_password: false };
 beforeAll(() => import("./SettingsPage"), 30_000);
 const open = (tab: string) => renderWithProviders(null, { me: admin, route: `/settings?tab=${tab}` });
 const doc = (d: object = {}) => http.get("*/api/v1/settings", () => HttpResponse.json(d));

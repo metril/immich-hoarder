@@ -5,6 +5,7 @@ import { Fragment } from "react";
 import { isAdmin, useMe, type MeOut } from "../../api/me";
 import { useDashboardStream } from "../../live/useDashboardStream";
 import { BreakGlassBanner } from "../../features/auth/BreakGlassBanner";
+import { MustChangePasswordBanner } from "../../features/auth/MustChangePassword";
 import { MobileNav } from "./MobileNav";
 import { ShortcutHelp } from "./ShortcutHelp";
 import { Sidebar } from "./Sidebar";
@@ -64,6 +65,7 @@ function Shell({ me }: { me: MeOut }) {
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <BreakGlassBanner />
+        <MustChangePasswordBanner />
         <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center gap-3 border-b bg-background/70 px-3 backdrop-blur sm:px-6">
           <MobileNav admin={admin} me={me} open={navOpen} onOpenChange={setNavOpen} />
           <nav aria-label="Breadcrumb" className="min-w-0">

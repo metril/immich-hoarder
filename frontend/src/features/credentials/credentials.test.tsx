@@ -8,7 +8,7 @@ import { server } from "../../test/server";
 
 const user = userEvent.setup({ delay: null });
 
-const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user" };
+const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user", must_change_password: false };
 const c1 = { id: 1, name: "Pixiv", site: "pixiv.net", kind: "token", has_secret: true, owner_id: 1, visibility: "private", secret: "TOP-SECRET-VALUE", can_edit: true };
 beforeAll(() => import("./CredentialsPage"), 30_000); // warm the lazy chunk
 const open = () => renderWithProviders(null, { me, route: "/credentials" });

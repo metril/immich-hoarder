@@ -101,7 +101,10 @@ async def test_me_returns_typed_payload(env: Any) -> None:
     uid, h = await actor("a", Role.admin)
     r = await c.get(f"{API}/auth/me", headers=h)
     assert r.status_code == 200
-    assert set(r.json()) == {"id", "email", "name", "role", "groups"} and r.json()["id"] == uid
+    assert (
+        set(r.json()) == {"id", "email", "name", "role", "groups", "must_change_password"}
+        and r.json()["id"] == uid
+    )
 
 
 async def test_settings_put_unknown_key_422(env: Any) -> None:

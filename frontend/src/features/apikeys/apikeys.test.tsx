@@ -10,7 +10,7 @@ import { SCOPES } from "./scopes";
 
 const user = userEvent.setup({ delay: null });
 
-const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user" };
+const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user", must_change_password: false };
 const k1 = { id: 1, name: "ci", prefix: "abcd1234", scopes: ["jobs:read"], expires_at: "2020-01-01T00:00:00Z" };
 const PLAIN = "ih_abcd1234_SECRETSECRETSECRETSECRET12345678";
 beforeAll(() => import("./ApiKeysPage"), 30_000);

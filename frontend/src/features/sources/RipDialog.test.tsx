@@ -9,7 +9,7 @@ import { server } from "../../test/server";
 
 const user = userEvent.setup({ delay: null });
 
-const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user" };
+const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user", must_change_password: false };
 const target = { id: 1, name: "Home", url: "https://immich.example", has_api_key: true, owner_id: 1, visibility: "private", can_edit: true, can_use: true };
 
 function setup() {

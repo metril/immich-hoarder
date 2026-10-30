@@ -10,7 +10,7 @@ import { server } from "../../test/server";
 const user = userEvent.setup({ delay: null });
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
-const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user" };
+const me: MeOut = { id: 1, name: "Own", email: "o@x.io", groups: [], role: "user", must_change_password: false };
 const t1 = { id: 1, name: "Home", url: "https://immich.example", has_api_key: true, owner_id: 1, visibility: "private", can_edit: true };
 
 beforeAll(() => import("./TargetsPage"), 30_000); // warm the lazy chunk

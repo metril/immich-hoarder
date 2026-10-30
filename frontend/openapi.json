@@ -904,6 +904,54 @@
         "title": "LocalPasswordIn",
         "type": "object"
       },
+      "LocalUserCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "must_change_password": {
+            "default": false,
+            "description": "Prompt the user to choose a new password at first sign-in.",
+            "examples": [
+              false
+            ],
+            "title": "Must Change Password",
+            "type": "boolean"
+          },
+          "password": {
+            "description": "Initial password (at least 8 characters).",
+            "examples": [
+              "correct horse battery"
+            ],
+            "maxLength": 1024,
+            "minLength": 8,
+            "title": "Password",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role",
+            "default": "user",
+            "description": "Role of the new account.",
+            "examples": [
+              "user"
+            ]
+          },
+          "username": {
+            "description": "Login name; the account's sub becomes `local:<username>`.",
+            "examples": [
+              "alice"
+            ],
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Username",
+            "type": "string"
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ],
+        "title": "LocalUserCreate",
+        "type": "object"
+      },
       "MeOut": {
         "properties": {
           "email": {
@@ -927,6 +975,15 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "must_change_password": {
+            "default": false,
+            "description": "True when this local account must choose a new password.",
+            "examples": [
+              false
+            ],
+            "title": "Must Change Password",
+            "type": "boolean"
           },
           "name": {
             "anyOf": [
@@ -1108,6 +1165,41 @@
           "ok"
         ],
         "title": "OidcTestOut",
+        "type": "object"
+      },
+      "OwnedCounts": {
+        "properties": {
+          "credentials": {
+            "description": "Credentials owned by the user.",
+            "examples": [
+              2
+            ],
+            "title": "Credentials",
+            "type": "integer"
+          },
+          "sources": {
+            "description": "Sources owned by the user.",
+            "examples": [
+              3
+            ],
+            "title": "Sources",
+            "type": "integer"
+          },
+          "targets": {
+            "description": "Immich targets owned by the user.",
+            "examples": [
+              1
+            ],
+            "title": "Targets",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "targets",
+          "credentials",
+          "sources"
+        ],
+        "title": "OwnedCounts",
         "type": "object"
       },
       "Page_ApiKeyOut_": {
@@ -1351,6 +1443,35 @@
           "items"
         ],
         "title": "Page[UserOut]",
+        "type": "object"
+      },
+      "PasswordReset": {
+        "additionalProperties": false,
+        "properties": {
+          "must_change_password": {
+            "default": true,
+            "description": "Require the user to change this password at next sign-in.",
+            "examples": [
+              true
+            ],
+            "title": "Must Change Password",
+            "type": "boolean"
+          },
+          "new_password": {
+            "description": "New password (at least 8 characters).",
+            "examples": [
+              "a new long password"
+            ],
+            "maxLength": 1024,
+            "minLength": 8,
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_password"
+        ],
+        "title": "PasswordReset",
         "type": "object"
       },
       "Perm": {
@@ -2259,6 +2380,35 @@
           }
         },
         "title": "RuntimeSettings",
+        "type": "object"
+      },
+      "SelfPasswordIn": {
+        "properties": {
+          "current_password": {
+            "description": "Your current password.",
+            "examples": [
+              "old password"
+            ],
+            "maxLength": 1024,
+            "title": "Current Password",
+            "type": "string"
+          },
+          "new_password": {
+            "description": "New password (at least 8 characters).",
+            "examples": [
+              "a new long password"
+            ],
+            "maxLength": 1024,
+            "minLength": 8,
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "current_password",
+          "new_password"
+        ],
+        "title": "SelfPasswordIn",
         "type": "object"
       },
       "SettingsDoc": {
@@ -3656,6 +3806,28 @@
         "title": "UploadOut",
         "type": "object"
       },
+      "UserInUse": {
+        "properties": {
+          "detail": {
+            "description": "Why the delete was refused.",
+            "examples": [
+              "user owns resources"
+            ],
+            "title": "Detail",
+            "type": "string"
+          },
+          "owned": {
+            "$ref": "#/components/schemas/OwnedCounts",
+            "description": "Resources that would need reassigning."
+          }
+        },
+        "required": [
+          "detail",
+          "owned"
+        ],
+        "title": "UserInUse",
+        "type": "object"
+      },
       "UserOut": {
         "properties": {
           "disabled": {
@@ -4544,6 +4716,47 @@
           }
         },
         "summary": "Me",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/password": {
+      "post": {
+        "description": "Changes the signed-in local user's password (current password required), clears the must-change flag and revokes other sessions; the caller stays signed in.",
+        "operationId": "change_own_password_api_v1_auth_password_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelfPasswordIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not signed in"
+          },
+          "403": {
+            "description": "Current password is incorrect, or the account is not local"
+          },
+          "422": {
+            "description": "Validation error"
+          }
+        },
+        "summary": "Change your own password",
         "tags": [
           "auth"
         ]
@@ -7002,7 +7215,115 @@
         ]
       }
     },
+    "/api/v1/users/local": {
+      "post": {
+        "description": "Creates a local (password) account. Requires an admin with the `users:write` or `admin` scope. 409 when the username is already taken.",
+        "operationId": "create_local_user_api_v1_users_local_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalUserCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Caller is not an admin, or lacks the required admin scope"
+          },
+          "409": {
+            "description": "A user with that username already exists"
+          },
+          "422": {
+            "description": "Validation error"
+          }
+        },
+        "summary": "Create a local user",
+        "tags": [
+          "users"
+        ]
+      }
+    },
     "/api/v1/users/{user_id}": {
+      "delete": {
+        "description": "Deletes a local user and their API keys and shares. Owned targets, credentials and sources block the delete (409 with counts) unless `reassign_to` names another user, who then takes them over. The last enabled admin cannot be deleted. Requires an admin with the `users:write` or `admin` scope.",
+        "operationId": "delete_user_api_v1_users__user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "User id that takes over the owned resources.",
+            "in": "query",
+            "name": "reassign_to",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "User id that takes over the owned resources.",
+              "title": "Reassign To"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Caller is not an admin, or lacks the required admin scope"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserInUse"
+                }
+              }
+            },
+            "description": "Last enabled admin, not a local user, or the user still owns resources (body lists the counts)"
+          },
+          "422": {
+            "description": "Validation error"
+          }
+        },
+        "summary": "Delete a local user",
+        "tags": [
+          "users"
+        ]
+      },
       "patch": {
         "description": "Enables or disables a user. Requires an admin with the `users:write` or `admin` scope. The last enabled admin cannot be disabled.",
         "operationId": "patch_user_api_v1_users__user_id__patch",
@@ -7055,6 +7376,64 @@
           }
         },
         "summary": "Update a user",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/api/v1/users/{user_id}/password": {
+      "post": {
+        "description": "Sets a new password for a local user and revokes all of their sessions. Requires an admin with the `users:write` or `admin` scope. 409 for non-local users.",
+        "operationId": "reset_password_api_v1_users__user_id__password_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordReset"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Caller is not an admin, or lacks the required admin scope"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "409": {
+            "description": "The user is not a local account"
+          },
+          "422": {
+            "description": "Validation error"
+          }
+        },
+        "summary": "Reset a local user's password",
         "tags": [
           "users"
         ]

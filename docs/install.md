@@ -21,7 +21,7 @@ None to prepare. The master key and session secret are generated into `/data/sec
 
 ## Locked out?
 
-Set `IH_BREAK_GLASS=true` and restart to force local login on even if it was disabled or OIDC is broken. Add `IH_BREAK_GLASS_RESET=true` to also reset the local admin: on startup a one-time reset token is written to the log (WARNING `BREAK GLASS RESET token`); enter it with the new password on `/setup`. The token works once per process and changes on every restart. Resetting signs out all existing sessions. Remove both variables afterwards.
+Set `IH_BREAK_GLASS=true` and restart to force local login on even if it was disabled or OIDC is broken. Add `IH_BREAK_GLASS_RESET=true` to also reset the local admin: on startup a one-time reset token is written to the log (WARNING `BREAK GLASS RESET token`); enter it with the new password on `/setup`. The token works once per process and changes on every restart. Resetting signs out all existing sessions. Remove both variables afterwards. Recovery writes the new password to the account and to the legacy `local_admin` setting, so it works before and after the local-users migration.
 
 1. Copy [`compose.example.yml`](https://github.com/metril/immich-hoarder/blob/main/compose.example.yml) anywhere you like.
 2. Replace `hoarder.example.com` in the Traefik `Host` rule. OIDC and the public URL are configured in the web UI, not in the environment: on first start open the site, create the local admin on `/setup`, then use Settings → Auth.
