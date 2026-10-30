@@ -80,7 +80,7 @@ async def test_metrics_forbidden_for_non_admin_session(
     app: FastAPI, client: httpx.AsyncClient
 ) -> None:
     async with session_scope() as s:
-        u = User(sub="plain", role=Role.user, groups=["hoarder-users"])
+        u = User(sub="plain", role=Role.user, groups=["hoarder-users"], session_gen=0)
         s.add(u)
         await s.flush()
         uid = u.id
