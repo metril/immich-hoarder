@@ -23,9 +23,15 @@ Scope = Literal[
     "keys:read",
     "keys:write",
     "metrics:read",
+    "settings:read",
+    "settings:write",
+    "users:read",
+    "users:write",
     "admin",
 ]
 SCOPES = frozenset(get_args(Scope))
+# Only admins may hold or grant these; stripped from non-admin keys on every request.
+ADMIN_ONLY_SCOPES = frozenset({"settings:read", "settings:write", "users:read", "users:write"})
 
 
 @dataclass(frozen=True)

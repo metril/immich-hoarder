@@ -1,3 +1,5 @@
+from typing import Annotated, Literal
+
 import anyio.to_thread
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
@@ -5,7 +7,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.common import get_obj, secret_box
-from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
+from app.api.pagination import (
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+    Q_DESCRIPTION,
+    SORT_DESCRIPTION,
+    Page,
+    apply_q,
+    paginate,
+)
 from app.api.v1.shares import delete_shares, shares_router
 from app.auth.authz import (
     access_flags,
@@ -27,17 +37,41 @@ from app.schemas.targets import TargetIn, TargetOut, TargetPatch
 
 router = APIRouter(prefix="/targets", tags=["targets"])
 
+NameSort = Literal["id", "-id", "name", "-name", "created_at", "-created_at"]
 
-@router.get("", response_model=Page[TargetOut])
+
+@router.get(
+    "",
+    response_model=Page[TargetOut],
+    summary="List targets",
+    description="Keyset-paginated list of targets visible to the caller. Requires `targets:read`. "
+    "`q` matches name, url.",
+    responses={
+        400: {"description": "Cursor was issued for a different sort"},
+        401: {"description": "Missing or invalid credentials"},
+        403: {"description": "Missing `targets:read` scope"},
+        422: {"description": "Validation error"},
+    },
+)
 async def list_targets(
     cursor: str | None = None,
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    q: Annotated[str | None, Query(max_length=100, description=Q_DESCRIPTION)] = None,
+    sort: Annotated[NameSort | None, Query(description=SORT_DESCRIPTION)] = None,
     p: Principal = Depends(current_principal),
     session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Page[TargetOut]:
     require_scope(p, "targets:read")
+    stmt = apply_q(
+        visible_to(select(ImmichTarget), ImmichTarget, p), q, ImmichTarget.name, ImmichTarget.url
+    )
     rows, nxt = await paginate(
-        session, visible_to(select(ImmichTarget), ImmichTarget, p), cursor, limit
+        session,
+        stmt,
+        cursor,
+        limit,
+        sort=sort,
+        sort_cols={"name": ImmichTarget.name, "created_at": ImmichTarget.created_at},
     )
     ed, us = await access_flags(session, ImmichTarget, p, [r.id for r in rows])
     return Page(items=[TargetOut.of(r, r.id in ed, r.id in us) for r in rows], next_cursor=nxt)

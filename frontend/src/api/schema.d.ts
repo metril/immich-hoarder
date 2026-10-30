@@ -354,7 +354,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Credentials */
+        /**
+         * List credentials
+         * @description Keyset-paginated list of credentials visible to the caller. Requires `credentials:read`. `q` matches name, site.
+         */
         get: operations["list_credentials_api_v1_credentials_get"];
         put?: never;
         /** Create Credential */
@@ -426,7 +429,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Jobs */
+        /**
+         * List jobs
+         * @description Keyset-paginated jobs visible to the caller (newest first unless `sort` is given). Requires `jobs:read`. `q` matches the source name.
+         */
         get: operations["list_jobs_api_v1_jobs_get"];
         put?: never;
         post?: never;
@@ -464,7 +470,11 @@ export interface paths {
         get: operations["get_job_api_v1_jobs__job_id__get"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * Delete a job
+         * @description Deletes a finished job together with its items and events. Requires `jobs:write`. Queued or running jobs must be cancelled first.
+         */
+        delete: operations["delete_job_api_v1_jobs__job_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -579,9 +589,15 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Settings */
+        /**
+         * Get settings
+         * @description Returns all stored settings (secrets omitted). Requires an admin with the `settings:read` or `admin` scope.
+         */
         get: operations["get_settings_api_v1_settings_get"];
-        /** Put Settings */
+        /**
+         * Update settings
+         * @description Writes only the keys present in the body. Requires an admin with the `settings:write` or `admin` scope.
+         */
         put: operations["put_settings_api_v1_settings_put"];
         post?: never;
         delete?: never;
@@ -599,8 +615,8 @@ export interface paths {
         };
         get?: never;
         /**
-         * Set Local Admin Password
-         * @description Change the local admin password (current password required), or create the account.
+         * Set the local admin password
+         * @description Creates the local admin, or changes its password (current password required). Requires an admin with the `settings:write` or `admin` scope.
          */
         put: operations["set_local_admin_password_api_v1_settings_local_admin_put"];
         post?: never;
@@ -619,7 +635,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Test Oidc */
+        /**
+         * Test OIDC discovery
+         * @description Checks that the issuer's discovery document is reachable. Requires an admin with the `settings:write` or `admin` scope.
+         */
         post: operations["test_oidc_api_v1_settings_oidc_test_post"];
         delete?: never;
         options?: never;
@@ -634,7 +653,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Sources */
+        /**
+         * List sources
+         * @description Keyset-paginated list of sources visible to the caller. Requires `sources:read`. `q` matches name, url.
+         */
         get: operations["list_sources_api_v1_sources_get"];
         put?: never;
         /** Create Source */
@@ -745,7 +767,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Targets */
+        /**
+         * List targets
+         * @description Keyset-paginated list of targets visible to the caller. Requires `targets:read`. `q` matches name, url.
+         */
         get: operations["list_targets_api_v1_targets_get"];
         put?: never;
         /** Create Target */
@@ -868,7 +893,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Users */
+        /**
+         * List users
+         * @description Keyset-paginated user list. Requires an admin with the `users:read` or `admin` scope. `q` matches sub, name and email.
+         */
         get: operations["list_users_api_v1_users_get"];
         put?: never;
         post?: never;
@@ -911,7 +939,10 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Patch User */
+        /**
+         * Update a user
+         * @description Enables or disables a user. Requires an admin with the `users:write` or `admin` scope. The last enabled admin cannot be disabled.
+         */
         patch: operations["patch_user_api_v1_users__user_id__patch"];
         trace?: never;
     };
@@ -955,7 +986,7 @@ export interface components {
             /** Name */
             name: string;
             /** Scopes */
-            scopes: ("sources:read" | "sources:write" | "sources:run" | "targets:read" | "targets:write" | "credentials:read" | "credentials:write" | "jobs:read" | "jobs:write" | "keys:read" | "keys:write" | "metrics:read" | "admin")[];
+            scopes: ("sources:read" | "sources:write" | "sources:run" | "targets:read" | "targets:write" | "credentials:read" | "credentials:write" | "jobs:read" | "jobs:write" | "keys:read" | "keys:write" | "metrics:read" | "settings:read" | "settings:write" | "users:read" | "users:write" | "admin")[];
         };
         /** ApiKeyOut */
         ApiKeyOut: {
@@ -986,7 +1017,7 @@ export interface components {
              *       "sources:read"
              *     ]
              */
-            scopes?: ("sources:read" | "sources:write" | "sources:run" | "targets:read" | "targets:write" | "credentials:read" | "credentials:write" | "jobs:read" | "jobs:write" | "keys:read" | "keys:write" | "metrics:read" | "admin")[] | null;
+            scopes?: ("sources:read" | "sources:write" | "sources:run" | "targets:read" | "targets:write" | "credentials:read" | "credentials:write" | "jobs:read" | "jobs:write" | "keys:read" | "keys:write" | "metrics:read" | "settings:read" | "settings:write" | "users:read" | "users:write" | "admin")[] | null;
         };
         /** AuthSettings */
         AuthSettings: {
@@ -2997,6 +3028,10 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number;
+                /** @description Case-insensitive substring filter (matches the listed text fields). */
+                q?: string | null;
+                /** @description Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400). */
+                sort?: ("id" | "-id" | "name" | "-name" | "created_at" | "-created_at") | null;
             };
             header?: never;
             path?: never;
@@ -3013,14 +3048,33 @@ export interface operations {
                     "application/json": components["schemas"]["Page_CredentialOut_"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Cursor was issued for a different sort */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing `credentials:read` scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
@@ -3244,6 +3298,10 @@ export interface operations {
                 source_id?: number | null;
                 status?: components["schemas"]["JobStatus"] | null;
                 cursor?: string | null;
+                /** @description Case-insensitive substring filter (matches the listed text fields). */
+                q?: string | null;
+                /** @description Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400). */
+                sort?: ("id" | "-id" | "created_at" | "-created_at" | "status" | "-status") | null;
                 limit?: number;
             };
             header?: never;
@@ -3261,14 +3319,33 @@ export interface operations {
                     "application/json": components["schemas"]["Page_JobOut_"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Cursor was issued for a different sort */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing `jobs:read` scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
@@ -3320,6 +3397,61 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
                 };
+            };
+        };
+    };
+    delete_job_api_v1_jobs__job_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing `jobs:write` scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Job not found or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Job is queued or running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
@@ -3537,6 +3669,20 @@ export interface operations {
                     "application/json": components["schemas"]["SettingsDoc"];
                 };
             };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller is not an admin, or lacks the required admin scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
     put_settings_api_v1_settings_put: {
@@ -3561,14 +3707,26 @@ export interface operations {
                     "application/json": components["schemas"]["SettingsDoc"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller is not an admin, or lacks the required admin scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
@@ -3592,14 +3750,26 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller is not an admin, or lacks the required admin scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
@@ -3625,14 +3795,26 @@ export interface operations {
                     "application/json": components["schemas"]["OidcTestOut"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller is not an admin, or lacks the required admin scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
@@ -3642,6 +3824,10 @@ export interface operations {
                 cursor?: string | null;
                 limit?: number;
                 include_ephemeral?: boolean;
+                /** @description Case-insensitive substring filter (matches the listed text fields). */
+                q?: string | null;
+                /** @description Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400). */
+                sort?: ("id" | "-id" | "name" | "-name" | "created_at" | "-created_at") | null;
             };
             header?: never;
             path?: never;
@@ -3658,14 +3844,33 @@ export interface operations {
                     "application/json": components["schemas"]["Page_SourceOut_"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Cursor was issued for a different sort */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing `sources:read` scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
@@ -3969,6 +4174,10 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number;
+                /** @description Case-insensitive substring filter (matches the listed text fields). */
+                q?: string | null;
+                /** @description Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400). */
+                sort?: ("id" | "-id" | "name" | "-name" | "created_at" | "-created_at") | null;
             };
             header?: never;
             path?: never;
@@ -3985,14 +4194,33 @@ export interface operations {
                     "application/json": components["schemas"]["Page_TargetOut_"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Cursor was issued for a different sort */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing `targets:read` scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
@@ -4325,6 +4553,10 @@ export interface operations {
             query?: {
                 cursor?: string | null;
                 limit?: number;
+                /** @description Case-insensitive substring filter (matches the listed text fields). */
+                q?: string | null;
+                /** @description Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400). */
+                sort?: ("id" | "-id" | "sub" | "-sub" | "created_at" | "-created_at") | null;
             };
             header?: never;
             path?: never;
@@ -4341,14 +4573,33 @@ export interface operations {
                     "application/json": components["schemas"]["Page_UserOut_"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Cursor was issued for a different sort */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller is not an admin, or lacks the required admin scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };
@@ -4407,14 +4658,40 @@ export interface operations {
                     "application/json": components["schemas"]["UserOut"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Missing or invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Caller is not an admin, or lacks the required admin scope */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description User not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Would disable the last enabled admin */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
+                content?: never;
             };
         };
     };

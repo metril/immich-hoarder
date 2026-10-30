@@ -1,11 +1,12 @@
 import hmac
+from collections.abc import Awaitable, Callable
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.apikeys import verify_api_key
 from app.auth.oidc import BearerVerifier, OidcConfig, TokenError
-from app.auth.principal import Principal, is_local, resolve_role, upsert_user
+from app.auth.principal import ADMIN_ONLY_SCOPES, Principal, is_local, resolve_role, upsert_user
 from app.db.engine import get_session
 from app.db.models import Role, User
 
@@ -58,7 +59,9 @@ async def current_principal(
             raise _unauth()
         p = _principal(user, request, frozenset(key.scopes or []))
         if p.role != Role.admin:  # cap scopes at the user's current role
-            p = Principal(p.user_id, p.role, p.groups, p.scopes and p.scopes - {"admin"})
+            p = Principal(
+                p.user_id, p.role, p.groups, p.scopes and p.scopes - {"admin"} - ADMIN_ONLY_SCOPES
+            )
         return p
 
     if auth.lower().startswith("bearer "):
@@ -89,3 +92,16 @@ async def require_admin(p: Principal = Depends(current_principal)) -> Principal:
     if not p.is_admin:
         raise HTTPException(403, "admin required")
     return p
+
+
+def require_admin_scope(scope: str) -> Callable[..., Awaitable[Principal]]:
+    """Dependency: admin role AND (full session/JWT, the `admin` scope, or the given scope)."""
+
+    async def dep(p: Principal = Depends(current_principal)) -> Principal:
+        if p.role != Role.admin or not (
+            p.scopes is None or "admin" in p.scopes or scope in p.scopes
+        ):
+            raise HTTPException(403, "admin required")
+        return p
+
+    return dep

@@ -1,10 +1,20 @@
+from typing import Annotated, Literal
+
 import anyio
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.common import get_obj, secret_box
-from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
+from app.api.pagination import (
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+    Q_DESCRIPTION,
+    SORT_DESCRIPTION,
+    Page,
+    apply_q,
+    paginate,
+)
 from app.api.v1.sources import build_source
 from app.auth.authz import require_scope
 from app.auth.deps import current_principal
@@ -17,6 +27,8 @@ from app.runtime.visibility import visible_jobs_stmt
 from app.schemas.jobs import LOG_LEVELS, EventOut, ItemOut, JobOut, RipIn, RunIn
 
 router = APIRouter(tags=["jobs"])
+
+JobSort = Literal["id", "-id", "created_at", "-created_at", "status", "-status"]
 
 
 def _supervisor(request: Request) -> JobSupervisor:
@@ -106,11 +118,25 @@ async def adhoc_rip(
     return await _out(session, job)
 
 
-@router.get("/jobs", response_model=Page[JobOut])
+@router.get(
+    "/jobs",
+    response_model=Page[JobOut],
+    summary="List jobs",
+    description="Keyset-paginated jobs visible to the caller (newest first unless `sort` is "
+    "given). Requires `jobs:read`. `q` matches the source name.",
+    responses={
+        400: {"description": "Cursor was issued for a different sort"},
+        401: {"description": "Missing or invalid credentials"},
+        403: {"description": "Missing `jobs:read` scope"},
+        422: {"description": "Validation error"},
+    },
+)
 async def list_jobs(
     source_id: int | None = None,
     status: JobStatus | None = None,
     cursor: str | None = None,
+    q: Annotated[str | None, Query(max_length=100, description=Q_DESCRIPTION)] = None,
+    sort: Annotated[JobSort | None, Query(description=SORT_DESCRIPTION)] = None,
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     p: Principal = Depends(current_principal),
     session: AsyncSession = Depends(get_session, scope="function"),
@@ -121,7 +147,9 @@ async def list_jobs(
         stmt = stmt.where(Job.source_id == source_id)
     if status is not None:
         stmt = stmt.where(Job.status == status)
-    rows, nxt = await paginate(session, stmt, cursor, limit, desc=True)
+    stmt = apply_q(stmt, q, Source.name)
+    cols = {"created_at": Job.created_at, "status": Job.status}
+    rows, nxt = await paginate(session, stmt, cursor, limit, desc=True, sort=sort, sort_cols=cols)
     names = await _names(session, rows)
     return Page(items=[JobOut.of(j, names.get(j.source_id)) for j in rows], next_cursor=nxt)
 
@@ -203,3 +231,33 @@ async def retry_job(
     sup = _supervisor(request)
     job = await _visible_job(session, p, job_id)
     return await _enqueue(session, sup, job.source_id, p, job.log_level)
+
+
+@router.delete(
+    "/jobs/{job_id}",
+    status_code=204,
+    summary="Delete a job",
+    description="Deletes a finished job together with its items and events. Requires "
+    "`jobs:write`. Queued or running jobs must be cancelled first.",
+    responses={
+        401: {"description": "Missing or invalid credentials"},
+        403: {"description": "Missing `jobs:write` scope"},
+        404: {"description": "Job not found or not visible to the caller"},
+        409: {"description": "Job is queued or running"},
+        422: {"description": "Validation error"},
+    },
+)
+async def delete_job(
+    job_id: int,
+    request: Request,
+    p: Principal = Depends(current_principal),
+    session: AsyncSession = Depends(get_session, scope="function"),
+) -> Response:
+    require_scope(p, "jobs:write")
+    sup = _supervisor(request)
+    job = await _visible_job(session, p, job_id)
+    if job.status in (JobStatus.queued, JobStatus.running) or job_id in sup.running:
+        raise HTTPException(409, "job is active")
+    # items/events go via ON DELETE CASCADE (foreign_keys=ON, see db/engine.py)
+    await session.execute(delete(Job).where(Job.id == job_id))
+    return Response(status_code=204)
