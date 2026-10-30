@@ -1,7 +1,9 @@
 import asyncio
 import logging
 import multiprocessing
+import os
 import secrets
+import signal
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -10,7 +12,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select, text, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -29,8 +31,9 @@ from app.core.crypto import SecretBox
 from app.core.logging import configure_logging
 from app.db.engine import dispose_engine, init_engine, session_scope
 from app.db.migrate import upgrade_head_async
-from app.db.models import Job, JobStatus
+from app.db.models import Job, JobStatus, User
 from app.runtime.bus import EventBus
+from app.runtime.maintenance import apply_pending_restore, discard_database, revert_restore
 from app.runtime.metrics import Metrics
 from app.runtime.scheduler import SourceScheduler
 from app.runtime.supervisor import JobSupervisor
@@ -46,8 +49,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        await upgrade_head_async(settings.database_url)
+        restored = await asyncio.to_thread(apply_pending_restore, settings.database_url)
+        try:
+            await upgrade_head_async(settings.database_url)
+        except Exception:
+            if restored is None:
+                raise
+            log.error("migrating the restored database failed; reverting to the previous one")
+            if restored.saved is not None:
+                await asyncio.to_thread(revert_restore, settings.database_url, restored.saved)
+            else:  # nothing to go back to: drop the unusable DB and start fresh
+                await asyncio.to_thread(discard_database, settings.database_url)
+            restored = None
+            await upgrade_head_async(settings.database_url)
         engine = init_engine(settings.database_url)
+        if restored is not None:
+            # Old cookies carry the replaced DB's generations; jump past both DBs' counters.
+            async with session_scope() as s:
+                await s.execute(
+                    update(User).values(
+                        session_gen=func.max(User.session_gen, restored.session_floor) + 1
+                    )
+                )
         if settings.break_glass:
             log.warning(
                 "BREAK GLASS is enabled (IH_BREAK_GLASS): local login is forced on%s; "
@@ -121,6 +144,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.login_limiter = LoginLimiter()
     app.state.setup_lock = asyncio.Lock()
     app.state.reset_token = None
+    app.state.shutdown = lambda: os.kill(os.getpid(), signal.SIGTERM)
     app.add_middleware(CsrfCookieRenewal)  # inside SessionMiddleware
     app.add_middleware(
         SessionMiddleware,

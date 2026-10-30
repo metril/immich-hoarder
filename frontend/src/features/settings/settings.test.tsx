@@ -95,6 +95,55 @@ describe("settings", () => {
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Backups are not supported for this database"));
   });
 
+  it("restore needs typed confirmation and shows restart-required state", async () => {
+    let pending = false;
+    let q = "";
+    server.use(
+      http.get("*/api/v1/admin/backups", () =>
+        HttpResponse.json({ items: [{ file: "a.db", mtime: "2026-10-01T00:00:00Z", size: 2048 }], restore_pending: pending }),
+      ),
+      http.post("*/api/v1/admin/backups/a.db/restore", ({ request }) => {
+        q = new URL(request.url).search;
+        pending = true;
+        return HttpResponse.json({ restart_required: true, restarting: false }, { status: 202 });
+      }),
+      http.delete("*/api/v1/admin/backups/pending-restore", () => {
+        pending = false;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    open("admin");
+    await user.click(await screen.findByRole("button", { name: "Restore a.db" }));
+    const go = screen.getByRole("button", { name: "Restore" });
+    expect(go).toBeDisabled();
+    await user.type(screen.getByLabelText(/Type RESTORE/), "restore");
+    expect(go).toBeDisabled();
+    await user.clear(screen.getByLabelText(/Type RESTORE/));
+    await user.type(screen.getByLabelText(/Type RESTORE/), "RESTORE");
+    await user.click(go);
+    await waitFor(() => expect(q).toContain("restart=false"));
+    expect(await screen.findByText(/A restore is staged/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Cancel restore" }));
+    await waitFor(() => expect(screen.queryByText(/A restore is staged/)).not.toBeInTheDocument());
+  });
+
+  it("deletes a backup after confirmation", async () => {
+    let deleted = false;
+    server.use(
+      http.get("*/api/v1/admin/backups", () =>
+        HttpResponse.json({ items: deleted ? [] : [{ file: "a.db", mtime: "2026-10-01T00:00:00Z", size: 2048 }], restore_pending: false }),
+      ),
+      http.delete("*/api/v1/admin/backups/a.db", () => {
+        deleted = true;
+        return new HttpResponse(null, { status: 204 });
+      }),
+    );
+    open("admin");
+    await user.click(await screen.findByRole("button", { name: "Delete a.db" }));
+    await user.click(await screen.findByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(deleted).toBe(true));
+  });
+
   it("prune confirms then toasts counts", async () => {
     server.use(
       http.get("*/api/v1/admin/backups", () => HttpResponse.json({ items: [] })),
