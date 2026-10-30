@@ -183,6 +183,65 @@
         "title": "ApiKeyOut",
         "type": "object"
       },
+      "ApiKeyPatch": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "maxLength": 255,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "New display name; omitted keeps the current name.",
+            "examples": [
+              "ci-pipeline"
+            ],
+            "title": "Name"
+          },
+          "scopes": {
+            "anyOf": [
+              {
+                "items": {
+                  "enum": [
+                    "sources:read",
+                    "sources:write",
+                    "sources:run",
+                    "targets:read",
+                    "targets:write",
+                    "credentials:read",
+                    "credentials:write",
+                    "jobs:read",
+                    "jobs:write",
+                    "keys:read",
+                    "keys:write",
+                    "metrics:read",
+                    "admin"
+                  ],
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Replacement scope list; omitted keeps the current scopes.",
+            "examples": [
+              [
+                "jobs:read",
+                "sources:read"
+              ]
+            ],
+            "title": "Scopes"
+          }
+        },
+        "title": "ApiKeyPatch",
+        "type": "object"
+      },
       "AuthSettings": {
         "additionalProperties": false,
         "properties": {
@@ -4085,6 +4144,7 @@
     },
     "/api/v1/api-keys": {
       "get": {
+        "description": "Lists active keys (all keys for admins, own keys otherwise). Requires `keys:read`.",
         "operationId": "list_keys_api_v1_api_keys_get",
         "parameters": [
           {
@@ -4127,23 +4187,23 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Missing scope, or scopes cannot be granted by the caller"
+          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "Validation error"
           }
         },
-        "summary": "List Keys",
+        "summary": "List API keys",
         "tags": [
           "api-keys"
         ]
       },
       "post": {
+        "description": "Creates a key for the caller. The plaintext key is returned once. Requires `keys:write`; granted scopes may not exceed the caller's own.",
         "operationId": "create_key_api_v1_api_keys_post",
         "requestBody": {
           "content": {
@@ -4166,18 +4226,17 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Missing scope, or scopes cannot be granted by the caller"
+          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "Validation error"
           }
         },
-        "summary": "Create Key",
+        "summary": "Create an API key",
         "tags": [
           "api-keys"
         ]
@@ -4185,6 +4244,7 @@
     },
     "/api/v1/api-keys/{key_id}": {
       "delete": {
+        "description": "Revokes a key immediately. Requires `keys:write`.",
         "operationId": "revoke_key_api_v1_api_keys__key_id__delete",
         "parameters": [
           {
@@ -4201,18 +4261,167 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Missing scope, or scopes cannot be granted by the caller"
+          },
+          "404": {
+            "description": "Key not found, or owned by another user"
+          },
           "422": {
+            "description": "Validation error"
+          }
+        },
+        "summary": "Revoke an API key",
+        "tags": [
+          "api-keys"
+        ]
+      },
+      "get": {
+        "description": "Returns one key's metadata (never the secret). Requires `keys:read`. Non-admins can only see their own keys.",
+        "operationId": "get_key_api_v1_api_keys__key_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "title": "Key Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ApiKeyOut"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Missing scope, or scopes cannot be granted by the caller"
+          },
+          "404": {
+            "description": "Key not found, or owned by another user"
+          },
+          "422": {
+            "description": "Validation error"
           }
         },
-        "summary": "Revoke Key",
+        "summary": "Get an API key",
+        "tags": [
+          "api-keys"
+        ]
+      },
+      "patch": {
+        "description": "Renames a key and/or replaces its scopes. Requires `keys:write`; scopes may not exceed the caller's own. Revoked keys cannot be edited.",
+        "operationId": "update_key_api_v1_api_keys__key_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "title": "Key Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyPatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Missing scope, or scopes cannot be granted by the caller"
+          },
+          "404": {
+            "description": "Key not found, or owned by another user"
+          },
+          "409": {
+            "description": "Key is already revoked"
+          },
+          "422": {
+            "description": "Validation error"
+          }
+        },
+        "summary": "Edit an API key",
+        "tags": [
+          "api-keys"
+        ]
+      }
+    },
+    "/api/v1/api-keys/{key_id}/rotate": {
+      "post": {
+        "description": "Issues a new key with the same name, scopes and expiry, and revokes the old one atomically. The new plaintext key is returned once. Requires `keys:write`.",
+        "operationId": "rotate_key_api_v1_api_keys__key_id__rotate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "title": "Key Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeyCreated"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Missing scope, or scopes cannot be granted by the caller"
+          },
+          "404": {
+            "description": "Key not found, or owned by another user"
+          },
+          "409": {
+            "description": "Key is already revoked"
+          },
+          "422": {
+            "description": "Validation error"
+          }
+        },
+        "summary": "Rotate an API key",
         "tags": [
           "api-keys"
         ]

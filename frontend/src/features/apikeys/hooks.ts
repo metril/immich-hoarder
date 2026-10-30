@@ -6,6 +6,7 @@ import { flatItems, useCursorList, type Page } from "../../components/common/use
 
 export type ApiKeyOut = components["schemas"]["ApiKeyOut"];
 export type ApiKeyIn = components["schemas"]["ApiKeyIn"];
+export type ApiKeyPatch = components["schemas"]["ApiKeyPatch"];
 
 const LISTS = ["list", "api-keys"] as const;
 
@@ -46,5 +47,36 @@ export function useRevokeApiKey() {
       );
       void qc.invalidateQueries({ queryKey: LISTS });
     },
+  });
+}
+
+function replaceInLists(qc: ReturnType<typeof useQueryClient>, id: number, next: ApiKeyOut) {
+  qc.setQueriesData<InfiniteData<Page<ApiKeyOut>>>({ queryKey: LISTS }, (d) =>
+    d && { ...d, pages: d.pages.map((p) => ({ ...p, items: p.items.map((k) => (k.id === id ? next : k)) })) },
+  );
+  void qc.invalidateQueries({ queryKey: LISTS });
+}
+
+export function useUpdateApiKey(id: number) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (body: ApiKeyPatch): Promise<ApiKeyOut> =>
+      unwrap(await api.PATCH("/api/v1/api-keys/{key_id}", { params: { path: { key_id: id } }, body })),
+    onSuccess: (out) => replaceInLists(qc, id, out),
+  });
+}
+
+/** Like create: the new plaintext key goes to `onKey` only, never into a cache. */
+export function useRotateApiKey(onKey: (plaintext: string) => void) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number): Promise<ApiKeyOut> => {
+      const { key, ...out } = unwrap(
+        await api.POST("/api/v1/api-keys/{key_id}/rotate", { params: { path: { key_id: id } } }),
+      );
+      onKey(key);
+      return out;
+    },
+    onSuccess: (out, id) => replaceInLists(qc, id, out),
   });
 }
