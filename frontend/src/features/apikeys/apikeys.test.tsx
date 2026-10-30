@@ -17,7 +17,7 @@ beforeAll(() => import("./ApiKeysPage"), 30_000);
 const list = (items: object[]) => http.get("*/api/v1/api-keys", () => HttpResponse.json({ items, next_cursor: null }));
 
 describe("api keys", () => {
-  it("has the 13 scopes in order", () => expect(SCOPES).toHaveLength(13));
+  it("has the 17 scopes in order", () => expect(SCOPES).toHaveLength(17));
 
   it("reveal dialog ignores Escape and outside click", async () => {
     server.use(

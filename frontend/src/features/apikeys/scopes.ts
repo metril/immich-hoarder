@@ -16,6 +16,10 @@ const ORDER = [
   "keys:read",
   "keys:write",
   "metrics:read",
+  "settings:read",
+  "settings:write",
+  "users:read",
+  "users:write",
   "admin",
 ] as const satisfies readonly Scope[];
 
@@ -24,10 +28,19 @@ type Missing = Exclude<Scope, (typeof ORDER)[number]>;
 const _exhaustive: [Missing] extends [never] ? true : never = true;
 void _exhaustive;
 
+/** Scopes only admins may hold or grant (mirrors backend ADMIN_ONLY_SCOPES). */
+export const ADMIN_ONLY: readonly Scope[] = [
+  "settings:read",
+  "settings:write",
+  "users:read",
+  "users:write",
+  "admin",
+];
+
 export const SCOPES: readonly Scope[] = ORDER;
 
 export const readOnlyScopes = (): Scope[] => SCOPES.filter((s) => s.endsWith(":read"));
-export const allScopes = (admin: boolean): Scope[] => SCOPES.filter((s) => admin || s !== "admin");
+export const allScopes = (admin: boolean): Scope[] => SCOPES.filter((s) => admin || !ADMIN_ONLY.includes(s));
 
 /** Scopes grouped by resource (the part before ":"); `admin` is its own group. */
 export function groupScopes(admin: boolean): [string, Scope[]][] {

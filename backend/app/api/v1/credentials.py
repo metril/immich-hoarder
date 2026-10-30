@@ -1,9 +1,19 @@
+from typing import Annotated, Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.common import get_obj, secret_box
-from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
+from app.api.pagination import (
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+    Q_DESCRIPTION,
+    SORT_DESCRIPTION,
+    Page,
+    apply_q,
+    paginate,
+)
 from app.api.v1.shares import delete_shares, shares_router
 from app.auth.authz import (
     access_flags,
@@ -25,6 +35,8 @@ from app.schemas.credentials import CredentialIn, CredentialOut, CredentialPatch
 
 router = APIRouter(prefix="/credentials", tags=["credentials"])
 
+NameSort = Literal["id", "-id", "name", "-name", "created_at", "-created_at"]
+
 
 async def _check_apprise(session: AsyncSession, url: str) -> None:
     """Reject invalid or SSRF-prone apprise URLs without echoing them."""
@@ -36,16 +48,39 @@ async def _check_apprise(session: AsyncSession, url: str) -> None:
         raise HTTPException(422, str(e)) from None
 
 
-@router.get("", response_model=Page[CredentialOut])
+@router.get(
+    "",
+    response_model=Page[CredentialOut],
+    summary="List credentials",
+    description="Keyset-paginated list of credentials visible to the caller. "
+    "Requires `credentials:read`. "
+    "`q` matches name, site.",
+    responses={
+        400: {"description": "Cursor was issued for a different sort"},
+        401: {"description": "Missing or invalid credentials"},
+        403: {"description": "Missing `credentials:read` scope"},
+        422: {"description": "Validation error"},
+    },
+)
 async def list_credentials(
     cursor: str | None = None,
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    q: Annotated[str | None, Query(max_length=100, description=Q_DESCRIPTION)] = None,
+    sort: Annotated[NameSort | None, Query(description=SORT_DESCRIPTION)] = None,
     p: Principal = Depends(current_principal),
     session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Page[CredentialOut]:
     require_scope(p, "credentials:read")
+    stmt = apply_q(
+        visible_to(select(Credential), Credential, p), q, Credential.name, Credential.site
+    )
     rows, nxt = await paginate(
-        session, visible_to(select(Credential), Credential, p), cursor, limit
+        session,
+        stmt,
+        cursor,
+        limit,
+        sort=sort,
+        sort_cols={"name": Credential.name, "created_at": Credential.created_at},
     )
     ed, us = await access_flags(session, Credential, p, [r.id for r in rows])
     return Page(items=[CredentialOut.of(r, r.id in ed, r.id in us) for r in rows], next_cursor=nxt)

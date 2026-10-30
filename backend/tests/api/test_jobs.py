@@ -403,3 +403,26 @@ async def test_job_datetimes_serialize_with_utc_offset(client: httpx.AsyncClient
     j = (await client.get(f"/api/v1/jobs/{jid}", headers=h)).json()
     for k in ("created_at", "started_at"):
         assert j[k].endswith(("+00:00", "Z")), j[k]
+
+
+async def test_delete_job_409_while_active_then_cascades(client: httpx.AsyncClient) -> None:
+    uid, h = await actor("a")
+    _, hx = await actor("x")
+    sid = await _src(client, h)
+    jid = (await client.post(f"/api/v1/sources/{sid}/run", headers=h)).json()["id"]
+    assert (await client.delete(f"/api/v1/jobs/{jid}", headers=h)).status_code == 409
+    await _finish(jid, JobStatus.running)
+    assert (await client.delete(f"/api/v1/jobs/{jid}", headers=h)).status_code == 409
+    await _finish(jid)
+    async with session_scope() as s:
+        s.add(JobItem(job_id=jid, url="u", outcome="uploaded"))
+        s.add(JobEvent(job_id=jid, level="info", type="t", data={}))
+    assert (await client.delete(f"/api/v1/jobs/{jid}", headers=hx)).status_code == 404
+    ro = await headers_for(uid, ["jobs:read"])
+    assert (await client.delete(f"/api/v1/jobs/{jid}", headers=ro)).status_code == 403
+    assert (await client.delete(f"/api/v1/jobs/{jid}", headers=h)).status_code == 204
+    assert (await client.get(f"/api/v1/jobs/{jid}", headers=h)).status_code == 404
+    async with session_scope() as s:
+        assert (await s.execute(select(JobItem))).first() is None
+        assert (await s.execute(select(JobEvent))).first() is None
+    assert (await client.delete(f"/api/v1/jobs/{jid}", headers=h)).status_code == 404

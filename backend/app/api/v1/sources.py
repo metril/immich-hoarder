@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import shutil
+from typing import Annotated, Literal
 
 import anyio
 import anyio.to_thread
@@ -11,7 +12,15 @@ from sqlalchemy import delete, exists, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.common import get_obj, secret_box
-from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
+from app.api.pagination import (
+    DEFAULT_LIMIT,
+    MAX_LIMIT,
+    Q_DESCRIPTION,
+    SORT_DESCRIPTION,
+    Page,
+    apply_q,
+    paginate,
+)
 from app.api.v1.shares import delete_shares, shares_router
 from app.auth.authz import (
     access_flags,
@@ -62,6 +71,8 @@ async def _sync(request: Request, session: AsyncSession, source_id: int) -> None
 
 router = APIRouter(prefix="/sources", tags=["sources"])
 
+NameSort = Literal["id", "-id", "name", "-name", "created_at", "-created_at"]
+
 
 async def _check_proxy(session: AsyncSession, proxy: str | None) -> None:
     if proxy is None:
@@ -81,11 +92,25 @@ async def _extractor_for(session: AsyncSession, url: str) -> str:
         raise HTTPException(422, str(e)) from None
 
 
-@router.get("", response_model=Page[SourceOut])
+@router.get(
+    "",
+    response_model=Page[SourceOut],
+    summary="List sources",
+    description="Keyset-paginated list of sources visible to the caller. Requires `sources:read`. "
+    "`q` matches name, url.",
+    responses={
+        400: {"description": "Cursor was issued for a different sort"},
+        401: {"description": "Missing or invalid credentials"},
+        403: {"description": "Missing `sources:read` scope"},
+        422: {"description": "Validation error"},
+    },
+)
 async def list_sources(
     cursor: str | None = None,
     limit: int = Query(DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
     include_ephemeral: bool = False,
+    q: Annotated[str | None, Query(max_length=100, description=Q_DESCRIPTION)] = None,
+    sort: Annotated[NameSort | None, Query(description=SORT_DESCRIPTION)] = None,
     p: Principal = Depends(current_principal),
     session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Page[SourceOut]:
@@ -93,7 +118,15 @@ async def list_sources(
     stmt = visible_to(select(Source), Source, p)
     if not include_ephemeral:
         stmt = stmt.where(Source.ephemeral.is_(False))
-    rows, nxt = await paginate(session, stmt, cursor, limit)
+    stmt = apply_q(stmt, q, Source.name, Source.url)
+    rows, nxt = await paginate(
+        session,
+        stmt,
+        cursor,
+        limit,
+        sort=sort,
+        sort_cols={"name": Source.name, "created_at": Source.created_at},
+    )
     ed, us = await access_flags(session, Source, p, [r.id for r in rows])
     return Page(items=[SourceOut.of(r, r.id in ed, r.id in us) for r in rows], next_cursor=nxt)
 

@@ -8,9 +8,9 @@ from app.api.pagination import DEFAULT_LIMIT, MAX_LIMIT, Page, paginate
 from app.auth.apikeys import _naive, _now, create_api_key
 from app.auth.authz import require_scope
 from app.auth.deps import current_principal
-from app.auth.principal import Principal
+from app.auth.principal import ADMIN_ONLY_SCOPES, Principal
 from app.db.engine import get_session
-from app.db.models import ApiKey, User
+from app.db.models import ApiKey, Role, User
 from app.schemas.apikeys import ApiKeyCreated, ApiKeyIn, ApiKeyOut, ApiKeyPatch
 
 router = APIRouter(prefix="/api-keys", tags=["api-keys"])
@@ -31,6 +31,8 @@ def _out(k: ApiKey) -> ApiKeyOut:
 def _check_grantable(p: Principal, scopes: Sequence[str]) -> None:
     if "admin" in scopes and not p.is_admin:
         raise HTTPException(403, "admin scope requires an admin")
+    if ADMIN_ONLY_SCOPES & set(scopes) and p.role != Role.admin:
+        raise HTTPException(403, "settings/users scopes require an admin")
     if p.scopes is not None and not p.is_admin and not set(scopes) <= p.scopes:
         raise HTTPException(403, "cannot grant scopes beyond the calling key")
 

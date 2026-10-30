@@ -124,6 +124,10 @@
                 "keys:read",
                 "keys:write",
                 "metrics:read",
+                "settings:read",
+                "settings:write",
+                "users:read",
+                "users:write",
                 "admin"
               ],
               "type": "string"
@@ -219,6 +223,10 @@
                     "keys:read",
                     "keys:write",
                     "metrics:read",
+                    "settings:read",
+                    "settings:write",
+                    "users:read",
+                    "users:write",
                     "admin"
                   ],
                   "type": "string"
@@ -4605,6 +4613,7 @@
     },
     "/api/v1/credentials": {
       "get": {
+        "description": "Keyset-paginated list of credentials visible to the caller. Requires `credentials:read`. `q` matches name, site.",
         "operationId": "list_credentials_api_v1_credentials_get",
         "parameters": [
           {
@@ -4634,6 +4643,51 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "description": "Case-insensitive substring filter (matches the listed text fields).",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive substring filter (matches the listed text fields).",
+              "title": "Q"
+            }
+          },
+          {
+            "description": "Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400).",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "id",
+                    "-id",
+                    "name",
+                    "-name",
+                    "created_at",
+                    "-created_at"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400).",
+              "title": "Sort"
+            }
           }
         ],
         "responses": {
@@ -4647,18 +4701,20 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "description": "Cursor was issued for a different sort"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Missing `credentials:read` scope"
+          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "Validation error"
           }
         },
-        "summary": "List Credentials",
+        "summary": "List credentials",
         "tags": [
           "credentials"
         ]
@@ -4943,6 +4999,7 @@
     },
     "/api/v1/jobs": {
       "get": {
+        "description": "Keyset-paginated jobs visible to the caller (newest first unless `sort` is given). Requires `jobs:read`. `q` matches the source name.",
         "operationId": "list_jobs_api_v1_jobs_get",
         "parameters": [
           {
@@ -4994,6 +5051,51 @@
             }
           },
           {
+            "description": "Case-insensitive substring filter (matches the listed text fields).",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive substring filter (matches the listed text fields).",
+              "title": "Q"
+            }
+          },
+          {
+            "description": "Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400).",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "id",
+                    "-id",
+                    "created_at",
+                    "-created_at",
+                    "status",
+                    "-status"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400).",
+              "title": "Sort"
+            }
+          },
+          {
             "in": "query",
             "name": "limit",
             "required": false,
@@ -5017,18 +5119,20 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "description": "Cursor was issued for a different sort"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Missing `jobs:read` scope"
+          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "Validation error"
           }
         },
-        "summary": "List Jobs",
+        "summary": "List jobs",
         "tags": [
           "jobs"
         ]
@@ -5054,6 +5158,45 @@
       }
     },
     "/api/v1/jobs/{job_id}": {
+      "delete": {
+        "description": "Deletes a finished job together with its items and events. Requires `jobs:write`. Queued or running jobs must be cancelled first.",
+        "operationId": "delete_job_api_v1_jobs__job_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Missing `jobs:write` scope"
+          },
+          "404": {
+            "description": "Job not found or not visible to the caller"
+          },
+          "409": {
+            "description": "Job is queued or running"
+          },
+          "422": {
+            "description": "Validation error"
+          }
+        },
+        "summary": "Delete a job",
+        "tags": [
+          "jobs"
+        ]
+      },
       "get": {
         "operationId": "get_job_api_v1_jobs__job_id__get",
         "parameters": [
@@ -5434,6 +5577,7 @@
     },
     "/api/v1/settings": {
       "get": {
+        "description": "Returns all stored settings (secrets omitted). Requires an admin with the `settings:read` or `admin` scope.",
         "operationId": "get_settings_api_v1_settings_get",
         "responses": {
           "200": {
@@ -5445,14 +5589,21 @@
               }
             },
             "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Caller is not an admin, or lacks the required admin scope"
           }
         },
-        "summary": "Get Settings",
+        "summary": "Get settings",
         "tags": [
           "settings"
         ]
       },
       "put": {
+        "description": "Writes only the keys present in the body. Requires an admin with the `settings:write` or `admin` scope.",
         "operationId": "put_settings_api_v1_settings_put",
         "requestBody": {
           "content": {
@@ -5475,18 +5626,17 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Caller is not an admin, or lacks the required admin scope"
+          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "Validation error"
           }
         },
-        "summary": "Put Settings",
+        "summary": "Update settings",
         "tags": [
           "settings"
         ]
@@ -5494,7 +5644,7 @@
     },
     "/api/v1/settings/local-admin": {
       "put": {
-        "description": "Change the local admin password (current password required), or create the account.",
+        "description": "Creates the local admin, or changes its password (current password required). Requires an admin with the `settings:write` or `admin` scope.",
         "operationId": "set_local_admin_password_api_v1_settings_local_admin_put",
         "requestBody": {
           "content": {
@@ -5510,18 +5660,17 @@
           "204": {
             "description": "Successful Response"
           },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Caller is not an admin, or lacks the required admin scope"
+          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "Validation error"
           }
         },
-        "summary": "Set Local Admin Password",
+        "summary": "Set the local admin password",
         "tags": [
           "settings"
         ]
@@ -5529,6 +5678,7 @@
     },
     "/api/v1/settings/oidc/test": {
       "post": {
+        "description": "Checks that the issuer's discovery document is reachable. Requires an admin with the `settings:write` or `admin` scope.",
         "operationId": "test_oidc_api_v1_settings_oidc_test_post",
         "requestBody": {
           "content": {
@@ -5551,18 +5701,17 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Caller is not an admin, or lacks the required admin scope"
+          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "Validation error"
           }
         },
-        "summary": "Test Oidc",
+        "summary": "Test OIDC discovery",
         "tags": [
           "settings"
         ]
@@ -5570,6 +5719,7 @@
     },
     "/api/v1/sources": {
       "get": {
+        "description": "Keyset-paginated list of sources visible to the caller. Requires `sources:read`. `q` matches name, url.",
         "operationId": "list_sources_api_v1_sources_get",
         "parameters": [
           {
@@ -5609,6 +5759,51 @@
               "title": "Include Ephemeral",
               "type": "boolean"
             }
+          },
+          {
+            "description": "Case-insensitive substring filter (matches the listed text fields).",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive substring filter (matches the listed text fields).",
+              "title": "Q"
+            }
+          },
+          {
+            "description": "Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400).",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "id",
+                    "-id",
+                    "name",
+                    "-name",
+                    "created_at",
+                    "-created_at"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400).",
+              "title": "Sort"
+            }
           }
         ],
         "responses": {
@@ -5622,18 +5817,20 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "description": "Cursor was issued for a different sort"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Missing `sources:read` scope"
+          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "Validation error"
           }
         },
-        "summary": "List Sources",
+        "summary": "List sources",
         "tags": [
           "sources"
         ]
@@ -6044,6 +6241,7 @@
     },
     "/api/v1/targets": {
       "get": {
+        "description": "Keyset-paginated list of targets visible to the caller. Requires `targets:read`. `q` matches name, url.",
         "operationId": "list_targets_api_v1_targets_get",
         "parameters": [
           {
@@ -6073,6 +6271,51 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "description": "Case-insensitive substring filter (matches the listed text fields).",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive substring filter (matches the listed text fields).",
+              "title": "Q"
+            }
+          },
+          {
+            "description": "Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400).",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "id",
+                    "-id",
+                    "name",
+                    "-name",
+                    "created_at",
+                    "-created_at"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400).",
+              "title": "Sort"
+            }
           }
         ],
         "responses": {
@@ -6086,18 +6329,20 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "description": "Cursor was issued for a different sort"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Missing `targets:read` scope"
+          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "Validation error"
           }
         },
-        "summary": "List Targets",
+        "summary": "List targets",
         "tags": [
           "targets"
         ]
@@ -6601,6 +6846,7 @@
     },
     "/api/v1/users": {
       "get": {
+        "description": "Keyset-paginated user list. Requires an admin with the `users:read` or `admin` scope. `q` matches sub, name and email.",
         "operationId": "list_users_api_v1_users_get",
         "parameters": [
           {
@@ -6630,6 +6876,51 @@
               "title": "Limit",
               "type": "integer"
             }
+          },
+          {
+            "description": "Case-insensitive substring filter (matches the listed text fields).",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Case-insensitive substring filter (matches the listed text fields).",
+              "title": "Q"
+            }
+          },
+          {
+            "description": "Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400).",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "id",
+                    "-id",
+                    "sub",
+                    "-sub",
+                    "created_at",
+                    "-created_at"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Sort order. A leading `-` sorts descending. `id` is always the final tiebreak. A cursor is only valid with the sort it was issued for (otherwise 400).",
+              "title": "Sort"
+            }
           }
         ],
         "responses": {
@@ -6643,18 +6934,20 @@
             },
             "description": "Successful Response"
           },
+          "400": {
+            "description": "Cursor was issued for a different sort"
+          },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Caller is not an admin, or lacks the required admin scope"
+          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "Validation error"
           }
         },
-        "summary": "List Users",
+        "summary": "List users",
         "tags": [
           "users"
         ]
@@ -6711,6 +7004,7 @@
     },
     "/api/v1/users/{user_id}": {
       "patch": {
+        "description": "Enables or disables a user. Requires an admin with the `users:write` or `admin` scope. The last enabled admin cannot be disabled.",
         "operationId": "patch_user_api_v1_users__user_id__patch",
         "parameters": [
           {
@@ -6744,18 +7038,23 @@
             },
             "description": "Successful Response"
           },
+          "401": {
+            "description": "Missing or invalid credentials"
+          },
+          "403": {
+            "description": "Caller is not an admin, or lacks the required admin scope"
+          },
+          "404": {
+            "description": "User not found"
+          },
+          "409": {
+            "description": "Would disable the last enabled admin"
+          },
           "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
+            "description": "Validation error"
           }
         },
-        "summary": "Patch User",
+        "summary": "Update a user",
         "tags": [
           "users"
         ]

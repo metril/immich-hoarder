@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.common import secret_box
 from app.api.v1.auth import get_local_admin, has_enabled_admin, save_local_admin
-from app.auth.deps import require_admin
+from app.auth.deps import require_admin_scope
 from app.auth.local import verify_password
 from app.auth.oidc import discover
 from app.auth.principal import Principal
@@ -31,6 +31,12 @@ from app.schemas.settings import SettingsDoc
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["settings"])
 
+
+_R401 = {"description": "Missing or invalid credentials"}
+_R403 = {"description": "Caller is not an admin, or lacks the required admin scope"}
+_R422 = {"description": "Validation error"}
+_READ = Depends(require_admin_scope("settings:read"))
+_WRITE = Depends(require_admin_scope("settings:write"))
 
 _MODELS: dict[str, type[BaseModel]] = {
     "rip": RipSettings,
@@ -65,19 +71,35 @@ async def _all(session: AsyncSession) -> SettingsDoc:
     return SettingsDoc.model_validate(ok)
 
 
-@router.get("", response_model=SettingsDoc, response_model_exclude_unset=True)
+@router.get(
+    "",
+    response_model=SettingsDoc,
+    response_model_exclude_unset=True,
+    summary="Get settings",
+    description="Returns all stored settings (secrets omitted). Requires an admin with the "
+    "`settings:read` or `admin` scope.",
+    responses={401: _R401, 403: _R403},
+)
 async def get_settings(
-    _p: Principal = Depends(require_admin),
+    _p: Principal = _READ,
     session: AsyncSession = Depends(get_session, scope="function"),
 ) -> SettingsDoc:
     return await _all(session)
 
 
-@router.put("", response_model=SettingsDoc, response_model_exclude_unset=True)
+@router.put(
+    "",
+    response_model=SettingsDoc,
+    response_model_exclude_unset=True,
+    summary="Update settings",
+    description="Writes only the keys present in the body. Requires an admin with the "
+    "`settings:write` or `admin` scope.",
+    responses={401: _R401, 403: _R403, 422: _R422},
+)
 async def put_settings(
     body: SettingsDoc,
     request: Request,
-    _p: Principal = Depends(require_admin),
+    _p: Principal = _WRITE,
     session: AsyncSession = Depends(get_session, scope="function"),
 ) -> SettingsDoc:
     # only keys present in the request are written; a null value is ignored
@@ -137,10 +159,17 @@ async def _prepare_auth(
         raise HTTPException(422, "create a local admin before disabling OIDC")
 
 
-@router.post("/oidc/test", response_model=OidcTestOut)
+@router.post(
+    "/oidc/test",
+    response_model=OidcTestOut,
+    summary="Test OIDC discovery",
+    description="Checks that the issuer's discovery document is reachable. Requires an admin "
+    "with the `settings:write` or `admin` scope.",
+    responses={401: _R401, 403: _R403, 422: _R422},
+)
 async def test_oidc(
     body: OidcTestIn,
-    _p: Principal = Depends(require_admin),
+    _p: Principal = _WRITE,
     session: AsyncSession = Depends(get_session, scope="function"),
 ) -> OidcTestOut:
     issuer = (body.issuer or "").strip() or (await load_model(session, "oidc", OidcStored)).issuer
@@ -155,11 +184,18 @@ async def test_oidc(
     return OidcTestOut(ok=True)
 
 
-@router.put("/local-admin", status_code=204)
+@router.put(
+    "/local-admin",
+    status_code=204,
+    summary="Set the local admin password",
+    description="Creates the local admin, or changes its password (current password required). "
+    "Requires an admin with the `settings:write` or `admin` scope.",
+    responses={401: _R401, 403: _R403, 422: _R422},
+)
 async def set_local_admin_password(
     body: LocalPasswordIn,
     request: Request,
-    _p: Principal = Depends(require_admin),
+    _p: Principal = _WRITE,
     session: AsyncSession = Depends(get_session, scope="function"),
 ) -> Response:
     """Change the local admin password (current password required), or create the account."""
