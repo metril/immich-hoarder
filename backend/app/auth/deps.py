@@ -2,6 +2,7 @@ import hmac
 from collections.abc import Awaitable, Callable
 
 from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.security import APIKeyCookie, APIKeyHeader, HTTPBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.apikeys import verify_api_key
@@ -14,6 +15,30 @@ UNSAFE = {"POST", "PUT", "PATCH", "DELETE"}
 CSRF_COOKIE = "ih_csrf"
 CSRF_HEADER = "X-CSRF-Token"
 SESSION_MAX_AGE = 8 * 3600
+
+
+# Declared so OpenAPI lists the schemes (and Swagger's Authorize works). They never reject:
+# current_principal below still reads the raw request, so runtime behaviour is unchanged.
+api_key_scheme = APIKeyHeader(
+    name="X-API-Key",
+    scheme_name="ApiKeyAuth",
+    auto_error=False,
+    description="API key created under `/api/v1/api-keys` (starts with `ih_`).",
+)
+bearer_scheme = HTTPBearer(
+    scheme_name="BearerAuth",
+    auto_error=False,
+    description="An `ih_...` API key, or an OIDC access token (JWT) from the identity provider.",
+)
+session_scheme = APIKeyCookie(
+    name="session",
+    scheme_name="SessionCookie",
+    auto_error=False,
+    description=(
+        "Browser session set by the login endpoints. Unsafe methods (POST, PUT, PATCH, DELETE) "
+        f"must also send the `{CSRF_COOKIE}` cookie value in the `{CSRF_HEADER}` header."
+    ),
+)
 
 
 def _unauth(detail: str = "unauthorized") -> HTTPException:
@@ -44,7 +69,11 @@ def check_csrf(request: Request) -> None:
 
 
 async def current_principal(
-    request: Request, session: AsyncSession = Depends(get_session, scope="function")
+    request: Request,
+    session: AsyncSession = Depends(get_session, scope="function"),
+    _api_key: str | None = Depends(api_key_scheme),
+    _bearer: object = Depends(bearer_scheme),
+    _cookie: str | None = Depends(session_scheme),
 ) -> Principal:
     cfg: OidcConfig = request.app.state.oidc_cfg
 

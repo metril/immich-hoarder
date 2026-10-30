@@ -56,7 +56,7 @@ def shares_router(model: type[Any], resource: str) -> APIRouter:
     router = APIRouter()
     stype: str = model.share_type
 
-    @router.get("/{obj_id}/shares", response_model=SharesBody)
+    @router.get("/{obj_id}/shares", response_model=SharesBody, name=f"get_{resource}_shares")
     async def get_shares(
         obj_id: int,
         p: Principal = Depends(current_principal),
@@ -85,7 +85,7 @@ def shares_router(model: type[Any], resource: str) -> APIRouter:
             ),
         )
 
-    @router.put("/{obj_id}/shares", response_model=SharesBody)
+    @router.put("/{obj_id}/shares", response_model=SharesBody, name=f"put_{resource}_shares")
     async def put_shares(
         obj_id: int,
         body: SharesBody,

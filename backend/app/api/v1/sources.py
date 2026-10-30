@@ -165,11 +165,17 @@ async def create_source(
 
 
 class PreviewIn(SourceIn):
-    limit: int = Field(default=PREVIEW_MAX, ge=1, le=PREVIEW_MAX)
+    limit: int = Field(
+        default=PREVIEW_MAX,
+        ge=1,
+        le=PREVIEW_MAX,
+        description="Maximum number of items to list.",
+        examples=[20],
+    )
 
 
 class PreviewOut(BaseModel):
-    items: list[PreviewItem]
+    items: list[PreviewItem] = Field(description="Items the source would fetch, in order.")
 
 
 @router.post("/preview", response_model=PreviewOut)

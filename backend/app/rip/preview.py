@@ -10,7 +10,7 @@ from threading import Event
 from typing import Any
 
 from gallery_dl import exception
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.db.models import BackfillMode
 from app.rip.filters import check_meta
@@ -27,11 +27,18 @@ class PreviewError(Exception):
 
 
 class PreviewItem(BaseModel):
-    url: str
-    title: str | None
-    date: str | None
-    filename: str
-    verdict: str | None
+    url: str = Field(description="Media URL.", examples=["https://example.com/a.jpg"])
+    title: str | None = Field(
+        description="Item title, when the site provides one.", examples=["Sunset"]
+    )
+    date: str | None = Field(
+        description="Publication date as reported by the site.", examples=["2026-01-01"]
+    )
+    filename: str = Field(description="File name it would be stored as.", examples=["a.jpg"])
+    verdict: str | None = Field(
+        description="Why the item would be skipped by the source filters; null if it is kept.",
+        examples=[None],
+    )
 
 
 def make_job_dir(scratch: Path) -> Path:

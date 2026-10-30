@@ -13,8 +13,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Create Backup */
-        post: operations["create_backup_api_v1_admin_backup_post"];
+        /**
+         * Create a backup
+         * @description Writes a consistent snapshot of the SQLite database to the backup directory.
+         *
+         *     **Access:** admin users only. API keys need the `admin` scope.
+         */
+        post: operations["create_backup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -31,8 +36,10 @@ export interface paths {
         /**
          * List backups
          * @description Lists SQLite backups newest first, and whether a restore is staged.
+         *
+         *     **Access:** admin users only. API keys need the `admin` scope.
          */
-        get: operations["get_backups_api_v1_admin_backups_get"];
+        get: operations["get_backups"];
         put?: never;
         post?: never;
         delete?: never;
@@ -54,8 +61,10 @@ export interface paths {
         /**
          * Cancel a staged restore
          * @description Discards a restore staged by the restore endpoint, so the next startup keeps the current database.
+         *
+         *     **Access:** admin users only. API keys need the `admin` scope.
          */
-        delete: operations["cancel_restore_api_v1_admin_backups_pending_restore_delete"];
+        delete: operations["cancel_restore"];
         options?: never;
         head?: never;
         patch?: never;
@@ -71,15 +80,19 @@ export interface paths {
         /**
          * Download a backup
          * @description Streams a SQLite backup file as an attachment. The download is audit-logged.
+         *
+         *     **Access:** admin users only. API keys need the `admin` scope.
          */
-        get: operations["download_backup_api_v1_admin_backups__name__get"];
+        get: operations["download_backup"];
         put?: never;
         post?: never;
         /**
          * Delete a backup
          * @description Permanently deletes one backup file. The deletion is audit-logged.
+         *
+         *     **Access:** admin users only. API keys need the `admin` scope.
          */
-        delete: operations["delete_backup_api_v1_admin_backups__name__delete"];
+        delete: operations["delete_backup"];
         options?: never;
         head?: never;
         patch?: never;
@@ -97,8 +110,10 @@ export interface paths {
         /**
          * Restore a backup
          * @description Validates the backup (integrity check, known migration revision) and stages it. The live database is not touched: the staged file replaces it at the next startup, and the previous database is kept as pre-restore-<timestamp>.db. All sessions are signed out after a restore. Pass restart=true to shut the app down gracefully after responding so the container's restart policy brings it back.
+         *
+         *     **Access:** admin users only. API keys need the `admin` scope.
          */
-        post: operations["restore_backup_api_v1_admin_backups__name__restore_post"];
+        post: operations["restore_backup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -112,8 +127,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Export Yaml */
-        get: operations["export_yaml_api_v1_admin_export_get"];
+        /**
+         * Export configuration
+         * @description Exports targets, credentials and sources as YAML. `secrets=omit` leaves secrets out; `secrets=encrypted` includes them encrypted with the instance master key. The export is audit-logged.
+         *
+         *     **Access:** admin users only. API keys need the `admin` scope.
+         */
+        get: operations["export_yaml"];
         put?: never;
         post?: never;
         delete?: never;
@@ -131,8 +151,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Import Yaml */
-        post: operations["import_yaml_api_v1_admin_import_post"];
+        /**
+         * Import configuration
+         * @description Imports a YAML document produced by the export (request body is the raw YAML, limited in size). Existing rows are skipped; any validation error aborts the whole import.
+         *
+         *     **Access:** admin users only. API keys need the `admin` scope.
+         */
+        post: operations["import_yaml"];
         delete?: never;
         options?: never;
         head?: never;
@@ -148,8 +173,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Run Prune */
-        post: operations["run_prune_api_v1_admin_maintenance_prune_post"];
+        /**
+         * Prune old data
+         * @description Deletes finished jobs and ephemeral sources that are past their retention and reports the counts.
+         *
+         *     **Access:** admin users only. API keys need the `admin` scope.
+         */
+        post: operations["run_prune"];
         delete?: never;
         options?: never;
         head?: never;
@@ -167,13 +197,13 @@ export interface paths {
          * List API keys
          * @description Lists active keys (all for admins, own otherwise). Requires `keys:read`.
          */
-        get: operations["list_keys_api_v1_api_keys_get"];
+        get: operations["list_keys"];
         put?: never;
         /**
          * Create an API key
          * @description Creates a key for the caller. The plaintext key is returned once. Requires `keys:write`; granted scopes may not exceed the caller's own.
          */
-        post: operations["create_key_api_v1_api_keys_post"];
+        post: operations["create_key"];
         delete?: never;
         options?: never;
         head?: never;
@@ -191,21 +221,21 @@ export interface paths {
          * Get an API key
          * @description Returns one key's metadata (never the secret). Requires `keys:read`. Non-admins can only see their own keys.
          */
-        get: operations["get_key_api_v1_api_keys__key_id__get"];
+        get: operations["get_key"];
         put?: never;
         post?: never;
         /**
          * Revoke an API key
          * @description Revokes a key immediately. Requires `keys:write`.
          */
-        delete: operations["revoke_key_api_v1_api_keys__key_id__delete"];
+        delete: operations["revoke_key"];
         options?: never;
         head?: never;
         /**
          * Edit an API key
          * @description Renames a key and/or replaces its scopes. Requires `keys:write`; scopes may not exceed the caller's own. Admins may edit any key. Revoked or expired keys cannot be edited.
          */
-        patch: operations["update_key_api_v1_api_keys__key_id__patch"];
+        patch: operations["update_key"];
         trace?: never;
     };
     "/api/v1/api-keys/{key_id}/rotate": {
@@ -221,7 +251,7 @@ export interface paths {
          * Rotate an API key
          * @description Issues a new key with the same name, scopes and expiry, and revokes the old one atomically. The new plaintext key is returned once. Requires `keys:write`. Only the key's owner may rotate it (admins get 404). Revoked or expired keys cannot be rotated.
          */
-        post: operations["rotate_key_api_v1_api_keys__key_id__rotate_post"];
+        post: operations["rotate_key"];
         delete?: never;
         options?: never;
         head?: never;
@@ -235,8 +265,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Callback */
-        get: operations["callback_api_v1_auth_callback_get"];
+        /**
+         * Finish OIDC sign-in
+         * @description OIDC redirect target: exchanges the code, creates the session and redirects to `/`.
+         *
+         *     **Access:** public; no authentication required.
+         */
+        get: operations["auth_callback"];
         put?: never;
         post?: never;
         delete?: never;
@@ -254,8 +289,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Local Login */
-        post: operations["local_login_api_v1_auth_local_login_post"];
+        /**
+         * Sign in with a password
+         * @description Signs in a local account and sets the `session` and `ih_csrf` cookies. Failed attempts are rate limited per client; the 429 carries `Retry-After`.
+         *
+         *     **Access:** public; no authentication required.
+         */
+        post: operations["auth_local_login"];
         delete?: never;
         options?: never;
         head?: never;
@@ -269,8 +309,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Login */
-        get: operations["login_api_v1_auth_login_get"];
+        /**
+         * Start OIDC sign-in
+         * @description Redirects the browser to the identity provider. Returns 204 when called with an Accept header that is not HTML, so clients can probe whether OIDC is available.
+         *
+         *     **Access:** public; no authentication required.
+         */
+        get: operations["auth_login"];
         put?: never;
         post?: never;
         delete?: never;
@@ -288,8 +333,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Logout */
-        post: operations["logout_api_v1_auth_logout_post"];
+        /**
+         * Sign out
+         * @description Clears the session. Safe to call when not signed in.
+         *
+         *     **Access:** public; no authentication required.
+         */
+        post: operations["auth_logout"];
         delete?: never;
         options?: never;
         head?: never;
@@ -303,8 +353,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Me */
-        get: operations["me_api_v1_auth_me_get"];
+        /**
+         * Get the current user
+         * @description Returns the authenticated user, their role and groups. Also issues the CSRF cookie for session callers.
+         *
+         *     **Access:** any authenticated caller; no scope needed.
+         */
+        get: operations["auth_me"];
         put?: never;
         post?: never;
         delete?: never;
@@ -325,8 +380,10 @@ export interface paths {
         /**
          * Change your own password
          * @description Changes the signed-in local user's password (current password required), clears the must-change flag and revokes other sessions; the caller stays signed in.
+         *
+         *     **Access:** any authenticated caller; no scope needed.
          */
-        post: operations["change_own_password_api_v1_auth_password_post"];
+        post: operations["auth_change_own_password"];
         delete?: never;
         options?: never;
         head?: never;
@@ -342,8 +399,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Setup */
-        post: operations["setup_api_v1_auth_setup_post"];
+        /**
+         * Create the first admin
+         * @description Creates the first local admin and signs them in. Only available while no admin exists (or in break-glass reset mode with the one-time reset token).
+         *
+         *     **Access:** public; no authentication required.
+         */
+        post: operations["auth_setup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -357,8 +419,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Status */
-        get: operations["status_api_v1_auth_status_get"];
+        /**
+         * Get sign-in status
+         * @description Tells the sign-in page which methods are available and whether first-run setup is open.
+         *
+         *     **Access:** public; no authentication required.
+         */
+        get: operations["auth_status"];
         put?: never;
         post?: never;
         delete?: never;
@@ -378,10 +445,15 @@ export interface paths {
          * List credentials
          * @description Keyset-paginated list of credentials visible to the caller. Requires `credentials:read`. `q` matches name, site.
          */
-        get: operations["list_credentials_api_v1_credentials_get"];
+        get: operations["list_credentials"];
         put?: never;
-        /** Create Credential */
-        post: operations["create_credential_api_v1_credentials_post"];
+        /**
+         * Create a credential
+         * @description Stores a site login or notification URL. The secret is encrypted and never returned. `apprise` credentials are validated.
+         *
+         *     **Access:** API keys need the `credentials:write` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        post: operations["create_credential"];
         delete?: never;
         options?: never;
         head?: never;
@@ -395,16 +467,31 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Credential */
-        get: operations["get_credential_api_v1_credentials__obj_id__get"];
+        /**
+         * Get a credential
+         * @description Returns one credential (without its secret).
+         *
+         *     **Access:** API keys need the `credentials:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["get_credential"];
         put?: never;
         post?: never;
-        /** Delete Credential */
-        delete: operations["delete_credential_api_v1_credentials__obj_id__delete"];
+        /**
+         * Delete a credential
+         * @description Deletes the credential and its sharing. Refused while a source still uses it.
+         *
+         *     **Access:** API keys need the `credentials:write` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        delete: operations["delete_credential"];
         options?: never;
         head?: never;
-        /** Patch Credential */
-        patch: operations["patch_credential_api_v1_credentials__obj_id__patch"];
+        /**
+         * Update a credential
+         * @description Changes the given fields. Sending `secret` replaces the stored secret.
+         *
+         *     **Access:** API keys need the `credentials:write` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        patch: operations["patch_credential"];
         trace?: never;
     };
     "/api/v1/credentials/{obj_id}/shares": {
@@ -414,10 +501,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Shares */
-        get: operations["get_shares_api_v1_credentials__obj_id__shares_get"];
-        /** Put Shares */
-        put: operations["put_shares_api_v1_credentials__obj_id__shares_put"];
+        /**
+         * Get credential sharing
+         * @description Returns the credential's visibility and its explicit user and group grants.
+         *
+         *     **Access:** API keys need the `credentials:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["get_credentials_shares"];
+        /**
+         * Set credential sharing
+         * @description Replaces the credential's visibility and grants. Only the owner or an admin may change sharing. Unknown users are rejected with 422.
+         *
+         *     **Access:** API keys need the `credentials:write` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        put: operations["put_credentials_shares"];
         post?: never;
         delete?: never;
         options?: never;
@@ -432,8 +529,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Extractors */
-        get: operations["get_extractors_api_v1_extractors_get"];
+        /**
+         * List extractors
+         * @description Lists the sites the ripper supports, with an example URL for each.
+         *
+         *     **Access:** API keys need the `sources:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["get_extractors"];
         put?: never;
         post?: never;
         delete?: never;
@@ -453,7 +555,7 @@ export interface paths {
          * List jobs
          * @description Keyset-paginated jobs visible to the caller (newest first unless `sort` is given). Requires `jobs:read`. `q` matches the source name.
          */
-        get: operations["list_jobs_api_v1_jobs_get"];
+        get: operations["list_jobs"];
         put?: never;
         post?: never;
         delete?: never;
@@ -469,8 +571,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Dashboard */
-        get: operations["dashboard_api_v1_jobs_stream_get"];
+        /**
+         * Stream all jobs
+         * @description Server-sent events with status, phase and progress changes for every job the caller may see. Each user may hold a limited number of streams.
+         *
+         *     **Access:** API keys need the `jobs:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["dashboard"];
         put?: never;
         post?: never;
         delete?: never;
@@ -486,15 +593,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Job */
-        get: operations["get_job_api_v1_jobs__job_id__get"];
+        /**
+         * Get a job
+         * @description Returns one job with its counters and status.
+         *
+         *     **Access:** API keys need the `jobs:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["get_job"];
         put?: never;
         post?: never;
         /**
          * Delete a job
          * @description Deletes a finished job together with its items and events. Requires `jobs:write`. Queued or running jobs must be cancelled first.
          */
-        delete: operations["delete_job_api_v1_jobs__job_id__delete"];
+        delete: operations["delete_job"];
         options?: never;
         head?: never;
         patch?: never;
@@ -509,8 +621,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Cancel Job */
-        post: operations["cancel_job_api_v1_jobs__job_id__cancel_post"];
+        /**
+         * Cancel a job
+         * @description Asks a queued or running job to stop. Responds 202 with the job.
+         *
+         *     **Access:** API keys need the `jobs:write` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        post: operations["cancel_job"];
         delete?: never;
         options?: never;
         head?: never;
@@ -524,8 +641,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Job Events */
-        get: operations["job_events_api_v1_jobs__job_id__events_get"];
+        /**
+         * List job events
+         * @description Pages through a job's log and phase events, oldest first. `min_level` hides lower severities.
+         *
+         *     **Access:** API keys need the `jobs:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["job_events"];
         put?: never;
         post?: never;
         delete?: never;
@@ -541,8 +663,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Job Items */
-        get: operations["job_items_api_v1_jobs__job_id__items_get"];
+        /**
+         * List job items
+         * @description Pages through the per-item outcomes of a job, oldest first.
+         *
+         *     **Access:** API keys need the `jobs:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["job_items"];
         put?: never;
         post?: never;
         delete?: never;
@@ -560,8 +687,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Retry Job */
-        post: operations["retry_job_api_v1_jobs__job_id__retry_post"];
+        /**
+         * Retry a job
+         * @description Queues a new job for the same source. Responds 202 with the new job.
+         *
+         *     **Access:** API keys need the `sources:run` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        post: operations["retry_job"];
         delete?: never;
         options?: never;
         head?: never;
@@ -575,8 +707,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Stream Job */
-        get: operations["stream_job_api_v1_jobs__job_id__stream_get"];
+        /**
+         * Stream one job
+         * @description Server-sent events for one job: replays recent events and items, then streams live until the job ends. Each user may hold a limited number of streams.
+         *
+         *     **Access:** API keys need the `jobs:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["stream_job"];
         put?: never;
         post?: never;
         delete?: never;
@@ -594,8 +731,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Adhoc Rip */
-        post: operations["adhoc_rip_api_v1_rip_post"];
+        /**
+         * Run an ad-hoc rip
+         * @description Creates an ephemeral source from the body (a source payload; schedule is ignored) and queues a job for it. The source is cleaned up after the run.
+         *
+         *     **Access:** API keys need the `sources:run` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        post: operations["adhoc_rip"];
         delete?: never;
         options?: never;
         head?: never;
@@ -613,12 +755,12 @@ export interface paths {
          * Get settings
          * @description Returns all stored settings (secrets omitted). Requires an admin with the `settings:read` or `admin` scope.
          */
-        get: operations["get_settings_api_v1_settings_get"];
+        get: operations["get_settings"];
         /**
          * Update settings
          * @description Writes only the keys present in the body. Requires an admin with the `settings:write` or `admin` scope.
          */
-        put: operations["put_settings_api_v1_settings_put"];
+        put: operations["put_settings"];
         post?: never;
         delete?: never;
         options?: never;
@@ -638,7 +780,7 @@ export interface paths {
          * Set the local admin password
          * @description Creates the local admin, or changes its password (current password required). Requires an admin with the `settings:write` or `admin` scope.
          */
-        put: operations["set_local_admin_password_api_v1_settings_local_admin_put"];
+        put: operations["set_local_admin_password"];
         post?: never;
         delete?: never;
         options?: never;
@@ -659,7 +801,7 @@ export interface paths {
          * Test OIDC discovery
          * @description Checks that the issuer's discovery document is reachable. Requires an admin with the `settings:write` or `admin` scope.
          */
-        post: operations["test_oidc_api_v1_settings_oidc_test_post"];
+        post: operations["test_oidc"];
         delete?: never;
         options?: never;
         head?: never;
@@ -677,10 +819,15 @@ export interface paths {
          * List sources
          * @description Keyset-paginated list of sources visible to the caller. Requires `sources:read`. `q` matches name, url.
          */
-        get: operations["list_sources_api_v1_sources_get"];
+        get: operations["list_sources"];
         put?: never;
-        /** Create Source */
-        post: operations["create_source_api_v1_sources_post"];
+        /**
+         * Create a source
+         * @description Creates a source and registers its schedule. The extractor is detected from the URL; unsupported URLs, unknown cron or template fields, and unusable targets or credentials are rejected with 422.
+         *
+         *     **Access:** API keys need the `sources:write` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        post: operations["create_source"];
         delete?: never;
         options?: never;
         head?: never;
@@ -696,8 +843,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Preview Source */
-        post: operations["preview_source_api_v1_sources_preview_post"];
+        /**
+         * Preview a source
+         * @description Dry-runs a source definition without saving it and lists the first items it would fetch, with the filter verdict for each. Runs gallery-dl in a sandboxed subprocess and is rate limited.
+         *
+         *     **Access:** API keys need the `sources:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        post: operations["preview_source"];
         delete?: never;
         options?: never;
         head?: never;
@@ -711,16 +863,31 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Source */
-        get: operations["get_source_api_v1_sources__obj_id__get"];
+        /**
+         * Get a source
+         * @description Returns one source the caller may see.
+         *
+         *     **Access:** API keys need the `sources:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["get_source"];
         put?: never;
         post?: never;
-        /** Delete Source */
-        delete: operations["delete_source_api_v1_sources__obj_id__delete"];
+        /**
+         * Delete a source
+         * @description Deletes the source, its job history and its sharing.
+         *
+         *     **Access:** API keys need the `sources:write` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        delete: operations["delete_source"];
         options?: never;
         head?: never;
-        /** Patch Source */
-        patch: operations["patch_source_api_v1_sources__obj_id__patch"];
+        /**
+         * Update a source
+         * @description Changes the given fields; omitted fields are kept and required fields cannot be set to null.
+         *
+         *     **Access:** API keys need the `sources:write` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        patch: operations["patch_source"];
         trace?: never;
     };
     "/api/v1/sources/{obj_id}/forget-seen": {
@@ -733,12 +900,12 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Forget Seen
-         * @description Detach this source's seen-URL rows so the next run re-processes everything.
+         * Forget seen items
+         * @description Clears the source's memory of already-seen items so the next run re-evaluates everything.
          *
-         *     Rows are kept (source_id -> NULL): sha1/phash still drive per-target dedupe.
+         *     **Access:** API keys need the `sources:write` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
          */
-        post: operations["forget_seen_api_v1_sources__obj_id__forget_seen_post"];
+        post: operations["forget_seen"];
         delete?: never;
         options?: never;
         head?: never;
@@ -752,10 +919,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Shares */
-        get: operations["get_shares_api_v1_sources__obj_id__shares_get"];
-        /** Put Shares */
-        put: operations["put_shares_api_v1_sources__obj_id__shares_put"];
+        /**
+         * Get source sharing
+         * @description Returns the source's visibility and its explicit user and group grants.
+         *
+         *     **Access:** API keys need the `sources:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["get_sources_shares"];
+        /**
+         * Set source sharing
+         * @description Replaces the source's visibility and grants. Only the owner or an admin may change sharing. Unknown users are rejected with 422.
+         *
+         *     **Access:** API keys need the `sources:write` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        put: operations["put_sources_shares"];
         post?: never;
         delete?: never;
         options?: never;
@@ -772,8 +949,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Run Source */
-        post: operations["run_source_api_v1_sources__source_id__run_post"];
+        /**
+         * Run a source
+         * @description Queues a job for the source. Responds 202 with the queued job; follow it with the job endpoints or the SSE stream.
+         *
+         *     **Access:** API keys need the `sources:run` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        post: operations["run_source"];
         delete?: never;
         options?: never;
         head?: never;
@@ -791,10 +973,15 @@ export interface paths {
          * List targets
          * @description Keyset-paginated list of targets visible to the caller. Requires `targets:read`. `q` matches name, url.
          */
-        get: operations["list_targets_api_v1_targets_get"];
+        get: operations["list_targets"];
         put?: never;
-        /** Create Target */
-        post: operations["create_target_api_v1_targets_post"];
+        /**
+         * Create a target
+         * @description Registers an Immich server. The API key is stored encrypted and never returned.
+         *
+         *     **Access:** API keys need the `targets:write` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        post: operations["create_target"];
         delete?: never;
         options?: never;
         head?: never;
@@ -808,16 +995,31 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Target */
-        get: operations["get_target_api_v1_targets__obj_id__get"];
+        /**
+         * Get a target
+         * @description Returns one target the caller may see.
+         *
+         *     **Access:** API keys need the `targets:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["get_target"];
         put?: never;
         post?: never;
-        /** Delete Target */
-        delete: operations["delete_target_api_v1_targets__obj_id__delete"];
+        /**
+         * Delete a target
+         * @description Deletes the target and its sharing. Refused while a source still uses it.
+         *
+         *     **Access:** API keys need the `targets:write` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        delete: operations["delete_target"];
         options?: never;
         head?: never;
-        /** Patch Target */
-        patch: operations["patch_target_api_v1_targets__obj_id__patch"];
+        /**
+         * Update a target
+         * @description Changes the given fields. Sending `api_key` replaces the stored key.
+         *
+         *     **Access:** API keys need the `targets:write` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        patch: operations["patch_target"];
         trace?: never;
     };
     "/api/v1/targets/{obj_id}/albums": {
@@ -827,8 +1029,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Target Albums */
-        get: operations["target_albums_api_v1_targets__obj_id__albums_get"];
+        /**
+         * List target albums
+         * @description Lists the albums on the Immich server, for choosing an album template.
+         *
+         *     **Access:** API keys need the `targets:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["target_albums"];
         put?: never;
         post?: never;
         delete?: never;
@@ -844,8 +1051,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Thumbnail */
-        get: operations["thumbnail_api_v1_targets__obj_id__assets__asset_id__thumbnail_get"];
+        /**
+         * Get an asset thumbnail
+         * @description Proxies a thumbnail or preview image for an asset this app uploaded to the target. Responds with the image bytes.
+         *
+         *     **Access:** API keys need the `targets:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["thumbnail"];
         put?: never;
         post?: never;
         delete?: never;
@@ -861,10 +1073,20 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Get Shares */
-        get: operations["get_shares_api_v1_targets__obj_id__shares_get"];
-        /** Put Shares */
-        put: operations["put_shares_api_v1_targets__obj_id__shares_put"];
+        /**
+         * Get target sharing
+         * @description Returns the target's visibility and its explicit user and group grants.
+         *
+         *     **Access:** API keys need the `targets:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["get_targets_shares"];
+        /**
+         * Set target sharing
+         * @description Replaces the target's visibility and grants. Only the owner or an admin may change sharing. Unknown users are rejected with 422.
+         *
+         *     **Access:** API keys need the `targets:write` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        put: operations["put_targets_shares"];
         post?: never;
         delete?: never;
         options?: never;
@@ -881,8 +1103,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Test Target */
-        post: operations["test_target_api_v1_targets__obj_id__test_post"];
+        /**
+         * Test a target
+         * @description Connects to the Immich server and reports its version and any missing API-key permissions.
+         *
+         *     **Access:** API keys need the `targets:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        post: operations["test_target"];
         delete?: never;
         options?: never;
         head?: never;
@@ -896,8 +1123,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** List Uploads */
-        get: operations["list_uploads_api_v1_uploads_get"];
+        /**
+         * List uploads
+         * @description Pages through assets that were uploaded to Immich, newest first. Filter with `source_id` and `target_id`.
+         *
+         *     **Access:** API keys need the `jobs:read` scope (admin keys pass); sessions and OIDC tokens are not scope-limited. Resource permissions still apply.
+         */
+        get: operations["list_uploads"];
         put?: never;
         post?: never;
         delete?: never;
@@ -917,7 +1149,7 @@ export interface paths {
          * List users
          * @description Keyset-paginated user list. Requires an admin with the `users:read` or `admin` scope. `q` matches sub, name and email.
          */
-        get: operations["list_users_api_v1_users_get"];
+        get: operations["list_users"];
         put?: never;
         post?: never;
         delete?: never;
@@ -934,10 +1166,12 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * User Directory
-         * @description Minimal id/name lookup (name substring or exact email); any authenticated user.
+         * Search the user directory
+         * @description Looks up enabled users by name for the sharing picker. Returns ids and display names only; `q` must be at least 2 characters.
+         *
+         *     **Access:** any authenticated caller; no scope needed.
          */
-        get: operations["user_directory_api_v1_users_directory_get"];
+        get: operations["user_directory"];
         put?: never;
         post?: never;
         delete?: never;
@@ -959,7 +1193,7 @@ export interface paths {
          * Create a local user
          * @description Creates a local (password) account. Requires an admin with the `users:write` or `admin` scope. 409 when the username is already taken.
          */
-        post: operations["create_local_user_api_v1_users_local_post"];
+        post: operations["create_local_user"];
         delete?: never;
         options?: never;
         head?: never;
@@ -980,14 +1214,14 @@ export interface paths {
          * Delete a local user
          * @description Deletes a local user and their API keys and shares. Owned targets, credentials and sources block the delete (409 with counts) unless `reassign_to` names another user, who then takes them over. The last enabled admin cannot be deleted. Requires an admin with the `users:write` or `admin` scope.
          */
-        delete: operations["delete_user_api_v1_users__user_id__delete"];
+        delete: operations["delete_user"];
         options?: never;
         head?: never;
         /**
          * Update a user
          * @description Enables or disables a user. Requires an admin with the `users:write` or `admin` scope. The last enabled admin cannot be disabled.
          */
-        patch: operations["patch_user_api_v1_users__user_id__patch"];
+        patch: operations["patch_user"];
         trace?: never;
     };
     "/api/v1/users/{user_id}/password": {
@@ -1003,7 +1237,71 @@ export interface paths {
          * Reset a local user's password
          * @description Sets a new password for a local user and revokes all of their sessions. Requires an admin with the `users:write` or `admin` scope. 409 for non-local users.
          */
-        post: operations["reset_password_api_v1_users__user_id__password_post"];
+        post: operations["reset_password"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/healthz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Liveness probe
+         * @description Returns 200 while the process is serving requests. Used by container health checks.
+         *
+         *     **Access:** public; no authentication required.
+         */
+        get: operations["healthz"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Prometheus metrics
+         * @description Metrics in the Prometheus text exposition format. API keys need the `metrics:read` scope; sessions and OIDC tokens must belong to an admin.
+         */
+        get: operations["metrics"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/readyz": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Readiness probe
+         * @description Checks the database and the background components (scheduler, supervisor, writer, bridge). Returns 503 listing whatever is down.
+         *
+         *     **Access:** public; no authentication required.
+         */
+        get: operations["readyz"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -1016,53 +1314,131 @@ export interface components {
     schemas: {
         /** AlbumList */
         AlbumList: {
-            /** Items */
+            /**
+             * Items
+             * @description Albums on the target.
+             */
             items: components["schemas"]["AlbumOut"][];
         };
         /** AlbumOut */
         AlbumOut: {
-            /** Asset Count */
+            /**
+             * Asset Count
+             * @description Number of assets in the album.
+             * @example 42
+             */
             asset_count: number;
-            /** Id */
+            /**
+             * Id
+             * @description Immich album id (UUID).
+             * @example 0b7c1d1e-9a40-4d6f-8d5e-2a1f3c4b5d6e
+             */
             id: string;
-            /** Name */
+            /**
+             * Name
+             * @description Album name.
+             * @example Holiday
+             */
             name: string;
         };
         /** ApiKeyCreated */
         ApiKeyCreated: {
-            /** Expires At */
+            /**
+             * Expires At
+             * @description Expiry time, or null when it never expires.
+             * @example 2027-01-01T00:00:00Z
+             */
             expires_at: string | null;
-            /** Id */
+            /**
+             * Id
+             * @description Key id.
+             * @example 1
+             */
             id: number;
-            /** Key */
+            /**
+             * Key
+             * @description The full secret key. Shown only once; store it now.
+             * @example ih_a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6
+             */
             key: string;
-            /** Name */
+            /**
+             * Name
+             * @description Display name.
+             * @example ci-pipeline
+             */
             name: string;
-            /** Prefix */
+            /**
+             * Prefix
+             * @description Leading characters of the key, to recognise it by.
+             * @example ih_a1b2c3d4
+             */
             prefix: string;
-            /** Scopes */
+            /**
+             * Scopes
+             * @description Granted scopes.
+             * @example [
+             *       "jobs:read"
+             *     ]
+             */
             scopes: string[];
         };
         /** ApiKeyIn */
         ApiKeyIn: {
-            /** Expires At */
+            /**
+             * Expires At
+             * @description Expiry time (ISO 8601); omitted means the key never expires.
+             * @example 2027-01-01T00:00:00Z
+             */
             expires_at?: string | null;
-            /** Name */
+            /**
+             * Name
+             * @description Display name.
+             * @example ci-pipeline
+             */
             name: string;
-            /** Scopes */
+            /**
+             * Scopes
+             * @description Scopes granted to the key; may not exceed the caller's own.
+             * @example [
+             *       "jobs:read",
+             *       "sources:run"
+             *     ]
+             */
             scopes: ("sources:read" | "sources:write" | "sources:run" | "targets:read" | "targets:write" | "credentials:read" | "credentials:write" | "jobs:read" | "jobs:write" | "keys:read" | "keys:write" | "metrics:read" | "settings:read" | "settings:write" | "users:read" | "users:write" | "admin")[];
         };
         /** ApiKeyOut */
         ApiKeyOut: {
-            /** Expires At */
+            /**
+             * Expires At
+             * @description Expiry time, or null when it never expires.
+             * @example 2027-01-01T00:00:00Z
+             */
             expires_at: string | null;
-            /** Id */
+            /**
+             * Id
+             * @description Key id.
+             * @example 1
+             */
             id: number;
-            /** Name */
+            /**
+             * Name
+             * @description Display name.
+             * @example ci-pipeline
+             */
             name: string;
-            /** Prefix */
+            /**
+             * Prefix
+             * @description Leading characters of the key, to recognise it by.
+             * @example ih_a1b2c3d4
+             */
             prefix: string;
-            /** Scopes */
+            /**
+             * Scopes
+             * @description Granted scopes.
+             * @example [
+             *       "jobs:read"
+             *     ]
+             */
             scopes: string[];
         };
         /** ApiKeyPatch */
@@ -1099,34 +1475,70 @@ export interface components {
         };
         /** AuthStatus */
         AuthStatus: {
-            /** Break Glass */
+            /**
+             * Break Glass
+             * @description Break-glass mode forces local login on.
+             * @example false
+             */
             break_glass: boolean;
-            /** Local Login Enabled */
+            /**
+             * Local Login Enabled
+             * @description Local username/password sign-in is allowed.
+             * @example true
+             */
             local_login_enabled: boolean;
-            /** Oidc Enabled */
+            /**
+             * Oidc Enabled
+             * @description OIDC sign-in is configured and enabled.
+             * @example true
+             */
             oidc_enabled: boolean;
-            /** Reset Token Required */
+            /**
+             * Reset Token Required
+             * @description The setup call must carry the one-time reset token from the server log.
+             * @example false
+             */
             reset_token_required: boolean;
-            /** Setup Required */
+            /**
+             * Setup Required
+             * @description True until the first admin account exists.
+             * @example false
+             */
             setup_required: boolean;
         };
         /**
          * BackfillMode
+         * @description How much history the first run fetches: `full`, the last N items, or items since a date.
          * @enum {string}
          */
         BackfillMode: "full" | "last_n" | "since";
         /** BackupInfo */
         BackupInfo: {
-            /** File */
+            /**
+             * File
+             * @description Backup file name.
+             * @example backup-20260101T000000Z.db
+             */
             file: string;
-            /** Mtime */
+            /**
+             * Mtime
+             * @description Last-modified time (ISO 8601, UTC).
+             * @example 2026-01-01T00:00:00Z
+             */
             mtime: string;
-            /** Size */
+            /**
+             * Size
+             * @description Size in bytes.
+             * @example 1048576
+             */
             size: number;
         };
         /** BackupList */
         BackupList: {
-            /** Items */
+            /**
+             * Items
+             * @description Backups, newest first.
+             */
             items: components["schemas"]["BackupInfo"][];
             /**
              * Restore Pending
@@ -1138,170 +1550,418 @@ export interface components {
         };
         /** BackupOut */
         BackupOut: {
-            /** File */
+            /**
+             * File
+             * @description File name of the new backup.
+             * @example backup-20260101T000000Z.db
+             */
             file: string;
         };
         /** CredentialIn */
         CredentialIn: {
+            /**
+             * @description How the secret is used: oauth, cookies, userpass, token or apprise (notification URL).
+             * @example token
+             */
             kind: components["schemas"]["CredentialKind"];
-            /** Name */
+            /**
+             * Name
+             * @description Display name.
+             * @example Pixiv login
+             */
             name: string;
-            /** Secret */
+            /**
+             * Secret
+             * @description Secret material (write-only; never returned).
+             * @example secret-value
+             */
             secret: string;
-            /** Site */
+            /**
+             * Site
+             * @description Site (extractor category) the credential is for; normalised to lower case.
+             * @example pixiv
+             */
             site: string;
-            /** @default private */
+            /**
+             * @description Who can see and use it.
+             * @default private
+             * @example private
+             */
             visibility: components["schemas"]["Visibility"];
         };
         /**
          * CredentialKind
+         * @description How a credential's secret is used.
          * @enum {string}
          */
         CredentialKind: "oauth" | "cookies" | "userpass" | "token" | "apprise";
         /** CredentialOut */
         CredentialOut: {
-            /** Can Edit */
+            /**
+             * Can Edit
+             * @description Output-only: the caller may PATCH it.
+             * @example true
+             */
             can_edit: boolean;
-            /** Can Use */
+            /**
+             * Can Use
+             * @description Output-only: the caller may reference it from a source.
+             * @example true
+             */
             can_use: boolean;
-            /** Has Secret */
+            /**
+             * Has Secret
+             * @description Whether a secret is stored.
+             * @example true
+             */
             has_secret: boolean;
-            /** Id */
+            /**
+             * Id
+             * @description Credential id.
+             * @example 1
+             */
             id: number;
+            /**
+             * @description How the secret is used: oauth, cookies, userpass, token or apprise (notification URL).
+             * @example token
+             */
             kind: components["schemas"]["CredentialKind"];
-            /** Name */
+            /**
+             * Name
+             * @description Display name.
+             * @example Pixiv login
+             */
             name: string;
-            /** Owner Id */
+            /**
+             * Owner Id
+             * @description Id of the owning user.
+             * @example 1
+             */
             owner_id: number;
-            /** Site */
+            /**
+             * Site
+             * @description Site (extractor category) the credential is for; normalised to lower case.
+             * @example pixiv
+             */
             site: string;
+            /**
+             * @description Who can see and use it.
+             * @example private
+             */
             visibility: components["schemas"]["Visibility"];
         };
         /** CredentialPatch */
         CredentialPatch: {
+            /**
+             * @description How the secret is used: oauth, cookies, userpass, token or apprise (notification URL).
+             * @example token
+             */
             kind?: components["schemas"]["CredentialKind"] | null;
-            /** Name */
+            /**
+             * Name
+             * @description Display name.
+             * @example Pixiv login
+             */
             name?: string | null;
-            /** Secret */
+            /**
+             * Secret
+             * @description Secret material (write-only; never returned).
+             * @example secret-value
+             */
             secret?: string | null;
-            /** Site */
+            /**
+             * Site
+             * @description Site (extractor category) the credential is for; normalised to lower case.
+             * @example pixiv
+             */
             site?: string | null;
+        };
+        /**
+         * ErrorResponse
+         * @description Body of every non-validation error.
+         */
+        ErrorResponse: {
+            /**
+             * Detail
+             * @description Human-readable message, or an object with extra context for some conflicts.
+             * @example not found
+             */
+            detail: string | {
+                [key: string]: unknown;
+            };
         };
         /** EventOut */
         EventOut: {
-            /** Data */
+            /**
+             * Data
+             * @description Event payload; shape depends on `type`.
+             * @example {
+             *       "msg": "fetched 40 items"
+             *     }
+             */
             data: {
                 [key: string]: unknown;
             };
-            /** Id */
+            /**
+             * Id
+             * @description Event id.
+             * @example 900
+             */
             id: number;
-            /** Level */
+            /**
+             * Level
+             * @description Severity: trace, debug, info, warn or error.
+             * @example info
+             */
             level: string;
             /**
              * Ts
              * Format: date-time
+             * @description When the event happened.
+             * @example 2026-01-01T03:00:05Z
              */
             ts: string;
-            /** Type */
+            /**
+             * Type
+             * @description Event kind, e.g. log, phase, item.
+             * @example log
+             */
             type: string;
         };
         /** ExtractorInfo */
         ExtractorInfo: {
-            /** Category */
+            /**
+             * Category
+             * @description Site (extractor category).
+             * @example pixiv
+             */
             category: string;
-            /** Example */
+            /**
+             * Example
+             * @description An example URL.
+             * @example https://www.pixiv.net/en/users/123
+             */
             example?: string | null;
-            /** Subcategories */
+            /**
+             * Subcategories
+             * @description Kinds of URL the extractor handles.
+             * @example [
+             *       "user",
+             *       "artwork"
+             *     ]
+             */
             subcategories: string[];
         };
         /** ExtractorList */
         ExtractorList: {
-            /** Items */
+            /**
+             * Items
+             * @description Supported extractors (sites).
+             */
             items: components["schemas"]["ExtractorInfo"][];
         };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
+        /** HealthOut */
+        HealthOut: {
+            /**
+             * Status
+             * @description Always `ok`.
+             * @example ok
+             */
+            status: string;
         };
         /** ImportResult */
         ImportResult: {
-            /** Applied */
+            /**
+             * Applied
+             * @description False for a dry run or when errors prevented applying.
+             * @example true
+             */
             applied: boolean;
-            /** Created */
+            /**
+             * Created
+             * @description Rows created, per resource type.
+             * @example {
+             *       "sources": 2,
+             *       "targets": 1
+             *     }
+             */
             created: {
                 [key: string]: number;
             };
-            /** Errors */
+            /**
+             * Errors
+             * @description Problems found in the document; non-empty means nothing was applied.
+             * @example [
+             *       "sources[0]: unknown target 'main'"
+             *     ]
+             */
             errors: string[];
-            /** Skipped */
+            /**
+             * Skipped
+             * @description Rows skipped because they already exist, per resource type.
+             * @example {
+             *       "credentials": 1
+             *     }
+             */
             skipped: {
                 [key: string]: number;
             };
         };
         /** ItemOut */
         ItemOut: {
-            /** Id */
+            /**
+             * Id
+             * @description Item id.
+             * @example 101
+             */
             id: number;
-            /** Immich Asset Id */
+            /**
+             * Immich Asset Id
+             * @description Immich asset id once uploaded.
+             * @example 0b7c1d1e-9a40-4d6f-8d5e-2a1f3c4b5d6e
+             */
             immich_asset_id: string | null;
-            /** Outcome */
+            /**
+             * Outcome
+             * @description Result for the item: uploaded, skipped, failed or similar.
+             * @example uploaded
+             */
             outcome: string;
-            /** Reason */
+            /**
+             * Reason
+             * @description Why it was skipped or failed.
+             * @example duplicate
+             */
             reason: string | null;
-            /** Url */
+            /**
+             * Url
+             * @description Source URL of the media item.
+             * @example https://example.com/a.jpg
+             */
             url: string;
         };
         /** JobOut */
         JobOut: {
-            /** Counters */
+            /**
+             * Counters
+             * @description Progress counters, e.g. seen, uploaded, skipped, failed.
+             * @example {
+             *       "failed": 0,
+             *       "seen": 40,
+             *       "skipped": 28,
+             *       "uploaded": 12
+             *     }
+             */
             counters: {
                 [key: string]: unknown;
             };
             /**
              * Created At
              * Format: date-time
+             * @description When the job was queued.
+             * @example 2026-01-01T03:00:00Z
              */
             created_at: string;
-            /** Error */
+            /**
+             * Error
+             * @description Failure message when the job failed.
+             * @example null
+             */
             error: string | null;
-            /** Finished At */
+            /**
+             * Finished At
+             * @description When it reached a terminal state.
+             * @example 2026-01-01T03:05:00Z
+             */
             finished_at: string | null;
-            /** Id */
+            /**
+             * Id
+             * @description Job id.
+             * @example 17
+             */
             id: number;
-            /** Log Level */
+            /**
+             * Log Level
+             * @description Log level the job runs with.
+             * @example info
+             */
             log_level: string | null;
-            /** Phase */
+            /**
+             * Phase
+             * @description Current phase while running (e.g. fetching, uploading).
+             * @example uploading
+             */
             phase: string | null;
-            /** Source Id */
+            /**
+             * Source Id
+             * @description Id of the source the job runs.
+             * @example 3
+             */
             source_id: number;
-            /** Source Name */
+            /**
+             * Source Name
+             * @description Name of the source.
+             * @example Artist feed
+             */
             source_name: string | null;
-            /** Started At */
+            /**
+             * Started At
+             * @description When it started running.
+             * @example 2026-01-01T03:00:01Z
+             */
             started_at: string | null;
+            /**
+             * @description Lifecycle state of the job.
+             * @example running
+             */
             status: components["schemas"]["JobStatus"];
-            /** Triggered By */
+            /**
+             * Triggered By
+             * @description Id of the user who started it; null for scheduled runs.
+             * @example 1
+             */
             triggered_by: number | null;
         };
         /**
          * JobStatus
+         * @description Job lifecycle state.
          * @enum {string}
          */
         JobStatus: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         /** LocalCredentials */
         LocalCredentials: {
-            /** Password */
+            /**
+             * Password
+             * @description Account password.
+             * @example correct horse battery
+             */
             password: string;
-            /** Username */
+            /**
+             * Username
+             * @description Local login name.
+             * @example admin
+             */
             username: string;
         };
         /** LocalPasswordIn */
         LocalPasswordIn: {
-            /** Current Password */
+            /**
+             * Current Password
+             * @description Current local admin password; required when one already exists.
+             * @example old password
+             */
             current_password?: string | null;
-            /** New Password */
+            /**
+             * New Password
+             * @description New password (at least 8 characters).
+             * @example a new long password
+             */
             new_password: string;
-            /** Username */
+            /**
+             * Username
+             * @description Rename the local admin; omitted keeps the current name.
+             * @example admin
+             */
             username?: string | null;
         };
         /** LocalUserCreate */
@@ -1334,11 +1994,25 @@ export interface components {
         };
         /** MeOut */
         MeOut: {
-            /** Email */
+            /**
+             * Email
+             * @description Email address, when known.
+             * @example alice@example.com
+             */
             email: string | null;
-            /** Groups */
+            /**
+             * Groups
+             * @description Group names from the identity provider.
+             * @example [
+             *       "hoarder-admins"
+             *     ]
+             */
             groups: string[];
-            /** Id */
+            /**
+             * Id
+             * @description User id.
+             * @example 1
+             */
             id: number;
             /**
              * Must Change Password
@@ -1347,9 +2021,34 @@ export interface components {
              * @example false
              */
             must_change_password: boolean;
-            /** Name */
+            /**
+             * Name
+             * @description Display name, when known.
+             * @example Alice
+             */
             name: string | null;
+            /**
+             * @description The user's role.
+             * @example admin
+             */
             role: components["schemas"]["Role"];
+        };
+        /** NotReadyOut */
+        NotReadyOut: {
+            /**
+             * Failing
+             * @description Components that are down: db, scheduler, supervisor, writer or bridge.
+             * @example [
+             *       "db"
+             *     ]
+             */
+            failing: string[];
+            /**
+             * Status
+             * @description Always `unavailable`.
+             * @example unavailable
+             */
+            status: string;
         };
         /** NotifySettings */
         NotifySettings: {
@@ -1425,14 +2124,26 @@ export interface components {
         };
         /** OidcTestIn */
         OidcTestIn: {
-            /** Issuer */
+            /**
+             * Issuer
+             * @description Issuer URL to test; omitted tests the saved configuration.
+             * @example https://auth.example.com/application/o/hoarder/
+             */
             issuer?: string | null;
         };
         /** OidcTestOut */
         OidcTestOut: {
-            /** Error */
+            /**
+             * Error
+             * @description Why discovery failed.
+             * @example null
+             */
             error?: string | null;
-            /** Ok */
+            /**
+             * Ok
+             * @description True when discovery succeeded.
+             * @example true
+             */
             ok: boolean;
         };
         /** OwnedCounts */
@@ -1458,65 +2169,128 @@ export interface components {
         };
         /** Page[ApiKeyOut] */
         Page_ApiKeyOut_: {
-            /** Items */
+            /**
+             * Items
+             * @description The page of results.
+             */
             items: components["schemas"]["ApiKeyOut"][];
-            /** Next Cursor */
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page; pass it as `cursor`. Null on the last page.
+             * @example MTIz
+             */
             next_cursor?: string | null;
         };
         /** Page[CredentialOut] */
         Page_CredentialOut_: {
-            /** Items */
+            /**
+             * Items
+             * @description The page of results.
+             */
             items: components["schemas"]["CredentialOut"][];
-            /** Next Cursor */
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page; pass it as `cursor`. Null on the last page.
+             * @example MTIz
+             */
             next_cursor?: string | null;
         };
         /** Page[EventOut] */
         Page_EventOut_: {
-            /** Items */
+            /**
+             * Items
+             * @description The page of results.
+             */
             items: components["schemas"]["EventOut"][];
-            /** Next Cursor */
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page; pass it as `cursor`. Null on the last page.
+             * @example MTIz
+             */
             next_cursor?: string | null;
         };
         /** Page[ItemOut] */
         Page_ItemOut_: {
-            /** Items */
+            /**
+             * Items
+             * @description The page of results.
+             */
             items: components["schemas"]["ItemOut"][];
-            /** Next Cursor */
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page; pass it as `cursor`. Null on the last page.
+             * @example MTIz
+             */
             next_cursor?: string | null;
         };
         /** Page[JobOut] */
         Page_JobOut_: {
-            /** Items */
+            /**
+             * Items
+             * @description The page of results.
+             */
             items: components["schemas"]["JobOut"][];
-            /** Next Cursor */
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page; pass it as `cursor`. Null on the last page.
+             * @example MTIz
+             */
             next_cursor?: string | null;
         };
         /** Page[SourceOut] */
         Page_SourceOut_: {
-            /** Items */
+            /**
+             * Items
+             * @description The page of results.
+             */
             items: components["schemas"]["SourceOut"][];
-            /** Next Cursor */
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page; pass it as `cursor`. Null on the last page.
+             * @example MTIz
+             */
             next_cursor?: string | null;
         };
         /** Page[TargetOut] */
         Page_TargetOut_: {
-            /** Items */
+            /**
+             * Items
+             * @description The page of results.
+             */
             items: components["schemas"]["TargetOut"][];
-            /** Next Cursor */
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page; pass it as `cursor`. Null on the last page.
+             * @example MTIz
+             */
             next_cursor?: string | null;
         };
         /** Page[UploadOut] */
         Page_UploadOut_: {
-            /** Items */
+            /**
+             * Items
+             * @description The page of results.
+             */
             items: components["schemas"]["UploadOut"][];
-            /** Next Cursor */
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page; pass it as `cursor`. Null on the last page.
+             * @example MTIz
+             */
             next_cursor?: string | null;
         };
         /** Page[UserOut] */
         Page_UserOut_: {
-            /** Items */
+            /**
+             * Items
+             * @description The page of results.
+             */
             items: components["schemas"]["UserOut"][];
-            /** Next Cursor */
+            /**
+             * Next Cursor
+             * @description Opaque cursor for the next page; pass it as `cursor`. Null on the last page.
+             * @example MTIz
+             */
             next_cursor?: string | null;
         };
         /** PasswordReset */
@@ -1537,6 +2311,7 @@ export interface components {
         };
         /**
          * Perm
+         * @description Share permission: `use` references or runs the resource, `edit` also changes it.
          * @enum {string}
          */
         Perm: "use" | "edit";
@@ -1544,33 +2319,55 @@ export interface components {
         PreviewIn: {
             /**
              * Album Template
+             * @description Immich album name template using `{field}` placeholders; empty means no album.
              * @default
+             * @example {category} - {user}
              */
             album_template: string;
             /**
              * Allow Animated
+             * @description Also upload animated media (ugoira, GIFs).
              * @default false
+             * @example false
              */
             allow_animated: boolean;
-            /** @default full */
+            /**
+             * @description How much history the first run fetches: full, last_n or since.
+             * @default full
+             * @example full
+             */
             backfill_mode: components["schemas"]["BackfillMode"];
-            /** Backfill Value */
+            /**
+             * Backfill Value
+             * @description Count for `last_n` or ISO date for `since`; unused for `full`.
+             * @example 100
+             */
             backfill_value?: string | null;
-            /** Credential Id */
+            /**
+             * Credential Id
+             * @description Id of the credential used to log in to the site, if any.
+             * @example 2
+             */
             credential_id?: number | null;
             /**
              * Enabled
+             * @description Disabled sources are skipped by the scheduler.
              * @default true
+             * @example true
              */
             enabled: boolean;
             /**
              * Ephemeral
+             * @description Delete the source automatically after its first run.
              * @default false
+             * @example false
              */
             ephemeral: boolean;
             /**
              * FilterSpec
+             * @description Item filters (see the filter schema); empty keeps everything.
              * @default {}
+             * @example {}
              */
             filters: {
                 /** Aspect Max */
@@ -1603,23 +2400,37 @@ export interface components {
             };
             /**
              * Gdl Options
+             * @description Extra gallery-dl options (validated against an allowlist).
              * @default {}
+             * @example {}
              */
             gdl_options: {
                 [key: string]: unknown;
             };
             /**
              * Limit
+             * @description Maximum number of items to list.
              * @default 50
+             * @example 20
              */
             limit: number;
-            /** Log Level */
+            /**
+             * Log Level
+             * @description Log level for this source's jobs: trace, debug, info, warn or error.
+             * @example info
+             */
             log_level?: string | null;
-            /** Name */
+            /**
+             * Name
+             * @description Display name.
+             * @example Artist feed
+             */
             name: string;
             /**
              * SourceNotify
+             * @description Notification settings: credential ids and events to notify on.
              * @default {}
+             * @example {}
              */
             notify: {
                 /**
@@ -1635,50 +2446,104 @@ export interface components {
                  */
                 on: ("success" | "failure" | "new_items")[];
             };
-            /** Proxy */
+            /**
+             * Proxy
+             * @description Proxy URL used for this source.
+             * @example socks5://proxy.example.com:1080
+             */
             proxy?: string | null;
             /**
              * Reupload Deleted
+             * @description Re-upload items that were previously deleted from Immich.
              * @default false
+             * @example false
              */
             reupload_deleted: boolean;
-            /** Schedule Cron */
+            /**
+             * Schedule Cron
+             * @description Cron expression (5 fields) for scheduled runs; null disables.
+             * @example 0 3 * * *
+             */
             schedule_cron?: string | null;
-            /** Target Id */
+            /**
+             * Target Id
+             * @description Id of the Immich target to upload to.
+             * @example 1
+             */
             target_id: number;
-            /** Url */
+            /**
+             * Url
+             * @description Gallery or profile URL to rip.
+             * @example https://www.pixiv.net/en/users/123
+             */
             url: string;
-            /** @default private */
+            /**
+             * @description Who can see and use the source.
+             * @default private
+             * @example private
+             */
             visibility: components["schemas"]["Visibility"];
         };
         /** PreviewItem */
         PreviewItem: {
-            /** Date */
+            /**
+             * Date
+             * @description Publication date as reported by the site.
+             * @example 2026-01-01
+             */
             date: string | null;
-            /** Filename */
+            /**
+             * Filename
+             * @description File name it would be stored as.
+             * @example a.jpg
+             */
             filename: string;
-            /** Title */
+            /**
+             * Title
+             * @description Item title, when the site provides one.
+             * @example Sunset
+             */
             title: string | null;
-            /** Url */
+            /**
+             * Url
+             * @description Media URL.
+             * @example https://example.com/a.jpg
+             */
             url: string;
-            /** Verdict */
+            /**
+             * Verdict
+             * @description Why the item would be skipped by the source filters; null if it is kept.
+             * @example null
+             */
             verdict: string | null;
         };
         /** PreviewOut */
         PreviewOut: {
-            /** Items */
+            /**
+             * Items
+             * @description Items the source would fetch, in order.
+             */
             items: components["schemas"]["PreviewItem"][];
         };
         /**
          * PrincipalType
+         * @description Kind of share grantee: a `user` or a `group`.
          * @enum {string}
          */
         PrincipalType: "user" | "group";
         /** PruneOut */
         PruneOut: {
-            /** Ephemeral Sources */
+            /**
+             * Ephemeral Sources
+             * @description Finished ephemeral sources deleted.
+             * @example 3
+             */
             ephemeral_sources: number;
-            /** Jobs */
+            /**
+             * Jobs
+             * @description Old finished jobs deleted.
+             * @example 12
+             */
             jobs: number;
         };
         /** RateLimit */
@@ -1726,33 +2591,55 @@ export interface components {
         RipIn: {
             /**
              * Album Template
+             * @description Immich album name template using `{field}` placeholders; empty means no album.
              * @default
+             * @example {category} - {user}
              */
             album_template: string;
             /**
              * Allow Animated
+             * @description Also upload animated media (ugoira, GIFs).
              * @default false
+             * @example false
              */
             allow_animated: boolean;
-            /** @default full */
+            /**
+             * @description How much history the first run fetches: full, last_n or since.
+             * @default full
+             * @example full
+             */
             backfill_mode: components["schemas"]["BackfillMode"];
-            /** Backfill Value */
+            /**
+             * Backfill Value
+             * @description Count for `last_n` or ISO date for `since`; unused for `full`.
+             * @example 100
+             */
             backfill_value?: string | null;
-            /** Credential Id */
+            /**
+             * Credential Id
+             * @description Id of the credential used to log in to the site, if any.
+             * @example 2
+             */
             credential_id?: number | null;
             /**
              * Enabled
+             * @description Disabled sources are skipped by the scheduler.
              * @default true
+             * @example true
              */
             enabled: boolean;
             /**
              * Ephemeral
+             * @description Delete the source automatically after its first run.
              * @default false
+             * @example false
              */
             ephemeral: boolean;
             /**
              * FilterSpec
+             * @description Item filters (see the filter schema); empty keeps everything.
              * @default {}
+             * @example {}
              */
             filters: {
                 /** Aspect Max */
@@ -1785,21 +2672,31 @@ export interface components {
             };
             /**
              * Gdl Options
+             * @description Extra gallery-dl options (validated against an allowlist).
              * @default {}
+             * @example {}
              */
             gdl_options: {
                 [key: string]: unknown;
             };
-            /** Log Level */
+            /**
+             * Log Level
+             * @description Log level for this run: trace, debug, info, warn or error.
+             * @example info
+             */
             log_level?: string | null;
             /**
              * Name
+             * @description Optional display name.
              * @default
+             * @example one-off
              */
             name: string;
             /**
              * SourceNotify
+             * @description Notification settings: credential ids and events to notify on.
              * @default {}
+             * @example {}
              */
             notify: {
                 /**
@@ -1815,20 +2712,42 @@ export interface components {
                  */
                 on: ("success" | "failure" | "new_items")[];
             };
-            /** Proxy */
+            /**
+             * Proxy
+             * @description Proxy URL used for this source.
+             * @example socks5://proxy.example.com:1080
+             */
             proxy?: string | null;
             /**
              * Reupload Deleted
+             * @description Re-upload items that were previously deleted from Immich.
              * @default false
+             * @example false
              */
             reupload_deleted: boolean;
-            /** Schedule Cron */
+            /**
+             * Schedule Cron
+             * @description Cron expression (5 fields) for scheduled runs; null disables.
+             * @example 0 3 * * *
+             */
             schedule_cron?: string | null;
-            /** Target Id */
+            /**
+             * Target Id
+             * @description Id of the Immich target to upload to.
+             * @example 1
+             */
             target_id: number;
-            /** Url */
+            /**
+             * Url
+             * @description Gallery or profile URL to rip.
+             * @example https://www.pixiv.net/en/users/123
+             */
             url: string;
-            /** @default private */
+            /**
+             * @description Who can see and use the source.
+             * @default private
+             * @example private
+             */
             visibility: components["schemas"]["Visibility"];
         };
         /** RipSettings */
@@ -1866,12 +2785,17 @@ export interface components {
         };
         /**
          * Role
+         * @description User role: `admin` manages the instance, `user` manages their own resources.
          * @enum {string}
          */
         Role: "admin" | "user";
         /** RunIn */
         RunIn: {
-            /** Log Level */
+            /**
+             * Log Level
+             * @description Log level for this run: trace, debug, info, warn or error.
+             * @example info
+             */
             log_level?: string | null;
         };
         /** RuntimeSettings */
@@ -1926,67 +2850,129 @@ export interface components {
          * @description Admin settings document; each key is optional and replaced as a whole when present.
          */
         SettingsDoc: {
+            /** @description Which sign-in methods are enabled. */
             auth?: components["schemas"]["AuthSettings"] | null;
+            /** @description Notification defaults. */
             notify?: components["schemas"]["NotifySettings"] | null;
+            /** @description OIDC provider configuration (the client secret is write-only). */
             oidc?: components["schemas"]["OidcSettings"] | null;
+            /** @description Ripping defaults (gallery-dl options, limits, scratch). */
             rip?: components["schemas"]["RipSettings"] | null;
+            /** @description Job runtime: concurrency, timeouts and retention. */
             runtime?: components["schemas"]["RuntimeSettings"] | null;
         };
         /** SetupIn */
         SetupIn: {
-            /** Password */
+            /**
+             * Password
+             * @description Password (at least 8 characters).
+             * @example correct horse battery
+             */
             password: string;
-            /** Reset Token */
+            /**
+             * Reset Token
+             * @description One-time token from the server log; only needed in break-glass reset mode.
+             * @example null
+             */
             reset_token?: string | null;
-            /** Username */
+            /**
+             * Username
+             * @description Login name of the first admin.
+             * @example admin
+             */
             username: string;
         };
         /** ShareEntry */
         ShareEntry: {
+            /**
+             * @description `use` allows referencing/running; `edit` also allows changing.
+             * @example use
+             */
             perm: components["schemas"]["Perm"];
-            /** Principal Id */
+            /**
+             * Principal Id
+             * @description User id (as a string) or group name.
+             * @example 2
+             */
             principal_id: string;
-            /** Principal Name */
+            /**
+             * Principal Name
+             * @description Output-only display name (user name, or the group name); ignored on input.
+             * @example Bob
+             */
             principal_name?: string | null;
+            /**
+             * @description Whether the grant is for a user or a group.
+             * @example user
+             */
             principal_type: components["schemas"]["PrincipalType"];
         };
         /** SharesBody */
         SharesBody: {
-            /** Shares */
+            /**
+             * Shares
+             * @description Explicit grants; only used when visibility is `restricted`.
+             */
             shares: components["schemas"]["ShareEntry"][];
+            /**
+             * @description Who can see it: `private`, `everyone` or `restricted` (to `shares`).
+             * @example restricted
+             */
             visibility: components["schemas"]["Visibility"];
         };
         /** SourceIn */
         SourceIn: {
             /**
              * Album Template
+             * @description Immich album name template using `{field}` placeholders; empty means no album.
              * @default
+             * @example {category} - {user}
              */
             album_template: string;
             /**
              * Allow Animated
+             * @description Also upload animated media (ugoira, GIFs).
              * @default false
+             * @example false
              */
             allow_animated: boolean;
-            /** @default full */
+            /**
+             * @description How much history the first run fetches: full, last_n or since.
+             * @default full
+             * @example full
+             */
             backfill_mode: components["schemas"]["BackfillMode"];
-            /** Backfill Value */
+            /**
+             * Backfill Value
+             * @description Count for `last_n` or ISO date for `since`; unused for `full`.
+             * @example 100
+             */
             backfill_value?: string | null;
-            /** Credential Id */
+            /**
+             * Credential Id
+             * @description Id of the credential used to log in to the site, if any.
+             * @example 2
+             */
             credential_id?: number | null;
             /**
              * Enabled
+             * @description Disabled sources are skipped by the scheduler.
              * @default true
+             * @example true
              */
             enabled: boolean;
             /**
              * Ephemeral
+             * @description Delete the source automatically after its first run.
              * @default false
+             * @example false
              */
             ephemeral: boolean;
             /**
              * FilterSpec
+             * @description Item filters (see the filter schema); empty keeps everything.
              * @default {}
+             * @example {}
              */
             filters: {
                 /** Aspect Max */
@@ -2019,18 +3005,30 @@ export interface components {
             };
             /**
              * Gdl Options
+             * @description Extra gallery-dl options (validated against an allowlist).
              * @default {}
+             * @example {}
              */
             gdl_options: {
                 [key: string]: unknown;
             };
-            /** Log Level */
+            /**
+             * Log Level
+             * @description Log level for this source's jobs: trace, debug, info, warn or error.
+             * @example info
+             */
             log_level?: string | null;
-            /** Name */
+            /**
+             * Name
+             * @description Display name.
+             * @example Artist feed
+             */
             name: string;
             /**
              * SourceNotify
+             * @description Notification settings: credential ids and events to notify on.
              * @default {}
+             * @example {}
              */
             notify: {
                 /**
@@ -2046,44 +3044,110 @@ export interface components {
                  */
                 on: ("success" | "failure" | "new_items")[];
             };
-            /** Proxy */
+            /**
+             * Proxy
+             * @description Proxy URL used for this source.
+             * @example socks5://proxy.example.com:1080
+             */
             proxy?: string | null;
             /**
              * Reupload Deleted
+             * @description Re-upload items that were previously deleted from Immich.
              * @default false
+             * @example false
              */
             reupload_deleted: boolean;
-            /** Schedule Cron */
+            /**
+             * Schedule Cron
+             * @description Cron expression (5 fields) for scheduled runs; null disables.
+             * @example 0 3 * * *
+             */
             schedule_cron?: string | null;
-            /** Target Id */
+            /**
+             * Target Id
+             * @description Id of the Immich target to upload to.
+             * @example 1
+             */
             target_id: number;
-            /** Url */
+            /**
+             * Url
+             * @description Gallery or profile URL to rip.
+             * @example https://www.pixiv.net/en/users/123
+             */
             url: string;
-            /** @default private */
+            /**
+             * @description Who can see and use the source.
+             * @default private
+             * @example private
+             */
             visibility: components["schemas"]["Visibility"];
         };
         /** SourceOut */
         SourceOut: {
-            /** Album Template */
+            /**
+             * Album Template
+             * @description Immich album name template using `{field}` placeholders; empty means no album.
+             * @example {category} - {user}
+             */
             album_template: string;
-            /** Allow Animated */
+            /**
+             * Allow Animated
+             * @description Also upload animated media (ugoira, GIFs).
+             * @example false
+             */
             allow_animated: boolean;
+            /**
+             * @description How much history the first run fetches: full, last_n or since.
+             * @example full
+             */
             backfill_mode: components["schemas"]["BackfillMode"];
-            /** Backfill Value */
+            /**
+             * Backfill Value
+             * @description Count for `last_n` or ISO date for `since`; unused for `full`.
+             * @example 100
+             */
             backfill_value: string | null;
-            /** Can Edit */
+            /**
+             * Can Edit
+             * @description Output-only: the caller may PATCH it.
+             * @example true
+             */
             can_edit: boolean;
-            /** Can Use */
+            /**
+             * Can Use
+             * @description Output-only: the caller may run it.
+             * @example true
+             */
             can_use: boolean;
-            /** Credential Id */
+            /**
+             * Credential Id
+             * @description Id of the credential used to log in to the site, if any.
+             * @example 2
+             */
             credential_id: number | null;
-            /** Enabled */
+            /**
+             * Enabled
+             * @description Disabled sources are skipped by the scheduler.
+             * @example true
+             */
             enabled: boolean;
-            /** Ephemeral */
+            /**
+             * Ephemeral
+             * @description Delete the source automatically after its first run.
+             * @example false
+             */
             ephemeral: boolean;
-            /** Extractor */
+            /**
+             * Extractor
+             * @description Extractor (site) detected from the URL.
+             * @example pixiv
+             */
             extractor: string;
-            /** FilterSpec */
+            /**
+             * FilterSpec
+             * @description Item filters (see the filter schema); empty keeps everything.
+             * @example {}
+             */
             filters: {
                 /** Aspect Max */
                 aspect_max?: number | null;
@@ -2113,17 +3177,37 @@ export interface components {
                 /** Title Include */
                 title_include?: string | null;
             };
-            /** Gdl Options */
+            /**
+             * Gdl Options
+             * @description Extra gallery-dl options (validated against an allowlist).
+             * @example {}
+             */
             gdl_options: {
                 [key: string]: unknown;
             };
-            /** Id */
+            /**
+             * Id
+             * @description Source id.
+             * @example 1
+             */
             id: number;
-            /** Log Level */
+            /**
+             * Log Level
+             * @description Log level for this source's jobs: trace, debug, info, warn or error.
+             * @example info
+             */
             log_level: string | null;
-            /** Name */
+            /**
+             * Name
+             * @description Display name.
+             * @example Artist feed
+             */
             name: string;
-            /** SourceNotify */
+            /**
+             * SourceNotify
+             * @description Notification settings: credential ids and events to notify on.
+             * @example {}
+             */
             notify: {
                 /**
                  * Credential Ids
@@ -2138,36 +3222,96 @@ export interface components {
                  */
                 on: ("success" | "failure" | "new_items")[];
             };
-            /** Owner Id */
+            /**
+             * Owner Id
+             * @description Id of the owning user.
+             * @example 1
+             */
             owner_id: number;
-            /** Proxy */
+            /**
+             * Proxy
+             * @description Proxy URL used for this source.
+             * @example socks5://proxy.example.com:1080
+             */
             proxy: string | null;
-            /** Reupload Deleted */
+            /**
+             * Reupload Deleted
+             * @description Re-upload items that were previously deleted from Immich.
+             * @example false
+             */
             reupload_deleted: boolean;
-            /** Schedule Cron */
+            /**
+             * Schedule Cron
+             * @description Cron expression (5 fields) for scheduled runs; null disables.
+             * @example 0 3 * * *
+             */
             schedule_cron: string | null;
-            /** Target Id */
+            /**
+             * Target Id
+             * @description Id of the Immich target to upload to.
+             * @example 1
+             */
             target_id: number;
-            /** Url */
+            /**
+             * Url
+             * @description Gallery or profile URL to rip.
+             * @example https://www.pixiv.net/en/users/123
+             */
             url: string;
+            /**
+             * @description Who can see and use the source.
+             * @example private
+             */
             visibility: components["schemas"]["Visibility"];
         };
         /** SourcePatch */
         SourcePatch: {
-            /** Album Template */
+            /**
+             * Album Template
+             * @description Immich album name template using `{field}` placeholders; empty means no album.
+             * @example {category} - {user}
+             */
             album_template?: string | null;
-            /** Allow Animated */
+            /**
+             * Allow Animated
+             * @description Also upload animated media (ugoira, GIFs).
+             * @example false
+             */
             allow_animated?: boolean | null;
+            /**
+             * @description How much history the first run fetches: full, last_n or since.
+             * @example full
+             */
             backfill_mode?: components["schemas"]["BackfillMode"] | null;
-            /** Backfill Value */
+            /**
+             * Backfill Value
+             * @description Count for `last_n` or ISO date for `since`; unused for `full`.
+             * @example 100
+             */
             backfill_value?: string | null;
-            /** Credential Id */
+            /**
+             * Credential Id
+             * @description Id of the credential used to log in to the site, if any.
+             * @example 2
+             */
             credential_id?: number | null;
-            /** Enabled */
+            /**
+             * Enabled
+             * @description Disabled sources are skipped by the scheduler.
+             * @example true
+             */
             enabled?: boolean | null;
-            /** Ephemeral */
+            /**
+             * Ephemeral
+             * @description Delete the source automatically after its first run.
+             * @example false
+             */
             ephemeral?: boolean | null;
-            /** Filters */
+            /**
+             * Filters
+             * @description Item filters (see the filter schema); empty keeps everything.
+             * @example {}
+             */
             filters?: {
                 /** Aspect Max */
                 aspect_max?: number | null;
@@ -2197,15 +3341,31 @@ export interface components {
                 /** Title Include */
                 title_include?: string | null;
             } | null;
-            /** Gdl Options */
+            /**
+             * Gdl Options
+             * @description Extra gallery-dl options (validated against an allowlist).
+             * @example {}
+             */
             gdl_options?: {
                 [key: string]: unknown;
             } | null;
-            /** Log Level */
+            /**
+             * Log Level
+             * @description Log level for this source's jobs: trace, debug, info, warn or error.
+             * @example info
+             */
             log_level?: string | null;
-            /** Name */
+            /**
+             * Name
+             * @description Display name.
+             * @example Artist feed
+             */
             name?: string | null;
-            /** Notify */
+            /**
+             * Notify
+             * @description Notification settings: credential ids and events to notify on.
+             * @example {}
+             */
             notify?: {
                 /**
                  * Credential Ids
@@ -2220,91 +3380,219 @@ export interface components {
                  */
                 on: ("success" | "failure" | "new_items")[];
             } | null;
-            /** Proxy */
+            /**
+             * Proxy
+             * @description Proxy URL used for this source.
+             * @example socks5://proxy.example.com:1080
+             */
             proxy?: string | null;
-            /** Reupload Deleted */
+            /**
+             * Reupload Deleted
+             * @description Re-upload items that were previously deleted from Immich.
+             * @example false
+             */
             reupload_deleted?: boolean | null;
-            /** Schedule Cron */
+            /**
+             * Schedule Cron
+             * @description Cron expression (5 fields) for scheduled runs; null disables.
+             * @example 0 3 * * *
+             */
             schedule_cron?: string | null;
-            /** Target Id */
+            /**
+             * Target Id
+             * @description Id of the Immich target to upload to.
+             * @example 1
+             */
             target_id?: number | null;
-            /** Url */
+            /**
+             * Url
+             * @description Gallery or profile URL to rip.
+             * @example https://www.pixiv.net/en/users/123
+             */
             url?: string | null;
         };
         /** TargetIn */
         TargetIn: {
-            /** Api Key */
+            /**
+             * Api Key
+             * @description Immich API key (write-only; never returned).
+             * @example immich-api-key
+             */
             api_key: string;
-            /** Name */
+            /**
+             * Name
+             * @description Display name.
+             * @example Home Immich
+             */
             name: string;
-            /** Url */
+            /**
+             * Url
+             * @description Base URL of the Immich server.
+             * @example https://immich.example.com
+             */
             url: string;
-            /** @default private */
+            /**
+             * @description Who can see and use the target.
+             * @default private
+             * @example private
+             */
             visibility: components["schemas"]["Visibility"];
         };
         /** TargetOut */
         TargetOut: {
-            /** Can Edit */
+            /**
+             * Can Edit
+             * @description Output-only: the caller may PATCH it.
+             * @example true
+             */
             can_edit: boolean;
-            /** Can Use */
+            /**
+             * Can Use
+             * @description Output-only: the caller may reference it from a source.
+             * @example true
+             */
             can_use: boolean;
-            /** Has Api Key */
+            /**
+             * Has Api Key
+             * @description Whether an API key is stored.
+             * @example true
+             */
             has_api_key: boolean;
-            /** Id */
+            /**
+             * Id
+             * @description Target id.
+             * @example 1
+             */
             id: number;
-            /** Name */
+            /**
+             * Name
+             * @description Display name.
+             * @example Home Immich
+             */
             name: string;
-            /** Owner Id */
+            /**
+             * Owner Id
+             * @description Id of the owning user.
+             * @example 1
+             */
             owner_id: number;
-            /** Url */
+            /**
+             * Url
+             * @description Base URL of the Immich server.
+             * @example https://immich.example.com
+             */
             url: string;
+            /**
+             * @description Who can see and use the target.
+             * @example private
+             */
             visibility: components["schemas"]["Visibility"];
         };
         /** TargetPatch */
         TargetPatch: {
-            /** Api Key */
+            /**
+             * Api Key
+             * @description Immich API key (write-only; never returned).
+             * @example immich-api-key
+             */
             api_key?: string | null;
-            /** Name */
+            /**
+             * Name
+             * @description Display name.
+             * @example Home Immich
+             */
             name?: string | null;
-            /** Url */
+            /**
+             * Url
+             * @description Base URL of the Immich server.
+             * @example https://immich.example.com
+             */
             url?: string | null;
         };
         /** TargetTestOut */
         TargetTestOut: {
-            /** Error */
+            /**
+             * Error
+             * @description Why the check failed.
+             * @example null
+             */
             error?: string | null;
             /**
              * Missing Permissions
+             * @description Required Immich API-key permissions the key lacks.
              * @default []
+             * @example []
              */
             missing_permissions: string[];
-            /** Ok */
+            /**
+             * Ok
+             * @description True when the target is reachable and the key is usable.
+             * @example true
+             */
             ok: boolean;
             /**
              * Optional Missing
+             * @description Optional permissions the key lacks (reduced features).
              * @default []
+             * @example []
              */
             optional_missing: string[];
-            /** Version */
+            /**
+             * Version
+             * @description Immich server version.
+             * @example 1.130.0
+             */
             version?: string | null;
         };
         /** UploadOut */
         UploadOut: {
-            /** Created At */
+            /**
+             * Created At
+             * @description When it was recorded.
+             * @example 2026-01-01T03:02:00Z
+             */
             created_at: string | null;
-            /** Id */
+            /**
+             * Id
+             * @description Upload record id.
+             * @example 101
+             */
             id: number;
-            /** Immich Asset Id */
+            /**
+             * Immich Asset Id
+             * @description Immich asset id; the thumbnail endpoint uses it.
+             * @example 0b7c1d1e-9a40-4d6f-8d5e-2a1f3c4b5d6e
+             */
             immich_asset_id: string | null;
-            /** Job Id */
+            /**
+             * Job Id
+             * @description Job that uploaded it.
+             * @example 17
+             */
             job_id: number;
-            /** Outcome */
+            /**
+             * Outcome
+             * @description Result: uploaded or duplicate.
+             * @example uploaded
+             */
             outcome: string;
-            /** Source Id */
+            /**
+             * Source Id
+             * @description Source it came from.
+             * @example 3
+             */
             source_id: number;
-            /** Target Id */
+            /**
+             * Target Id
+             * @description Immich target it went to.
+             * @example 1
+             */
             target_id: number;
-            /** Url */
+            /**
+             * Url
+             * @description Original media URL.
+             * @example https://example.com/a.jpg
+             */
             url: string;
         };
         /** UserInUse */
@@ -2320,47 +3608,112 @@ export interface components {
         };
         /** UserOut */
         UserOut: {
-            /** Disabled */
+            /**
+             * Disabled
+             * @description Disabled users cannot sign in or use API keys.
+             * @example false
+             */
             disabled: boolean;
-            /** Email */
+            /**
+             * Email
+             * @description Email address, when known.
+             * @example alice@example.com
+             */
             email: string | null;
-            /** Groups */
+            /**
+             * Groups
+             * @description Group names from the identity provider.
+             * @example [
+             *       "hoarder-users"
+             *     ]
+             */
             groups: string[];
-            /** Id */
+            /**
+             * Id
+             * @description User id.
+             * @example 1
+             */
             id: number;
-            /** Name */
+            /**
+             * Name
+             * @description Display name, when known.
+             * @example Alice
+             */
             name: string | null;
+            /**
+             * @description The user's role.
+             * @example user
+             */
             role: components["schemas"]["Role"];
-            /** Sub */
+            /**
+             * Sub
+             * @description Stable subject: the OIDC `sub`, or `local:<username>` for local accounts.
+             * @example local:alice
+             */
             sub: string;
         };
         /** UserPatch */
         UserPatch: {
-            /** Disabled */
+            /**
+             * Disabled
+             * @description Disable or re-enable the user; omitted keeps the current state.
+             * @example true
+             */
             disabled?: boolean | null;
         };
         /** UserRef */
         UserRef: {
-            /** Id */
+            /**
+             * Id
+             * @description User id.
+             * @example 2
+             */
             id: number;
-            /** Name */
+            /**
+             * Name
+             * @description Display name.
+             * @example Bob
+             */
             name: string | null;
         };
-        /** ValidationError */
-        ValidationError: {
-            /** Context */
-            ctx?: Record<string, never>;
-            /** Input */
-            input?: unknown;
-            /** Location */
+        /**
+         * ValidationErrorResponse
+         * @description Body of a 422 response.
+         */
+        ValidationErrorResponse: {
+            /**
+             * Detail
+             * @description One entry per invalid field.
+             */
+            detail: components["schemas"]["ValidationIssue"][];
+        };
+        /** ValidationIssue */
+        ValidationIssue: {
+            /**
+             * Loc
+             * @description Path to the offending field, starting with body, query or path.
+             * @example [
+             *       "body",
+             *       "name"
+             *     ]
+             */
             loc: (string | number)[];
-            /** Message */
+            /**
+             * Msg
+             * @description What is wrong.
+             * @example Field required
+             */
             msg: string;
-            /** Error Type */
+            /**
+             * Type
+             * @description Machine-readable error type.
+             * @example missing
+             */
             type: string;
         };
         /**
          * Visibility
+         * @description Who can see a resource: `private` (owner), `everyone` or `restricted` (shares).
          * @enum {string}
          */
         Visibility: "private" | "everyone" | "restricted";
@@ -2373,7 +3726,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    create_backup_api_v1_admin_backup_post: {
+    create_backup: {
         parameters: {
             query?: never;
             header?: never;
@@ -2391,9 +3744,54 @@ export interface operations {
                     "application/json": components["schemas"]["BackupOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Backups are not supported for this database */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The backup failed */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not enough space */
+            507: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    get_backups_api_v1_admin_backups_get: {
+    get_backups: {
         parameters: {
             query?: never;
             header?: never;
@@ -2416,18 +3814,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Admin access required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
-    cancel_restore_api_v1_admin_backups_pending_restore_delete: {
+    cancel_restore: {
         parameters: {
             query?: never;
             header?: never;
@@ -2448,25 +3850,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Admin access required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description No restore is pending */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
-    download_backup_api_v1_admin_backups__name__get: {
+    download_backup: {
         parameters: {
             query?: never;
             header?: never;
@@ -2491,32 +3899,40 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Admin access required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description No backup with that name */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    delete_backup_api_v1_admin_backups__name__delete: {
+    delete_backup: {
         parameters: {
             query?: never;
             header?: never;
@@ -2539,32 +3955,40 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Admin access required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description No backup with that name */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    restore_backup_api_v1_admin_backups__name__restore_post: {
+    restore_backup: {
         parameters: {
             query?: {
                 restart?: boolean;
@@ -2591,46 +4015,58 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Admin access required */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description No backup with that name */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description A job is active, or the database is not SQLite */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Backup is corrupt or from a newer app version */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
             /** @description Could not write the staged file */
             507: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
-    export_yaml_api_v1_admin_export_get: {
+    export_yaml: {
         parameters: {
             query?: {
                 secrets?: "omit" | "encrypted";
@@ -2647,7 +4083,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/yaml": string;
+                };
+            };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -2656,12 +4110,12 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    import_yaml_api_v1_admin_import_post: {
+    import_yaml: {
         parameters: {
             query?: {
                 dry_run?: boolean;
@@ -2685,18 +4139,45 @@ export interface operations {
                     "application/json": components["schemas"]["ImportResult"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The body is too large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    run_prune_api_v1_admin_maintenance_prune_post: {
+    run_prune: {
         parameters: {
             query?: never;
             header?: never;
@@ -2714,9 +4195,27 @@ export interface operations {
                     "application/json": components["schemas"]["PruneOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    list_keys_api_v1_api_keys_get: {
+    list_keys: {
         parameters: {
             query?: {
                 cursor?: string | null;
@@ -2742,25 +4241,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing scope, or scopes cannot be granted by the caller */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    create_key_api_v1_api_keys_post: {
+    create_key: {
         parameters: {
             query?: never;
             header?: never;
@@ -2787,25 +4292,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing scope, or scopes cannot be granted by the caller */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    get_key_api_v1_api_keys__key_id__get: {
+    get_key: {
         parameters: {
             query?: never;
             header?: never;
@@ -2830,32 +4341,40 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing scope, or scopes cannot be granted by the caller */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Key not found, or owned by another user */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    revoke_key_api_v1_api_keys__key_id__delete: {
+    revoke_key: {
         parameters: {
             query?: never;
             header?: never;
@@ -2878,32 +4397,40 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing scope, or scopes cannot be granted by the caller */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Key not found, or owned by another user */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    update_key_api_v1_api_keys__key_id__patch: {
+    update_key: {
         parameters: {
             query?: never;
             header?: never;
@@ -2932,39 +4459,49 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing scope, or scopes cannot be granted by the caller */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Key not found, or owned by another user */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Key is revoked or expired */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    rotate_key_api_v1_api_keys__key_id__rotate_post: {
+    rotate_key: {
         parameters: {
             query?: never;
             header?: never;
@@ -2989,39 +4526,49 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing scope, or scopes cannot be granted by the caller */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Key not found, or owned by another user */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Key is revoked or expired */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    callback_api_v1_auth_callback_get: {
+    auth_callback: {
         parameters: {
             query?: never;
             header?: never;
@@ -3039,9 +4586,36 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description Login failed */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The user's groups do not grant access */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description OIDC is not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    local_login_api_v1_auth_local_login_post: {
+    auth_local_login: {
         parameters: {
             query?: never;
             header?: never;
@@ -3063,18 +4637,45 @@ export interface operations {
                     "application/json": components["schemas"]["MeOut"];
                 };
             };
+            /** @description Invalid credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Local sign-in is disabled */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too many attempts */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    login_api_v1_auth_login_get: {
+    auth_login: {
         parameters: {
             query?: never;
             header?: never;
@@ -3092,9 +4693,18 @@ export interface operations {
                     "application/json": unknown;
                 };
             };
+            /** @description OIDC is not configured */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    logout_api_v1_auth_logout_post: {
+    auth_logout: {
         parameters: {
             query?: never;
             header?: never;
@@ -3112,7 +4722,7 @@ export interface operations {
             };
         };
     };
-    me_api_v1_auth_me_get: {
+    auth_me: {
         parameters: {
             query?: never;
             header?: never;
@@ -3130,9 +4740,27 @@ export interface operations {
                     "application/json": components["schemas"]["MeOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    change_own_password_api_v1_auth_password_post: {
+    auth_change_own_password: {
         parameters: {
             query?: never;
             header?: never;
@@ -3159,25 +4787,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Current password is incorrect, or the account is not local */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    setup_api_v1_auth_setup_post: {
+    auth_setup: {
         parameters: {
             query?: never;
             header?: never;
@@ -3199,18 +4833,36 @@ export interface operations {
                     "application/json": components["schemas"]["MeOut"];
                 };
             };
+            /** @description Invalid reset token */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Already set up */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    status_api_v1_auth_status_get: {
+    auth_status: {
         parameters: {
             query?: never;
             header?: never;
@@ -3230,7 +4882,7 @@ export interface operations {
             };
         };
     };
-    list_credentials_api_v1_credentials_get: {
+    list_credentials: {
         parameters: {
             query?: {
                 cursor?: string | null;
@@ -3260,32 +4912,40 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing `credentials:read` scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    create_credential_api_v1_credentials_post: {
+    create_credential: {
         parameters: {
             query?: never;
             header?: never;
@@ -3307,18 +4967,36 @@ export interface operations {
                     "application/json": components["schemas"]["CredentialOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    get_credential_api_v1_credentials__obj_id__get: {
+    get_credential: {
         parameters: {
             query?: never;
             header?: never;
@@ -3338,18 +5016,45 @@ export interface operations {
                     "application/json": components["schemas"]["CredentialOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    delete_credential_api_v1_credentials__obj_id__delete: {
+    delete_credential: {
         parameters: {
             query?: never;
             header?: never;
@@ -3367,18 +5072,54 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credential is in use by a source */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    patch_credential_api_v1_credentials__obj_id__patch: {
+    patch_credential: {
         parameters: {
             query?: never;
             header?: never;
@@ -3402,18 +5143,45 @@ export interface operations {
                     "application/json": components["schemas"]["CredentialOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The caller may use but not edit the credential */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    get_shares_api_v1_credentials__obj_id__shares_get: {
+    get_credentials_shares: {
         parameters: {
             query?: never;
             header?: never;
@@ -3433,18 +5201,45 @@ export interface operations {
                     "application/json": components["schemas"]["SharesBody"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    put_shares_api_v1_credentials__obj_id__shares_put: {
+    put_credentials_shares: {
         parameters: {
             query?: never;
             header?: never;
@@ -3468,18 +5263,45 @@ export interface operations {
                     "application/json": components["schemas"]["SharesBody"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    get_extractors_api_v1_extractors_get: {
+    get_extractors: {
         parameters: {
             query?: never;
             header?: never;
@@ -3497,9 +5319,27 @@ export interface operations {
                     "application/json": components["schemas"]["ExtractorList"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
-    list_jobs_api_v1_jobs_get: {
+    list_jobs: {
         parameters: {
             query?: {
                 source_id?: number | null;
@@ -3531,32 +5371,40 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing `jobs:read` scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    dashboard_api_v1_jobs_stream_get: {
+    dashboard: {
         parameters: {
             query?: never;
             header?: never;
@@ -3565,18 +5413,58 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description Events: `status` (`job_id`, `status`), `phase`, `progress` (`job_id`, `counters`) and `gap` when events were dropped and the client should refetch. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    /**
+                     * @example event: status
+                     *     data: {"type":"status","job_id":17,"status":"running"}
+                     */
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too many open streams */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The job runtime is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    get_job_api_v1_jobs__job_id__get: {
+    get_job: {
         parameters: {
             query?: never;
             header?: never;
@@ -3596,18 +5484,45 @@ export interface operations {
                     "application/json": components["schemas"]["JobOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    delete_job_api_v1_jobs__job_id__delete: {
+    delete_job: {
         parameters: {
             query?: never;
             header?: never;
@@ -3630,39 +5545,49 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing `jobs:write` scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Job not found or not visible to the caller */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Job is queued or running */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    cancel_job_api_v1_jobs__job_id__cancel_post: {
+    cancel_job: {
         parameters: {
             query?: never;
             header?: never;
@@ -3682,18 +5607,54 @@ export interface operations {
                     "application/json": components["schemas"]["JobOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The job is not active */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    job_events_api_v1_jobs__job_id__events_get: {
+    job_events: {
         parameters: {
             query?: {
                 min_level?: string | null;
@@ -3717,18 +5678,45 @@ export interface operations {
                     "application/json": components["schemas"]["Page_EventOut_"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    job_items_api_v1_jobs__job_id__items_get: {
+    job_items: {
         parameters: {
             query?: {
                 outcome?: string | null;
@@ -3752,18 +5740,45 @@ export interface operations {
                     "application/json": components["schemas"]["Page_ItemOut_"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    retry_job_api_v1_jobs__job_id__retry_post: {
+    retry_job: {
         parameters: {
             query?: never;
             header?: never;
@@ -3783,18 +5798,63 @@ export interface operations {
                     "application/json": components["schemas"]["JobOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A job is already active for the source */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description The job runtime is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    stream_job_api_v1_jobs__job_id__stream_get: {
+    stream_job: {
         parameters: {
             query?: never;
             header?: never;
@@ -3805,13 +5865,50 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description Events: `log`, `phase`, `item.<outcome>`, `progress`, `status`, `gap`, then `end`. Each `data:` is a JSON object with a `type`; `status` events carry `job_id` and `status`, `progress` events carry `counters`, item events carry `url`, `reason` and `immich_asset_id`. */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    /**
+                     * @example event: progress
+                     *     data: {"type":"progress","counters":{"seen":40,"uploaded":12}}
+                     *
+                     *     event: status
+                     *     data: {"type":"status","job_id":17,"status":"succeeded"}
+                     *
+                     *     event: end
+                     *     data: {}
+                     */
+                    "text/event-stream": string;
+                };
+            };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -3820,12 +5917,30 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too many open streams */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The job runtime is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    adhoc_rip_api_v1_rip_post: {
+    adhoc_rip: {
         parameters: {
             query?: never;
             header?: never;
@@ -3847,18 +5962,45 @@ export interface operations {
                     "application/json": components["schemas"]["JobOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description The job runtime is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    get_settings_api_v1_settings_get: {
+    get_settings: {
         parameters: {
             query?: never;
             header?: never;
@@ -3881,18 +6023,22 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Caller is not an admin, or lacks the required admin scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
         };
     };
-    put_settings_api_v1_settings_put: {
+    put_settings: {
         parameters: {
             query?: never;
             header?: never;
@@ -3919,25 +6065,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Caller is not an admin, or lacks the required admin scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    set_local_admin_password_api_v1_settings_local_admin_put: {
+    set_local_admin_password: {
         parameters: {
             query?: never;
             header?: never;
@@ -3962,25 +6114,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Caller is not an admin, or lacks the required admin scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    test_oidc_api_v1_settings_oidc_test_post: {
+    test_oidc: {
         parameters: {
             query?: never;
             header?: never;
@@ -4007,25 +6165,31 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Caller is not an admin, or lacks the required admin scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    list_sources_api_v1_sources_get: {
+    list_sources: {
         parameters: {
             query?: {
                 cursor?: string | null;
@@ -4056,32 +6220,40 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing `sources:read` scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    create_source_api_v1_sources_post: {
+    create_source: {
         parameters: {
             query?: never;
             header?: never;
@@ -4103,18 +6275,36 @@ export interface operations {
                     "application/json": components["schemas"]["SourceOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    preview_source_api_v1_sources_preview_post: {
+    preview_source: {
         parameters: {
             query?: never;
             header?: never;
@@ -4136,18 +6326,63 @@ export interface operations {
                     "application/json": components["schemas"]["PreviewOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Too many previews running */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The preview failed */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The preview timed out */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    get_source_api_v1_sources__obj_id__get: {
+    get_source: {
         parameters: {
             query?: never;
             header?: never;
@@ -4167,18 +6402,45 @@ export interface operations {
                     "application/json": components["schemas"]["SourceOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    delete_source_api_v1_sources__obj_id__delete: {
+    delete_source: {
         parameters: {
             query?: never;
             header?: never;
@@ -4196,18 +6458,54 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The source has an active job */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    patch_source_api_v1_sources__obj_id__patch: {
+    patch_source: {
         parameters: {
             query?: never;
             header?: never;
@@ -4231,18 +6529,45 @@ export interface operations {
                     "application/json": components["schemas"]["SourceOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The caller may use but not edit the source */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    forget_seen_api_v1_sources__obj_id__forget_seen_post: {
+    forget_seen: {
         parameters: {
             query?: never;
             header?: never;
@@ -4264,18 +6589,54 @@ export interface operations {
                     };
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The source has an active job */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    get_shares_api_v1_sources__obj_id__shares_get: {
+    get_sources_shares: {
         parameters: {
             query?: never;
             header?: never;
@@ -4295,18 +6656,45 @@ export interface operations {
                     "application/json": components["schemas"]["SharesBody"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    put_shares_api_v1_sources__obj_id__shares_put: {
+    put_sources_shares: {
         parameters: {
             query?: never;
             header?: never;
@@ -4330,18 +6718,45 @@ export interface operations {
                     "application/json": components["schemas"]["SharesBody"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    run_source_api_v1_sources__source_id__run_post: {
+    run_source: {
         parameters: {
             query?: never;
             header?: never;
@@ -4365,18 +6780,63 @@ export interface operations {
                     "application/json": components["schemas"]["JobOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description A job is already active for the source (`detail.job_id` names it) */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description The job runtime is unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    list_targets_api_v1_targets_get: {
+    list_targets: {
         parameters: {
             query?: {
                 cursor?: string | null;
@@ -4406,32 +6866,40 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing `targets:read` scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    create_target_api_v1_targets_post: {
+    create_target: {
         parameters: {
             query?: never;
             header?: never;
@@ -4453,18 +6921,36 @@ export interface operations {
                     "application/json": components["schemas"]["TargetOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    get_target_api_v1_targets__obj_id__get: {
+    get_target: {
         parameters: {
             query?: never;
             header?: never;
@@ -4484,18 +6970,45 @@ export interface operations {
                     "application/json": components["schemas"]["TargetOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    delete_target_api_v1_targets__obj_id__delete: {
+    delete_target: {
         parameters: {
             query?: never;
             header?: never;
@@ -4513,18 +7026,54 @@ export interface operations {
                 };
                 content?: never;
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The target is in use by a source */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    patch_target_api_v1_targets__obj_id__patch: {
+    patch_target: {
         parameters: {
             query?: never;
             header?: never;
@@ -4548,18 +7097,45 @@ export interface operations {
                     "application/json": components["schemas"]["TargetOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The caller may use but not edit the target */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    target_albums_api_v1_targets__obj_id__albums_get: {
+    target_albums: {
         parameters: {
             query?: never;
             header?: never;
@@ -4579,18 +7155,54 @@ export interface operations {
                     "application/json": components["schemas"]["AlbumList"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Immich is unreachable or rejected the API key */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    thumbnail_api_v1_targets__obj_id__assets__asset_id__thumbnail_get: {
+    thumbnail: {
         parameters: {
             query?: {
                 size?: "thumbnail" | "preview";
@@ -4610,7 +7222,34 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "image/*": string;
+                };
+            };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description Validation Error */
@@ -4619,12 +7258,21 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+            /** @description Immich is unreachable or rejected the API key */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
         };
     };
-    get_shares_api_v1_targets__obj_id__shares_get: {
+    get_targets_shares: {
         parameters: {
             query?: never;
             header?: never;
@@ -4644,18 +7292,45 @@ export interface operations {
                     "application/json": components["schemas"]["SharesBody"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    put_shares_api_v1_targets__obj_id__shares_put: {
+    put_targets_shares: {
         parameters: {
             query?: never;
             header?: never;
@@ -4679,18 +7354,45 @@ export interface operations {
                     "application/json": components["schemas"]["SharesBody"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    test_target_api_v1_targets__obj_id__test_post: {
+    test_target: {
         parameters: {
             query?: never;
             header?: never;
@@ -4710,18 +7412,45 @@ export interface operations {
                     "application/json": components["schemas"]["TargetTestOut"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not found, or not visible to the caller */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    list_uploads_api_v1_uploads_get: {
+    list_uploads: {
         parameters: {
             query?: {
                 source_id?: number | null;
@@ -4744,18 +7473,36 @@ export interface operations {
                     "application/json": components["schemas"]["Page_UploadOut_"];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    list_users_api_v1_users_get: {
+    list_users: {
         parameters: {
             query?: {
                 cursor?: string | null;
@@ -4785,32 +7532,40 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Missing or invalid credentials */
             401: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Caller is not an admin, or lacks the required admin scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    user_directory_api_v1_users_directory_get: {
+    user_directory: {
         parameters: {
             query: {
                 q: string;
@@ -4830,18 +7585,36 @@ export interface operations {
                     "application/json": components["schemas"]["UserRef"][];
                 };
             };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
             /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
                 };
             };
         };
     };
-    create_local_user_api_v1_users_local_post: {
+    create_local_user: {
         parameters: {
             query?: never;
             header?: never;
@@ -4868,32 +7641,40 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Caller is not an admin, or lacks the required admin scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description A user with that username already exists */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    delete_user_api_v1_users__user_id__delete: {
+    delete_user: {
         parameters: {
             query?: {
                 /** @description User id that takes over the owned resources. */
@@ -4919,21 +7700,27 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Caller is not an admin, or lacks the required admin scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description User not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Last enabled admin, not a local user, or the user still owns resources (body lists the counts) */
             409: {
@@ -4949,11 +7736,13 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    patch_user_api_v1_users__user_id__patch: {
+    patch_user: {
         parameters: {
             query?: never;
             header?: never;
@@ -4982,39 +7771,49 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Caller is not an admin, or lacks the required admin scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description User not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Would disable the last enabled admin */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
             };
         };
     };
-    reset_password_api_v1_users__user_id__password_post: {
+    reset_password: {
         parameters: {
             query?: never;
             header?: never;
@@ -5043,35 +7842,132 @@ export interface operations {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Caller is not an admin, or lacks the required admin scope */
             403: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description User not found */
             404: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description The user is not a local account */
             409: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
             };
             /** @description Validation error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": components["schemas"]["ValidationErrorResponse"];
+                };
+            };
+        };
+    };
+    healthz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthOut"];
+                };
+            };
+        };
+    };
+    metrics: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Prometheus text exposition format */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/plain": string;
+                };
+            };
+            /** @description Missing, invalid, expired or revoked credentials */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description The credentials lack the required scope or role, or the CSRF token is missing or invalid */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    readyz: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description All components are ready */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HealthOut"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotReadyOut"];
+                };
             };
         };
     };

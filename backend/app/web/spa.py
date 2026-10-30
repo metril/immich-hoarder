@@ -45,7 +45,7 @@ def _accepts(header: str, coding: str) -> bool:
     return bool(star)
 
 
-_NO_CSP = ("/api/docs", "/api/openapi.json")
+_NO_CSP = ("/api/docs", "/api/redoc", "/api/openapi.json")
 
 
 class ApiHeaders:

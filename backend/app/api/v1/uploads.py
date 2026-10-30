@@ -4,7 +4,7 @@ from typing import Literal
 import anyio.to_thread
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,14 +27,19 @@ router = APIRouter(tags=["uploads"])
 
 
 class UploadOut(BaseModel):
-    id: int
-    job_id: int
-    source_id: int
-    target_id: int
-    immich_asset_id: str | None
-    url: str
-    outcome: str
-    created_at: UtcDatetime | None
+    id: int = Field(description="Upload record id.", examples=[101])
+    job_id: int = Field(description="Job that uploaded it.", examples=[17])
+    source_id: int = Field(description="Source it came from.", examples=[3])
+    target_id: int = Field(description="Immich target it went to.", examples=[1])
+    immich_asset_id: str | None = Field(
+        description="Immich asset id; the thumbnail endpoint uses it.",
+        examples=["0b7c1d1e-9a40-4d6f-8d5e-2a1f3c4b5d6e"],
+    )
+    url: str = Field(description="Original media URL.", examples=["https://example.com/a.jpg"])
+    outcome: str = Field(description="Result: uploaded or duplicate.", examples=["uploaded"])
+    created_at: UtcDatetime | None = Field(
+        description="When it was recorded.", examples=["2026-01-01T03:02:00Z"]
+    )
 
 
 @router.get("/uploads", response_model=Page[UploadOut])

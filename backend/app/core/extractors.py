@@ -6,7 +6,7 @@ from urllib.parse import urlsplit
 
 import requests
 from gallery_dl import extractor as gdl_extractor
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from urllib3.util import parse_url
 
 GDL_OPTION_BLOCKLIST = frozenset(
@@ -36,9 +36,13 @@ class UnsupportedURL(ValueError):
 
 
 class ExtractorInfo(BaseModel):
-    category: str
-    subcategories: list[str]
-    example: str | None = None
+    category: str = Field(description="Site (extractor category).", examples=["pixiv"])
+    subcategories: list[str] = Field(
+        description="Kinds of URL the extractor handles.", examples=[["user", "artwork"]]
+    )
+    example: str | None = Field(
+        default=None, description="An example URL.", examples=["https://www.pixiv.net/en/users/123"]
+    )
 
 
 _HEXISH = frozenset("0123456789abcdefx.")
