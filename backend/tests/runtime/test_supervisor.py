@@ -943,3 +943,26 @@ async def test_two_real_workers_dedupe_near_duplicates_on_one_target(env: Env) -
         assert sup.claims.table.held() == 0 and sup.claims.table.waiting() == 0
     finally:
         await asyncio.to_thread(site.close)
+
+
+@pytest.mark.parametrize(
+    ("runtime", "rip", "expected"),
+    [
+        ({"max_concurrent_jobs": 4}, {}, 1024**3),
+        ({"max_concurrent_jobs": 64}, {}, 256 * 1024**2),  # floor
+        ({"max_concurrent_jobs": 4}, {"job_scratch_max_bytes": 5000}, 5000),  # explicit: per job
+    ],
+)
+async def test_scratch_default_divided_by_job_cap(
+    env: Env, runtime: dict[str, Any], rip: dict[str, Any], expected: int
+) -> None:
+    _, src = await env.seed()
+    async with env.sf() as s:
+        s.add(Setting(key="runtime", value=runtime))
+        s.add(Setting(key="rip", value=rip))
+        await s.commit()
+    sup = env.make(fw.cap_worker)
+    await sup.start()
+    job = await sup.enqueue(src, None, "info")
+    done = await wait_for(env, job.id, JobStatus.succeeded)
+    assert done.counters == {"cap": expected}

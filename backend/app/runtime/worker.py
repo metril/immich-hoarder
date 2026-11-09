@@ -11,7 +11,7 @@ from sqlalchemy import Engine, event
 
 from app.db.engine import make_sync_engine
 from app.immich.client import ImmichClient
-from app.rip.dedupe import AssetRef, DedupeStore
+from app.rip.dedupe import AssetRef, DedupeStore, Existing
 from app.rip.media import to_signed64
 from app.rip.pipeline import RipContext, RipResult, run_rip
 from app.rip.settings import RipSettings
@@ -89,6 +89,41 @@ class OverlayStore:
             aid = self._sha1.get((target_id, sha1))
         return AssetRef(aid) if aid is not None else None
 
+    def lookup(
+        self, target_id: int, sha1: bytes, phash_signed: int | None, max_distance: int | None
+    ) -> Existing:
+        """DB first (one query), then this job's not-yet-committed records; same order as above."""
+        db = self._store.lookup(target_id, sha1, phash_signed, max_distance)
+        if db.how == "sha1":
+            return db
+        with self._lock:
+            aid = self._sha1.get((target_id, sha1))
+        if aid is not None:
+            return Existing(AssetRef(aid), "sha1", db.deleted)
+        if db.live is not None:
+            return db
+        if phash_signed is not None and max_distance is not None:
+            hit = self._phash_hit(target_id, phash_signed, max_distance, False)
+            if hit is not None:
+                return Existing(hit, "phash", db.deleted)
+        return Existing(
+            None,
+            "",
+            db.deleted or self._overlay_deleted(target_id, sha1, phash_signed, max_distance),
+        )
+
+    def _overlay_deleted(
+        self, target_id: int, sha1: bytes, phash_signed: int | None, max_distance: int | None
+    ) -> bool:
+        with self._lock:
+            if (target_id, sha1) in self._sha1 and self._sha1[(target_id, sha1)] is None:
+                return True
+        return bool(
+            phash_signed is not None
+            and max_distance is not None
+            and self._phash_hit(target_id, phash_signed, max_distance, True)
+        )
+
     def _phash_hit(self, target_id: int, ph: int, dist: int, deleted: bool) -> AssetRef | None:
         best: tuple[int, str | None] | None = None
         with self._lock:
@@ -109,14 +144,7 @@ class OverlayStore:
     ) -> bool:
         if self._store.match_deleted(target_id, sha1, phash_signed, max_distance):
             return True
-        with self._lock:
-            if (target_id, sha1) in self._sha1 and self._sha1[(target_id, sha1)] is None:
-                return True
-        return bool(
-            phash_signed is not None
-            and max_distance is not None
-            and self._phash_hit(target_id, phash_signed, max_distance, True)
-        )
+        return self._overlay_deleted(target_id, sha1, phash_signed, max_distance)
 
     def record(
         self,

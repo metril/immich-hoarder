@@ -159,3 +159,15 @@ def claim_leak_worker(spec: Any, q: Any, cancel: Any, conn: Any) -> None:
     claims, never = _claims(spec, q, conn)
     claims.claim_file(spec.target.id, _SHA, None, None, never)
     _done(q, spec, "succeeded")
+
+
+def cap_worker(spec: Any, q: Any, cancel: Any, conn: Any) -> None:
+    q.put(
+        (
+            "done",
+            spec.job_id,
+            {"status": "succeeded", "error": None, "counters": {"cap": spec.scratch_cap_bytes}},
+        )
+    )
+    q.close()
+    q.join_thread()

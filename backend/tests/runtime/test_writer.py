@@ -618,3 +618,72 @@ async def test_release_observed_when_record_fails(env: Any) -> None:
     await w.stop()
     assert [m for m in seen if m[0] == "release"] == [("release", 7)]
     assert await _count(sf, AssetSeen) == 0
+
+
+def _rec(i: int, sha: bytes | None, asset: str | None) -> dict[str, Any]:
+    return {
+        "target_id": 1,
+        "source_id": 1,
+        "key": i.to_bytes(16, "big"),
+        "sha1": sha,
+        "phash": None,
+        "immich_asset_id": asset,
+    }
+
+
+async def test_consecutive_records_are_bulk_inserted(env: Any) -> None:
+    eng, sf = env
+    stmts: list[int] = []
+
+    @event.listens_for(eng.sync_engine, "before_cursor_execute")
+    def on_exec(_c: Any, _cur: Any, statement: str, params: Any, _ctx: Any, many: bool) -> None:
+        if statement.startswith("INSERT INTO assets_seen"):
+            stmts.append(1)
+
+    w = JobWriter(sf, EventBus())
+    for i in range(60):
+        w.submit(("record", _rec(i, bytes([i % 250 + 1]) * 20, ASSET)))
+    w.submit(("record", _rec(0, None, None)))  # duplicate (source, key): ignored like before
+    w.start()
+    await w.stop()
+    assert await _count(sf, AssetSeen) == 60
+    assert len(stmts) == 1  # 61 records, one statement
+
+
+async def test_rebind_keeps_order_between_records(env: Any) -> None:
+    _, sf = env
+    sha = b"\x09" * 20
+    w = JobWriter(sf, EventBus())
+    w.submit(("record", _rec(1, sha, None)))  # deleted in Immich
+    w.submit(
+        (
+            "rebind",
+            {"target_id": 1, "sha1": sha, "new_asset_id": ASSET, "old_asset_id": None},
+        )
+    )
+    w.submit(("record", _rec(2, sha, None)))  # recorded after the rebind: stays NULL
+    w.start()
+    await w.stop()
+    async with sf() as s:
+        rows = {r.url_hash: r for r in (await s.execute(select(AssetSeen))).scalars()}
+    assert rows[(1).to_bytes(16, "big")].immich_asset_id == uuid.UUID(ASSET).bytes
+    assert rows[(2).to_bytes(16, "big")].immich_asset_id is None
+
+
+async def test_items_and_events_flush_in_few_statements(env: Any) -> None:
+    eng, sf = env
+    stmts: list[str] = []
+
+    @event.listens_for(eng.sync_engine, "before_cursor_execute")
+    def on_exec(_c: Any, _cur: Any, statement: str, params: Any, _ctx: Any, many: bool) -> None:
+        if statement.startswith(("INSERT INTO job_items", "INSERT INTO job_events")):
+            stmts.append(statement[:20])
+
+    w = JobWriter(sf, EventBus())
+    for i in range(100):
+        w.submit(("event", 1, {"type": "item.uploaded", "url": f"http://x/{i}"}))
+        w.submit(("event", 1, {"type": "log", "level": "info", "msg": str(i)}))
+    w.start()
+    await w.stop()
+    assert await _count(sf, JobItem) == 100 and await _count(sf, JobEvent) == 100
+    assert len(stmts) <= 4  # ORM insertmanyvalues already batches these; no hand bulk needed

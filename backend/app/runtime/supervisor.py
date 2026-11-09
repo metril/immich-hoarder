@@ -21,7 +21,7 @@ from app.core.crypto import SecretBox
 from app.db.models import AssetSeen, Credential, CredentialKind, Job, JobStatus, Source
 from app.rip.build import build_snapshots, check_notify_refs, credential_snapshot
 from app.rip.pipeline import sweep_scratch
-from app.rip.settings import DEFAULT_SCRATCH_MAX_BYTES, load_rip_settings
+from app.rip.settings import default_scratch_cap, load_rip_settings
 from app.runtime.claims import Coordinator
 from app.runtime.notify import notify_job, shutdown_executor
 from app.runtime.settings import load_notify_settings, load_runtime_settings
@@ -386,6 +386,7 @@ class JobSupervisor:
                 ):
                     h.credential_id, h.secret_enc = row.id, row.secret_enc
             rip = await load_rip_settings(s)
+            jobs_cap = (await load_runtime_settings(s)).max_concurrent_jobs or os.cpu_count() or 1
             incremental = await self.is_incremental(source.id)
             return WorkerSpec(
                 job_id=job_id,
@@ -394,7 +395,7 @@ class JobSupervisor:
                 credential=cred,
                 rip_settings=rip,
                 scratch_dir=self._settings.scratch_dir,
-                scratch_cap_bytes=rip.job_scratch_max_bytes or DEFAULT_SCRATCH_MAX_BYTES,
+                scratch_cap_bytes=rip.job_scratch_max_bytes or default_scratch_cap(jobs_cap),
                 incremental=incremental,
                 db_url=self._settings.database_url,
                 log_level=job.log_level or source.log_level or self._settings.log_level,

@@ -336,17 +336,11 @@ class _Rip:
         how = ""
         reup = self.src.reupload_deleted
         sha1hex = info.sha1.hex()
-        ref = ctx.store.match_sha1(tid, info.sha1)
-        if ref is not None:
-            how = "sha1"
-        elif self.src.filters.phash_distance is not None:
-            ref = ctx.store.match_phash(tid, info.phash, self.src.filters.phash_distance)
-            how = "phash"
+        found = ctx.store.lookup(tid, info.sha1, info.phash, self.src.filters.phash_distance)
+        ref, how = found.live, found.how
         if ref is not None and ref.immich_asset_id:
             existing = ref.immich_asset_id
-        elif not reup and ctx.store.match_deleted(
-            tid, info.sha1, info.phash, self.src.filters.phash_distance
-        ):
+        elif not reup and found.deleted:
             self._deleted(url, key, info, None)
             return
         else:

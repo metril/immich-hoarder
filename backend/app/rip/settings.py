@@ -7,6 +7,12 @@ from app.core.extractors import UnsupportedURL, validate_proxy
 from app.runtime.settings import load_model
 
 DEFAULT_SCRATCH_MAX_BYTES = 4 * 1024**3
+MIN_SCRATCH_MAX_BYTES = 256 * 1024**2
+
+
+def default_scratch_cap(jobs: int) -> int:
+    """Per-job scratch limit when unset: the 4 GiB default shared by ``jobs`` parallel jobs."""
+    return max(DEFAULT_SCRATCH_MAX_BYTES // max(jobs, 1), MIN_SCRATCH_MAX_BYTES)
 
 
 class RateLimit(BaseModel, extra="forbid"):

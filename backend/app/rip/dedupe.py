@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 import xxhash
-from sqlalchemy import Engine, cast, func, select, union, update
+from sqlalchemy import Engine, cast, func, literal, select, union, union_all, update
 from sqlalchemy.dialects.postgresql import BIT
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -19,6 +19,15 @@ from app.rip.media import chunks16, to_signed64
 @dataclass(frozen=True)
 class AssetRef:
     immich_asset_id: str | None
+
+
+@dataclass(frozen=True)
+class Existing:
+    """Outcome of one combined lookup: the live match (if any) and whether a deleted one exists."""
+
+    live: AssetRef | None = None
+    how: str = ""  # "sha1" | "phash" when ``live`` is set
+    deleted: bool = False
 
 
 class Recorder(Protocol):
@@ -107,32 +116,82 @@ class DedupeStore:
             row = c.execute(stmt).first()
         return _ref(row[0]) if row else None
 
+    @staticmethod
+    def _chunk_selects(
+        target_id: int, phash_signed: int, deleted: bool | None = None
+    ) -> list[Select[Any]]:
+        # UNION of 4 single-index lookups (the planner reliably uses each
+        # (target_id, phN) index, unlike an OR). ``deleted``: None = both.
+        cs = chunks16(phash_signed)
+        cols = (AssetSeen.ph0, AssetSeen.ph1, AssetSeen.ph2, AssetSeen.ph3)
+        out: list[Any] = []
+        for col, c in zip(cols, cs, strict=True):
+            q = select(AssetSeen.immich_asset_id, AssetSeen.phash).where(
+                AssetSeen.target_id == target_id, col == c
+            )
+            if deleted is not None:
+                q = q.where(
+                    AssetSeen.immich_asset_id.is_(None)
+                    if deleted
+                    else AssetSeen.immich_asset_id.is_not(None)
+                )
+            out.append(q)
+        return out
+
+    def _distance(self, phash_col: Any, phash_signed: int) -> Any:
+        # Computed and filtered in SQL so the candidate set never reaches Python.
+        if self._engine.dialect.name == "postgresql":
+            # Requires PostgreSQL >= 14 (bit_count).
+            return func.bit_count(cast(phash_col.op("#")(phash_signed), BIT(64)))
+        return func.hamming(phash_col, phash_signed)
+
     def _phash_stmt(
         self, target_id: int, phash_signed: int, max_distance: int, deleted: bool = False
     ) -> Select[Any]:
-        # UNION of 4 single-index lookups (the planner reliably uses each
-        # (target_id, phN) index, unlike an OR). Distance is computed and
-        # filtered in SQL so the candidate set never reaches Python.
-        cs = chunks16(phash_signed)
-        cols = (AssetSeen.ph0, AssetSeen.ph1, AssetSeen.ph2, AssetSeen.ph3)
-        selects = [
-            select(AssetSeen.immich_asset_id, AssetSeen.phash).where(
-                AssetSeen.target_id == target_id,
-                col == c,
-                AssetSeen.immich_asset_id.is_(None)
-                if deleted
-                else AssetSeen.immich_asset_id.is_not(None),
-            )
-            for col, c in zip(cols, cs, strict=True)
-        ]
-        cand = union(*selects).subquery()
-        if self._engine.dialect.name == "postgresql":
-            # Requires PostgreSQL >= 14 (bit_count).
-            dist = func.bit_count(cast(cand.c.phash.op("#")(phash_signed), BIT(64)))
-        else:
-            dist = func.hamming(cand.c.phash, phash_signed)
+        cand = union(*self._chunk_selects(target_id, phash_signed, deleted)).subquery()
+        dist = self._distance(cand.c.phash, phash_signed)
         d = dist.label("d")
         return select(cand.c.immich_asset_id, d).where(dist <= max_distance).order_by(d).limit(1)
+
+    def lookup(
+        self, target_id: int, sha1: bytes, phash_signed: int | None, max_distance: int | None
+    ) -> Existing:
+        """Live and deleted matches in one round trip; live wins, SHA-1 before pHash.
+
+        Same outcomes as ``match_sha1``, then ``match_phash``, then ``match_deleted``.
+        """
+        sha = (
+            select(literal(0).label("k"), AssetSeen.immich_asset_id.label("a"))
+            .where(AssetSeen.target_id == target_id, AssetSeen.sha1 == sha1)
+            .order_by(AssetSeen.immich_asset_id.is_(None))  # live rows first
+            .limit(1)
+            .subquery()
+        )
+        parts: list[Any] = [select(sha.c.k, sha.c.a, literal(0).label("d"))]
+        if phash_signed is not None and max_distance is not None:
+            cand = union(*self._chunk_selects(target_id, phash_signed)).subquery()
+            dist = self._distance(cand.c.phash, phash_signed)
+            ph = (
+                select(literal(1).label("k"), cand.c.immich_asset_id.label("a"), dist.label("d"))
+                .where(dist <= max_distance)
+                .order_by(cand.c.immich_asset_id.is_(None), dist)
+                .limit(8)
+                .subquery()
+            )
+            parts.append(select(ph.c.k, ph.c.a, ph.c.d))
+        stmt: Any = parts[0]
+        if len(parts) > 1:
+            stmt = union_all(*parts)
+        with self._engine.connect() as c:
+            rows = c.execute(stmt).all()
+        deleted = any(r[1] is None for r in rows)
+        for r in rows:
+            if r[0] == 0 and r[1] is not None:
+                return Existing(_ref(r[1]), "sha1", deleted)
+        live = [r for r in rows if r[0] == 1 and r[1] is not None]
+        if live:
+            return Existing(_ref(min(live, key=lambda r: r[2])[1]), "phash", deleted)
+        return Existing(None, "", deleted)
 
     def match_phash(self, target_id: int, phash_signed: int, max_distance: int) -> AssetRef | None:
         with self._engine.connect() as c:

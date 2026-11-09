@@ -224,3 +224,76 @@ def test_match_deleted_sha1_and_phash(engine: Engine) -> None:
     assert not store.match_deleted(1, b"\x09" * 20, to_signed64(PH ^ 1), None)
     # rows with an asset id are not "deleted"
     assert not store.match_deleted(1, b"\x08" * 20, None, None)
+
+
+A2 = str(uuid.uuid4())
+S = [bytes([i]) * 20 for i in range(1, 8)]
+
+
+def _old(
+    store: DedupeStore, tid: int, sha1: bytes, ph: int, dist: int | None
+) -> tuple[str | None, str, bool]:
+    ref = store.match_sha1(tid, sha1)
+    how = "sha1" if ref else ""
+    if ref is None and dist is not None:
+        ref = store.match_phash(tid, to_signed64(ph), dist)
+        how = "phash" if ref else ""
+    deleted = ref is None and store.match_deleted(
+        tid, sha1, to_signed64(ph) if dist is not None else None, dist
+    )
+    return (ref.immich_asset_id if ref else None, how, deleted)
+
+
+def _new(
+    store: DedupeStore, tid: int, sha1: bytes, ph: int, dist: int | None
+) -> tuple[str | None, str, bool]:
+    f = store.lookup(tid, sha1, to_signed64(ph), dist)
+    return (
+        f.live.immich_asset_id if f.live else None,
+        f.how,
+        f.deleted if f.live is None else False,
+    )
+
+
+@pytest.mark.parametrize("dist", [None, 0, 3])
+def test_lookup_matches_the_separate_queries(engine: Engine, dist: int | None) -> None:
+    store = DedupeStore(engine)
+    n = 0
+
+    def rec(**kw: object) -> None:
+        nonlocal n
+        n += 1
+        _rec(store, n.to_bytes(16, "big"), **kw)  # type: ignore[arg-type]
+
+    rec(sha1=S[0], phash=PH)  # live, exact
+    rec(sha1=S[1], phash=None, asset=None)  # deleted by sha1
+    rec(sha1=S[2], phash=PH ^ 0b111, asset=A2)  # live near
+    rec(sha1=S[3], phash=0xFFFF_0000_FFFF_0000, asset=None)  # deleted by pHash only
+    rec(sha1=S[3], phash=0xFFFF_0000_FFFF_0000, asset=None)
+    rec(sha1=S[4], phash=0x0F0F_0F0F_0F0F_0F0F, asset=None, target=2)  # other target
+    rec(sha1=S[5], phash=0x1111_2222_3333_4444)  # live
+    rec(sha1=S[5], phash=0x1111_2222_3333_4444, asset=None)  # same sha1 live and deleted
+    probes = [
+        (1, S[0], PH),  # exact
+        (1, S[6], PH),  # unknown sha1, pHash matches live
+        (1, S[6], PH ^ 0b1111),  # distance 4 from the live ones
+        (1, S[6], PH ^ 0b11),  # closest live (distance 2) wins over distance 3
+        (1, S[1], 0x1234),  # deleted by sha1
+        (1, S[6], 0xFFFF_0000_FFFF_0001),  # deleted by pHash
+        (1, S[1], PH ^ 0b11),  # sha1 deleted but a live pHash match: live wins
+        (1, S[6], 0x0F0F_0F0F_0F0F_0F0F),  # only another target has it
+        (2, S[4], 0x0F0F_0F0F_0F0F_0F0F),
+        (1, S[5], 0x1),  # sha1 has live and deleted rows
+        (1, S[6], 0x55AA),  # nothing
+    ]
+    for tid, sha, ph in probes:
+        assert _new(store, tid, sha, ph, dist) == _old(store, tid, sha, ph, dist), (tid, sha, ph)
+
+
+def test_lookup_trashed_and_reupload_inputs_unchanged(engine: Engine) -> None:
+    store = DedupeStore(engine)
+    _rec(store, b"a" * 16, sha1=S[0], phash=PH, asset=None)
+    f = store.lookup(1, S[0], to_signed64(PH), 3)
+    assert (
+        f.live is None and f.deleted
+    )  # the pipeline still skips the bulk-check unless reuploading
