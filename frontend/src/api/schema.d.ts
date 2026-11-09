@@ -2760,7 +2760,7 @@ export interface components {
             allow_private_hosts: boolean;
             /**
              * Job Scratch Max Bytes
-             * @description Scratch size limit for a single job, in bytes; unset uses 4 GiB.
+             * @description Scratch size limit for a single job, in bytes; unset shares 4 GiB between the job limit (at least 256 MiB per job).
              */
             job_scratch_max_bytes?: number | null;
             /**

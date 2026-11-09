@@ -36,7 +36,10 @@ class RipSettings(BaseModel, extra="forbid"):
     job_scratch_max_bytes: int | None = Field(
         default=None,
         ge=1,
-        description="Scratch size limit for a single job, in bytes; unset uses 4 GiB.",
+        description=(
+            "Scratch size limit for a single job, in bytes; unset shares 4 GiB between the "
+            "job limit (at least 256 MiB per job)."
+        ),
     )
     allow_private_hosts: bool = Field(
         default=False, description="Allow downloads from private and loopback network addresses."

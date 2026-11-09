@@ -30,7 +30,7 @@ Stored in the database and edited by an admin in the web UI or API (settings key
 | `proxy` | str (optional) | unset | - | Proxy URL used for all downloads; unset means no proxy. |
 | `rate_limits` | dict[str, RateLimit] | `{}` | - | Per-site rate limits keyed by extractor name. |
 | `upload_concurrency` | int | `4` | >= 1, <= 16 | Number of simultaneous uploads to Immich. |
-| `job_scratch_max_bytes` | int (optional) | unset | >= 1 | Scratch size limit for a single job, in bytes; unset uses 4 GiB. |
+| `job_scratch_max_bytes` | int (optional) | unset | >= 1 | Scratch size limit for a single job, in bytes; unset shares 4 GiB between the job limit (at least 256 MiB per job). |
 | `allow_private_hosts` | bool | `false` | - | Allow downloads from private and loopback network addresses. |
 
 ## Rate limit entry
