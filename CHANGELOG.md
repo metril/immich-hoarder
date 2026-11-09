@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.12.0](https://github.com/metril/immich-hoarder/compare/v0.11.0...v0.12.0) (2026-11-09)
+
+
+### Features
+
+* **rip:** save renewed Reddit cookies and report dead sessions ([#61](https://github.com/metril/immich-hoarder/issues/61)) ([9d2e2df](https://github.com/metril/immich-hoarder/commit/9d2e2df0afd7db8bb860a861ae136efe2f866428))
+
 ## [0.11.0](https://github.com/metril/immich-hoarder/compare/v0.10.0...v0.11.0) (2026-10-30)
 
 
