@@ -53,12 +53,12 @@ def make_engine(url: str) -> AsyncEngine:
     return engine
 
 
-def make_sync_engine(url: str) -> Engine:
+def make_sync_engine(url: str, **pool: Any) -> Engine:
     u = make_url(normalize_url(url))
     backend = u.get_backend_name()
     if backend == "sqlite":
         u = u.set(drivername="sqlite+pysqlite")
-        engine = create_engine(u, connect_args={"check_same_thread": False})
+        engine = create_engine(u, connect_args={"check_same_thread": False}, **pool)
         event.listen(engine, "connect", _apply_sqlite_pragmas)
         return engine
     if backend == "postgresql":
@@ -67,7 +67,7 @@ def make_sync_engine(url: str) -> Engine:
             ssl = str(u.query["ssl"])
             mode = {"true": "require", "false": "disable"}.get(ssl.lower(), ssl)
             u = u.difference_update_query(["ssl"]).update_query_dict({"sslmode": mode})
-    return create_engine(u)
+    return create_engine(u, **pool)
 
 
 def init_engine(url: str) -> AsyncEngine:

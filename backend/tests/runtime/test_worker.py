@@ -195,3 +195,49 @@ def test_readonly_engine_with_async_url(tmp_path: Path) -> None:
         assert c.execute(sa.text("select count(*) from jobs")).scalar_one() == 0
     with pytest.raises(sa.exc.OperationalError), eng.begin() as c:
         c.execute(sa.text("insert into settings (key, value) values ('k', '{}')"))
+
+
+def test_overlay_prefers_db_over_stale_overlay(store: DedupeStore) -> None:
+    with Session(store._engine) as ses, ses.begin():
+        ses.add(User(id=1, sub="u"))
+        ses.flush()
+        ses.add(ImmichTarget(id=1, owner_id=1, name="t", url="http://i", api_key_enc=b"x"))
+        ses.flush()
+        ses.add(Source(id=1, owner_id=1, name="s", url="http://s", extractor="x", target_id=1))
+    sha = b"\x07" * 20
+    ov = OverlayStore(store, queue.Queue(), 1)
+    ov.record(
+        target_id=1, source_id=1, key=b"a" * 16, sha1=sha, phash=0xF0F0, immich_asset_id=ASSET
+    )
+    # another job re-uploaded the content: the DB row now points at a different asset
+    DedupeStore.record(
+        store,
+        target_id=1,
+        source_id=1,
+        key=b"b" * 16,
+        sha1=sha,
+        phash=0xF0F0,
+        immich_asset_id=ASSET2,
+    )
+    ref = ov.match_sha1(1, sha)
+    assert ref is not None and ref.immich_asset_id == ASSET2
+    near = ov.match_phash(1, 0xF0F0, 0)
+    assert near is not None and near.immich_asset_id == ASSET2
+    # overlay still serves this job's own record while the writer has not committed it
+    ov.record(
+        target_id=1,
+        source_id=1,
+        key=b"c" * 16,
+        sha1=b"\x08" * 20,
+        phash=None,
+        immich_asset_id=ASSET,
+    )
+    ref = ov.match_sha1(1, b"\x08" * 20)
+    assert ref is not None and ref.immich_asset_id == ASSET
+
+
+def test_readonly_engine_pool_is_small(tmp_path: Path) -> None:
+    eng = worker_mod.make_readonly_engine(f"sqlite:///{tmp_path / 'p.db'}")
+    assert eng.pool.size() == 2  # type: ignore[attr-defined]
+    assert eng.pool._max_overflow == 0  # type: ignore[attr-defined]
+    eng.dispose()

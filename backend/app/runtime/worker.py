@@ -36,7 +36,8 @@ class WorkerSpec(BaseModel):
 
 def make_readonly_engine(url: str) -> Engine:
     """Sync engine that rejects writes (the parent is the only DB writer)."""
-    engine = make_sync_engine(url)
+    # small fixed pool: ~20 parallel workers must not exhaust Postgres's default connections
+    engine = make_sync_engine(url, pool_size=2, max_overflow=0)
 
     def _ro(dbapi_conn: Any, _rec: Any) -> None:
         cur = dbapi_conn.cursor()
@@ -79,11 +80,13 @@ class OverlayStore:
         return self._store.url_seen(source_id, key)
 
     def match_sha1(self, target_id: int, sha1: bytes) -> AssetRef | None:
+        # DB first: another job may have rebound the content since this job's own record
+        hit = self._store.match_sha1(target_id, sha1)
+        if hit is not None:
+            return hit
         with self._lock:
             aid = self._sha1.get((target_id, sha1))
-        if aid is not None:
-            return AssetRef(aid)
-        return self._store.match_sha1(target_id, sha1)
+        return AssetRef(aid) if aid is not None else None
 
     def _phash_hit(self, target_id: int, ph: int, dist: int, deleted: bool) -> AssetRef | None:
         best: tuple[int, str | None] | None = None
@@ -97,22 +100,22 @@ class OverlayStore:
         return AssetRef(best[1]) if best else None
 
     def match_phash(self, target_id: int, phash_signed: int, max_distance: int) -> AssetRef | None:
-        hit = self._phash_hit(target_id, phash_signed, max_distance, False)
-        return hit or self._store.match_phash(target_id, phash_signed, max_distance)
+        hit = self._store.match_phash(target_id, phash_signed, max_distance)
+        return hit or self._phash_hit(target_id, phash_signed, max_distance, False)
 
     def match_deleted(
         self, target_id: int, sha1: bytes, phash_signed: int | None, max_distance: int | None
     ) -> bool:
+        if self._store.match_deleted(target_id, sha1, phash_signed, max_distance):
+            return True
         with self._lock:
             if (target_id, sha1) in self._sha1 and self._sha1[(target_id, sha1)] is None:
                 return True
-        if (
+        return bool(
             phash_signed is not None
             and max_distance is not None
             and self._phash_hit(target_id, phash_signed, max_distance, True)
-        ):
-            return True
-        return self._store.match_deleted(target_id, sha1, phash_signed, max_distance)
+        )
 
     def record(
         self,
