@@ -49,7 +49,7 @@ Fields are `ts`, `level`, `logger`, `msg` plus any extras; secrets show as `***`
 
 ### Rate limiting (HTTP 429) and slow runs
 
-**Cause:** the site, or Immich, is throttling. Immich requests retried on 429/502/503/504 with 0.5 s, 1 s and 2 s waits, honoring `Retry-After` up to 10 seconds, then fail as "Immich unavailable (HTTP 429)". Site requests follow the per-site `rate_limits`. **Fix:** raise `sleep_request` and `sleep` for that site in Settings, or lower `upload_concurrency`.
+**Cause:** the site, or Immich, is throttling. Immich requests retried on 429/502/503/504 with 0.5 s, 1 s and 2 s waits, honoring `Retry-After` up to 10 seconds, then fail as "Immich unavailable (HTTP 429)". Site requests follow the per-site `rate_limits`. **Fix:** raise `sleep_request` and `sleep` for that site in Settings, lower `upload_concurrency` or `max_uploads_per_target`.
 
 ## Immich
 
