@@ -106,3 +106,41 @@ def to_netscape(secret: str, site: str) -> str:
             "export all reddit.com cookies"
         )
     return text
+
+
+def _reddit_rows(text: str) -> list[list[str]]:
+    return [r for r in _rows(text) if r[0].lstrip(".").removesuffix("reddit.com") in ("", "www.")]
+
+
+def _expiry(row: list[str]) -> int:
+    try:
+        return max(int(float(row[4])), 0)
+    except ValueError:
+        return 0
+
+
+def session_expiry(text: str) -> int | None:
+    """Unix expiry of reddit_session in Netscape text (0 = none known); None if absent."""
+    for r in _reddit_rows(text):
+        if r[5] == "reddit_session":
+            return _expiry(r)
+    return None
+
+
+def renewed_cookies(old_secret: str, new_text: str, now: float) -> tuple[str, int] | None:
+    """reddit.com rows of a usable, changed cookie jar and its session expiry, else None."""
+    rows = _reddit_rows(new_text)
+    new_exp = session_expiry(new_text)
+    if new_exp is None or (new_exp and new_exp < now):
+        return None
+    try:
+        old_text = to_netscape(old_secret, "reddit")
+    except CredentialError:
+        return None
+    old_exp = session_expiry(old_text) or 0
+    if new_exp < old_exp:
+        return None
+    key = {(r[5], r[6], _expiry(r)) for r in rows}
+    if key == {(r[5], r[6], _expiry(r)) for r in _reddit_rows(old_text)}:
+        return None
+    return _HEADER + "\n" + "".join("\t".join(r) + "\n" for r in rows), new_exp

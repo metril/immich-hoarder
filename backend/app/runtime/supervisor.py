@@ -11,13 +11,13 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.core.config import Settings
 from app.core.crypto import SecretBox
-from app.db.models import AssetSeen, Job, JobStatus, Source
+from app.db.models import AssetSeen, Credential, CredentialKind, Job, JobStatus, Source
 from app.rip.build import build_snapshots, check_notify_refs, credential_snapshot
 from app.rip.pipeline import sweep_scratch
 from app.rip.settings import DEFAULT_SCRATCH_MAX_BYTES, load_rip_settings
@@ -59,6 +59,8 @@ class RunHandle:
     escalation: asyncio.Task[None] | None = None
     exitcode: int | None = None
     finalized: bool = False
+    credential_id: int | None = None  # reddit cookies credential and its starting ciphertext
+    secret_enc: bytes | None = None
 
 
 def _now() -> datetime:
@@ -231,11 +233,40 @@ class JobSupervisor:
     # -- internals -------------------------------------------------------
     async def _on_done(self, job_id: int, result: dict[str, Any]) -> None:
         h = self.running.get(job_id)
+        cookies = self._writer.take_renewed(job_id)
+        if cookies and h is not None:
+            await self._save_cookies(job_id, h, cookies)
         if h is not None and h.done_result is None:
             h.done_result = result
             h.done_evt.set()
         else:
             log.warning("done for job %s ignored (not running or already finalized)", job_id)
+
+    async def _save_cookies(self, job_id: int, h: RunHandle, cookies: str) -> None:
+        """Compare-and-set the renewed jar; a secret changed meanwhile always wins."""
+        if h.credential_id is None or h.secret_enc is None:
+            return
+        try:
+            new = SecretBox(self._settings.master_key_value()).encrypt(cookies.encode())
+            async with self._sf() as s:
+                res = await s.execute(
+                    update(Credential)
+                    .where(
+                        Credential.id == h.credential_id,
+                        Credential.kind == CredentialKind.cookies,
+                        Credential.secret_enc == h.secret_enc,
+                    )
+                    .values(secret_enc=new)
+                )
+                await s.commit()
+            if res.rowcount:  # type: ignore[attr-defined]
+                log.info("job %s: saved renewed reddit cookies", job_id)
+            else:
+                log.debug(
+                    "job %s: credential changed during the job; renewed cookies skipped", job_id
+                )
+        except Exception as e:
+            log.warning("job %s: could not save renewed cookies (%s)", job_id, type(e).__name__)
 
     async def _grace(self) -> float:
         if self.grace_override_s is not None:
@@ -337,6 +368,12 @@ class JobSupervisor:
                 source_snap, target_snap, cred = await build_snapshots(s, source, box)
             except HTTPException as e:
                 return "access revoked" if e.status_code == 403 else f"cannot start: {e.detail}"
+            if cred is not None and cred.kind == CredentialKind.cookies and cred.site == "reddit":
+                row = await s.get(Credential, source.credential_id)
+                if row is not None and (
+                    box.decrypt(row.secret_enc).decode() == cred.secret.get_secret_value()
+                ):
+                    h.credential_id, h.secret_enc = row.id, row.secret_enc
             rip = await load_rip_settings(s)
             incremental = await self.is_incremental(source.id)
             return WorkerSpec(

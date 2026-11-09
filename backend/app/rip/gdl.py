@@ -9,7 +9,9 @@ import math
 import os
 import socket
 import threading
+import time
 from collections.abc import Callable, Iterable, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -20,7 +22,7 @@ from gallery_dl import cache, config, downloader, exception, extractor, formatte
 from app import __version__
 from app.core.extractors import _categories, _ip_private, bad_user_agent, validate_gdl_options
 from app.db.models import CredentialKind
-from app.rip.cookies import to_netscape
+from app.rip.cookies import CredentialError, session_expiry, to_netscape
 from app.rip.dedupe import url_key
 from app.rip.filters import gdl_filter_options
 from app.rip.scrub import safe_url, scrub, scrub_data
@@ -61,6 +63,14 @@ def _credential_options(cred: CredentialSnapshot, job_dir: Path) -> dict[str, An
     secret = cred.secret.get_secret_value()
     if cred.kind == CredentialKind.cookies:
         text = to_netscape(secret, cred.site)
+        if cred.site == "reddit":
+            exp = session_expiry(text)
+            if exp and exp < time.time():
+                day = datetime.fromtimestamp(exp, UTC).date().isoformat()
+                raise CredentialError(
+                    f"Reddit session expired on {day}: export fresh reddit.com cookies "
+                    "while logged in and update the credential"
+                )
         path = job_dir / ".cookies.txt"
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w") as f:
@@ -172,6 +182,8 @@ def configure(
         for k, v in _credential_options(cred, job_dir).items():
             config.set(("extractor", cred.site), k, v)
     # forced last: nothing above may weaken these
+    if cred is not None and cred.kind == CredentialKind.cookies and cred.site == "reddit":
+        config.set(("extractor", "reddit"), "cookies-update", True)
     config.set(ext, "path-restrict", "auto")
     config.set(ext, "netrc", False)
     config.set(ext, "verify", True)

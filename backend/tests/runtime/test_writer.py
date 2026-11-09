@@ -481,6 +481,30 @@ async def test_done_listener_runs_after_commit(env: Any) -> None:
     assert seen == [(1, {"status": "succeeded", "error": None, "counters": {}}, 1)]
 
 
+async def test_done_strips_renewed_cookies_before_listeners(env: Any) -> None:
+    _, sf = env
+    w = JobWriter(sf, EventBus())
+    seen: list[dict[str, Any]] = []
+
+    async def cb(job_id: int, result: dict[str, Any]) -> None:
+        seen.append(result)
+        assert w.take_renewed(job_id) == "SECRETJAR"
+
+    w.add_done_listener(cb)
+    w.start()
+    w.submit(
+        (
+            "done",
+            1,
+            {"status": "succeeded", "error": None, "counters": {}, "renewed_cookies": "SECRETJAR"},
+        )
+    )
+    w.submit(("done", 2, {"status": "failed", "renewed_cookies": "X"}))
+    await w.stop()
+    assert all("renewed_cookies" not in r for r in seen) and len(seen) == 2
+    assert w.take_renewed(2) is None
+
+
 async def test_stop_cancels_pending_respawn_timer(
     env: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:

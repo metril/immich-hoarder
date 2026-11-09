@@ -627,3 +627,15 @@ def test_credential_user_agent_rejected(tmp_path: Path, ua: str) -> None:
     )
     with pytest.raises(ValueError):
         configure(src(), cred, FAST, tmp_path, incremental=False)
+
+
+def test_expired_reddit_session_raises_with_date(tmp_path: Path) -> None:
+    secret = ".reddit.com\tTRUE\t/\tTRUE\t1000000000\treddit_session\tabc\n"
+    with pytest.raises(CredentialError, match="expired on 2001-09-09"):
+        configure(src(), _cookie_cred(secret), FAST, tmp_path, incremental=False)
+
+
+def test_reddit_cookies_update_forced_on(tmp_path: Path) -> None:
+    config.set(("extractor", "reddit"), "cookies-update", False)
+    configure(src(), _cookie_cred(NS), FAST, tmp_path, incremental=False)
+    assert config.get(("extractor", "reddit"), "cookies-update") is True
