@@ -21,7 +21,17 @@ from typing import Any, Protocol
 log = logging.getLogger(__name__)
 
 FILE, ALBUM, PERMIT = "file", "album", "permit"
-CLAIM_TIMEOUT_S = 120.0
+CLAIM_TIMEOUT_S = 600.0  # file claims: a holder may itself queue for an upload permit
+ALBUM_TIMEOUT_S = 120.0  # an album claim covers one list + create, bounded by client timeouts
+
+
+def wait_timeout(kind: str, file_timeout_s: float) -> float | None:
+    """Fail-open timeout per claim kind; permit waiters only ever leave by grant/abandon/sweep."""
+    if kind == "permit":
+        return None
+    return min(file_timeout_s, ALBUM_TIMEOUT_S) if kind == "album" else file_timeout_s
+
+
 DEFAULT_PERMITS = 8
 _MASK64 = (1 << 64) - 1
 _POLL_S = 0.2
@@ -229,13 +239,14 @@ class LocalClaims:
 
         with self._lock:
             self._table.acquire(kind, 0, rid, key, params, grant)
-        deadline = time.monotonic() + self._timeout
+        limit = wait_timeout(kind, self._timeout)
+        deadline = None if limit is None else time.monotonic() + limit
         while not ev.wait(_POLL_S):
             if cancel.is_set():
                 with self._lock:
                     self._table.abandon(0, rid)
                 raise ClaimCancelled
-            if time.monotonic() >= deadline:
+            if deadline is not None and time.monotonic() >= deadline:
                 with self._lock:
                     self._table.expire(0, rid)
         return box[0]
@@ -390,10 +401,9 @@ class Coordinator:
                 self._loop.call_soon(self.table.release, cid)
 
         self.table.acquire(kind, job_id, rid, hkey, params, grant)
-        if not granted:
-            self._timers[(job_id, rid)] = self._loop.call_later(
-                self.timeout_s, self._expire, job_id, rid
-            )
+        limit = wait_timeout(kind, self.timeout_s)
+        if not granted and limit is not None:
+            self._timers[(job_id, rid)] = self._loop.call_later(limit, self._expire, job_id, rid)
 
     def _expire(self, job_id: int, rid: int) -> None:
         self._timers.pop((job_id, rid), None)

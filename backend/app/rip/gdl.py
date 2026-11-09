@@ -17,7 +17,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import urllib3.util.connection as _uconn
-from gallery_dl import cache, config, downloader, exception, extractor, formatter, job, util
+from gallery_dl import cache, config, downloader, dt, exception, extractor, formatter, job, util
 
 from app import __version__
 from app.core.extractors import _categories, _ip_private, bad_user_agent, validate_gdl_options
@@ -224,14 +224,21 @@ def share_rate(extr: Any, rate: Any, cancel: threading.Event) -> None:
         return
     extr._hoarder_shared = True
     key = str(extr.category)
-    spacing = util.build_duration_func(
-        extr.config("sleep-request", extr.request_interval), extr.request_interval_min
-    )
+    spacing: list[Any] = []  # built on the first request: the extractor's _init may change it
     orig_request, orig_wait = extr.request, extr.wait
 
     def request(*args: Any, interval: bool = True, **kwargs: Any) -> Any:
-        if interval and spacing is not None:
-            delay = rate.rate_slot(key, float(spacing()))
+        if interval:
+            if not spacing:
+                spacing.append(
+                    util.build_duration_func(
+                        extr.config("sleep-request", extr.request_interval),
+                        extr.request_interval_min,
+                    )
+                )
+            fn = spacing[0]
+            # always ask: a pushed slot (rate-limit wait) also delays zero-spacing sites
+            delay = rate.rate_slot(key, float(fn()) if fn else 0.0)
             if delay > 0 and cancel.wait(delay):
                 raise exception.StopExtraction()
         return orig_request(*args, interval=False, **kwargs)
@@ -243,7 +250,11 @@ def share_rate(extr: Any, rate: Any, cancel: threading.Event) -> None:
             if seconds:
                 delay = float(seconds)
             elif until is not None:
-                ts = until.timestamp() if hasattr(until, "timestamp") else float(until)
+                if isinstance(until, datetime):  # gallery-dl treats naive datetimes as UTC
+                    until = until.astimezone(UTC).replace(tzinfo=None) if until.tzinfo else until
+                    ts = dt.to_ts(until)
+                else:
+                    ts = float(until)
                 delay = ts - time.time()
             else:
                 delay = 0.0
@@ -290,12 +301,12 @@ class HoarderJob(job.DownloadJob):  # type: ignore[misc]
         self._cancel = cancel
         self._rate = rate
         self._escaped = False
+        if rate is not None:  # before any request: gallery-dl initializes lazily
+            share_rate(self.extractor, rate, cancel)
 
     def initialize(self, kwdict: dict[str, Any] | None = None) -> None:
         super().initialize(kwdict)
         extr = self.extractor
-        if self._rate is not None:
-            share_rate(extr, self._rate, self._cancel)
         cfg = extr.config
         prefix = cfg("archive-prefix")
         if prefix is None:

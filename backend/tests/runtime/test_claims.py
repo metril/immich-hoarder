@@ -274,3 +274,38 @@ async def test_remote_timeout_fails_open_and_dead_pipe_does_not_block() -> None:
     await until(lambda: w2._dead)
     assert await run(w2.claim_file, 1, S2, None, None, ev) == 0
     assert await run(w2.rate_slot, "x", 1.0) == 0.0
+
+
+def test_permit_has_no_fail_open_timeout_but_album_and_file_do() -> None:
+    from app.runtime.claims import CLAIM_TIMEOUT_S, wait_timeout
+
+    assert CLAIM_TIMEOUT_S == 600
+    assert wait_timeout("permit", 600) is None
+    assert wait_timeout("album", 600) == 120
+    assert wait_timeout("file", 600) == 600
+
+
+def test_local_permit_waiter_is_not_failed_open() -> None:
+    c = LocalClaims(permit_limit=1, timeout_s=0.2)
+    ev = threading.Event()
+    held = c.upload_permit(1, ev)  # keep a reference: dropping the cm would release it
+    held.__enter__()
+    got: list[bool] = []
+    th = threading.Thread(target=lambda: (c.upload_permit(1, ev).__enter__(), got.append(True)))
+    th.daemon = True
+    th.start()
+    time.sleep(0.8)  # well past timeout_s
+    assert not got
+
+
+async def test_coordinator_permit_waiter_arms_no_timer() -> None:
+    rig = Rig(asyncio.get_running_loop(), timeout_s=0.2)
+    w1, w2 = rig.worker(1), rig.worker(2)
+    ev = threading.Event()
+    held = w1.upload_permit(1, ev)  # keep a reference: dropping the cm would release it
+    await run(held.__enter__)
+    t2 = asyncio.create_task(run(lambda: w2.upload_permit(1, ev).__enter__()))
+    await asyncio.sleep(0.8)
+    assert not t2.done() and not rig.co._timers
+    rig.co.detach(1)  # sweep frees the holder
+    await asyncio.wait_for(t2, 5)

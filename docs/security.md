@@ -12,7 +12,7 @@ User notification URLs (apprise credentials) are blocked from connecting to priv
 
 - DNS and proxy-target SSRF: the connect guard vets the addresses the host resolves to, but what an admin-configured proxy then connects to is the proxy's responsibility. Restrict the proxy's own egress.
 - `allow_private_hosts` (admin rip setting) disables the private-address guard for downloads. Enable it only on trusted networks; it applies to every source.
-- The scratch soft cap can be overshot by the files already in flight when it is reached. Near-duplicates of one image are uploaded once even when they run at the same time, within a job or across jobs on one target: each file takes a claim on its content (and on its perceptual hash when near-duplicate matching is on) until its record is committed. A claim wait that exceeds two minutes, or loss of the coordinator, falls back to proceeding, so a rare duplicate upload is still possible then.
+- The scratch soft cap can be overshot by the files already in flight when it is reached. Near-duplicates of one image are uploaded once even when they run at the same time, within a job or across jobs on one target: each file takes a claim on its content (and on its perceptual hash when near-duplicate matching is on) until its record is committed. A file-claim wait that exceeds ten minutes (album claims: two), or loss of the coordinator, falls back to proceeding, so a rare duplicate upload is still possible then.
 
 ## Secrets and keys
 

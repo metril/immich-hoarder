@@ -690,13 +690,13 @@ def test_share_rate_takes_a_shared_slot_and_skips_own_sleep() -> None:
     assert len(rate.slots) == 2
 
 
-def test_share_rate_zero_interval_takes_no_slot_and_wait_propagates() -> None:
+def test_share_rate_zero_interval_asks_for_a_slot_and_wait_propagates() -> None:
     from app.rip.gdl import share_rate
 
     ex, rate = _StubExtractor(0), _Rate()
     share_rate(ex, rate, threading.Event())
     ex.request("u")
-    assert rate.slots == []
+    assert rate.slots == [("reddit", 0.0)]  # still asks: a pushed slot delays zero-spacing sites
     ex.wait(30, None, 1.0, "rate limit")
     assert rate.pushed == [("reddit", 31.0)] and ex.waits == [(30, None, 1.0, "rate limit")]
 
@@ -726,3 +726,44 @@ def test_reddit_page_size_default_and_user_override(tmp_path: Path) -> None:
         incremental=False,
     )
     assert config.get(("extractor", "reddit"), "limit") == 25
+
+
+def test_share_rate_wait_until_naive_datetime_is_utc() -> None:
+    import time as _t
+    from datetime import UTC, datetime, timedelta
+
+    from app.rip.gdl import share_rate
+
+    ex, rate = _StubExtractor(0), _Rate()
+    share_rate(ex, rate, threading.Event())
+    until = (datetime.now(UTC) + timedelta(seconds=100)).replace(tzinfo=None)  # naive UTC
+    ex.wait(None, until, 0.0, "r")
+    assert rate.pushed[0][1] == pytest.approx(100, abs=3), _t.timezone
+    aware = datetime.now(UTC) + timedelta(seconds=50)
+    ex.wait(None, aware, 0.0, "r")
+    assert rate.pushed[1][1] == pytest.approx(50, abs=3)
+
+
+def test_real_job_first_request_and_child_take_shared_slots(run: Run, img_server: str) -> None:
+    rate = _Rate()
+
+    def mk(url: Any, parent: Any = None) -> HoarderJob:
+        return HoarderJob(
+            url,
+            parent,
+            archive_check=lambda k: False,
+            on_discovered=lambda m: None,
+            on_file=lambda p, m: None,
+            cancel=threading.Event(),
+            rate=rate,
+        )
+
+    job = mk(f"{img_server}/img/a.jpg")
+    # Job.run does extractor.initialize(); DownloadJob.initialize only runs at the first Directory
+    job.extractor.initialize()
+    job.extractor.request(f"{img_server}/img/a.jpg")
+    assert [k for k, _ in rate.slots] == ["directlink"]
+    child = mk(f"{img_server}/img/b.png", job)  # what handle_queue builds for a queue-only path
+    child.extractor.initialize()
+    child.extractor.request(f"{img_server}/img/b.png")
+    assert len(rate.slots) == 2
