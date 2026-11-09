@@ -215,7 +215,9 @@ class JobWriter:
                         rows[id(msg)] = res[0]
                 except Exception:
                     log.exception("writer: message dropped (%s)", msg[0])
-        for msg in ok:
+        done_ids = {id(m) for m in ok}
+        # a release frees its claim even when the batch could not commit (fail open)
+        for msg in [m for m in valid if id(m) in done_ids or m[0] == "release"]:
             for obs in tuple(self._observers):
                 try:
                     obs(msg)
@@ -285,6 +287,7 @@ class JobWriter:
                 await session.execute(rebind_stmt(**msg[1]))
             elif kind == "status":
                 statuses.append(msg)
+            # "release" has no DB effect; it only reaches observers once the batch is done
         await session.flush()
         for job_id, c in counters.items():
             await session.execute(update(Job).where(Job.id == job_id).values(counters=c))
@@ -335,6 +338,9 @@ def _validate(msg: Any) -> str | None:
             if not isinstance(msg[1], dict) or set(msg[1]) != _REBIND_KEYS:
                 return "bad rebind"
             rebind_stmt(**msg[1])
+        elif kind == "release":
+            if len(msg) != 2 or not isinstance(msg[1], int) or isinstance(msg[1], bool):
+                return "bad release"
         elif kind == "status":
             _, job_id, status, fields = msg
             if not isinstance(job_id, int) or not isinstance(fields, dict):

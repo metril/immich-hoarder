@@ -567,3 +567,54 @@ async def test_observer_sees_committed_messages_and_cannot_break_writer(env: Any
     await w.stop()
     assert len(seen) == 1500
     assert await _count(sf, JobItem) == 1500
+
+
+async def test_release_observed_only_after_its_record_commits(env: Any) -> None:
+    _, sf = env
+    w = JobWriter(sf, EventBus())
+    log: list[str] = []
+    real = w._commit
+
+    async def commit(msgs: Any) -> Any:
+        res = await real(msgs)
+        log.append("commit:" + ",".join(m[0] for m in msgs))
+        return res
+
+    w._commit = commit  # type: ignore[method-assign]
+    w.add_observer(lambda m: log.append("obs:" + m[0]))
+    p = {
+        "target_id": 1,
+        "source_id": 1,
+        "key": b"r" * 16,
+        "sha1": b"s" * 20,
+        "phash": None,
+        "immich_asset_id": ASSET,
+    }
+    w.start()
+    w.submit(("record", p))
+    w.submit(("release", 41))
+    await w.stop()
+    assert log.index("commit:record,release") < log.index("obs:release")
+    assert await _count(sf, AssetSeen) == 1
+
+
+async def test_release_observed_when_record_fails(env: Any) -> None:
+    _, sf = env
+    w = JobWriter(sf, EventBus())
+    seen: list[Any] = []
+    w.add_observer(seen.append)
+    bad = {
+        "target_id": 1,
+        "source_id": 999,  # FK violation: the record is dropped
+        "key": b"f" * 16,
+        "sha1": None,
+        "phash": None,
+        "immich_asset_id": None,
+    }
+    w.start()
+    w.submit(("record", bad))
+    w.submit(("release", 7))
+    w.submit(("release", "nope"))  # malformed: dropped, no observer call
+    await w.stop()
+    assert [m for m in seen if m[0] == "release"] == [("release", 7)]
+    assert await _count(sf, AssetSeen) == 0
