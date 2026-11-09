@@ -16,6 +16,8 @@ const schema = z.object({
     backup_cron: z.string().trim().min(1, "Required"),
     backup_keep: z.number("Required").int().min(0, "Min 0").max(365, "Max 365"),
     max_concurrent_jobs: nullableInt(1, 64),
+    max_jobs_per_target: nullableInt(1, 64),
+    max_uploads_per_target: z.number("Required").int().min(1, "Min 1").max(64, "Max 64"),
     cancel_grace_s: z.number("Required").int().min(0, "Min 0").max(300, "Max 300"),
   }),
 });
@@ -29,6 +31,8 @@ export function RuntimeSettingsForm({ value }: { value?: SettingsDoc["runtime"] 
         backup_cron: value?.backup_cron ?? "0 3 * * *",
         backup_keep: value?.backup_keep ?? 7,
         max_concurrent_jobs: value?.max_concurrent_jobs ?? null,
+        max_jobs_per_target: value?.max_jobs_per_target ?? null,
+        max_uploads_per_target: value?.max_uploads_per_target ?? 8,
         cancel_grace_s: value?.cancel_grace_s ?? 10,
       },
     },
@@ -53,8 +57,14 @@ export function RuntimeSettingsForm({ value }: { value?: SettingsDoc["runtime"] 
       <FormField label="Backups to keep" error={e?.backup_keep?.message} hint="0 keeps none">
         <Input type="number" {...form.register("runtime.backup_keep", { valueAsNumber: true })} />
       </FormField>
-      <FormField label="Max concurrent jobs" error={e?.max_concurrent_jobs?.message} hint="Jobs that may run at once (1–64). Empty uses the server default (IH_MAX_CONCURRENT_JOBS, defaults to CPU count). Only one job per Immich target runs at a time, so with one target jobs run sequentially.">
+      <FormField label="Max concurrent jobs" error={e?.max_concurrent_jobs?.message} hint="Jobs that may run at once (1–64). Empty uses the server default (IH_MAX_CONCURRENT_JOBS, defaults to CPU count).">
         <Input type="number" {...form.register("runtime.max_concurrent_jobs", num)} />
+      </FormField>
+      <FormField label="Max jobs per target" error={e?.max_jobs_per_target?.message} hint="Jobs that may run at once on one Immich target (1–64). Empty applies only the overall limit.">
+        <Input type="number" {...form.register("runtime.max_jobs_per_target", num)} />
+      </FormField>
+      <FormField label="Max uploads per target" error={e?.max_uploads_per_target?.message} hint="Simultaneous uploads to one Immich target, across all jobs (1–64).">
+        <Input type="number" {...form.register("runtime.max_uploads_per_target", { valueAsNumber: true })} />
       </FormField>
       <FormField label="Cancel grace (seconds)" error={e?.cancel_grace_s?.message}>
         <Input type="number" {...form.register("runtime.cancel_grace_s", { valueAsNumber: true })} />

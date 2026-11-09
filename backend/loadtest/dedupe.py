@@ -170,8 +170,17 @@ def run(
     ph_miss = [(rng.randint(1, targets), to_signed64(rng.getrandbits(64)), 3) for _ in range(half)]
     ph_t = timed(store.match_phash, ph_hits + ph_miss)
 
+    # the pipeline's combined lookup for a new file: SHA-1 miss, pHash within distance 3 or none
+    lk_args = [(t, rng.randbytes(20), p, d) for t, p, d in ph_hits + ph_miss]
+    lk_t = timed(store.lookup, lk_args)
+
     res = {"seed_rows_per_s": samples["rows_per_s"][0]}
-    for name, t in (("url_seen", url_t), ("match_sha1", sha_t), ("match_phash", ph_t)):
+    for name, t in (
+        ("url_seen", url_t),
+        ("match_sha1", sha_t),
+        ("match_phash", ph_t),
+        ("lookup", lk_t),
+    ):
         res[f"{name}_p50"] = _pct(t, 0.5)
         res[f"{name}_p99"] = _pct(t, 0.99)
     size = db.stat().st_size
@@ -203,7 +212,7 @@ def main() -> int:
     )
     print(f"{'lookup':<12}{'p50 ms':>10}{'p99 ms':>10}  status")
     bad = False
-    for n in ("url_seen", "match_sha1", "match_phash"):
+    for n in ("url_seen", "match_sha1", "match_phash", "lookup"):
         p99 = r[f"{n}_p99"]
         fail = p99 >= a.p99_ms
         bad |= fail

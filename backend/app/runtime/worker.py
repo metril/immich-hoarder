@@ -11,11 +11,12 @@ from sqlalchemy import Engine, event
 
 from app.db.engine import make_sync_engine
 from app.immich.client import ImmichClient
-from app.rip.dedupe import AssetRef, DedupeStore
+from app.rip.dedupe import AssetRef, DedupeStore, Existing
 from app.rip.media import to_signed64
 from app.rip.pipeline import RipContext, RipResult, run_rip
 from app.rip.settings import RipSettings
 from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot
+from app.runtime.claims import RemoteClaims
 
 _MASK64 = (1 << 64) - 1
 _CANCEL_POLL_S = 0.5
@@ -36,7 +37,8 @@ class WorkerSpec(BaseModel):
 
 def make_readonly_engine(url: str) -> Engine:
     """Sync engine that rejects writes (the parent is the only DB writer)."""
-    engine = make_sync_engine(url)
+    # small fixed pool: ~20 parallel workers must not exhaust Postgres's default connections
+    engine = make_sync_engine(url, pool_size=2, max_overflow=0)
 
     def _ro(dbapi_conn: Any, _rec: Any) -> None:
         cur = dbapi_conn.cursor()
@@ -79,11 +81,48 @@ class OverlayStore:
         return self._store.url_seen(source_id, key)
 
     def match_sha1(self, target_id: int, sha1: bytes) -> AssetRef | None:
+        # DB first: another job may have rebound the content since this job's own record
+        hit = self._store.match_sha1(target_id, sha1)
+        if hit is not None:
+            return hit
+        with self._lock:
+            aid = self._sha1.get((target_id, sha1))
+        return AssetRef(aid) if aid is not None else None
+
+    def lookup(
+        self, target_id: int, sha1: bytes, phash_signed: int | None, max_distance: int | None
+    ) -> Existing:
+        """DB first (one query), then this job's not-yet-committed records; same order as above."""
+        db = self._store.lookup(target_id, sha1, phash_signed, max_distance)
+        if db.how == "sha1":
+            return db
         with self._lock:
             aid = self._sha1.get((target_id, sha1))
         if aid is not None:
-            return AssetRef(aid)
-        return self._store.match_sha1(target_id, sha1)
+            return Existing(AssetRef(aid), "sha1", db.deleted)
+        if db.live is not None:
+            return db
+        if phash_signed is not None and max_distance is not None:
+            hit = self._phash_hit(target_id, phash_signed, max_distance, False)
+            if hit is not None:
+                return Existing(hit, "phash", db.deleted)
+        return Existing(
+            None,
+            "",
+            db.deleted or self._overlay_deleted(target_id, sha1, phash_signed, max_distance),
+        )
+
+    def _overlay_deleted(
+        self, target_id: int, sha1: bytes, phash_signed: int | None, max_distance: int | None
+    ) -> bool:
+        with self._lock:
+            if (target_id, sha1) in self._sha1 and self._sha1[(target_id, sha1)] is None:
+                return True
+        return bool(
+            phash_signed is not None
+            and max_distance is not None
+            and self._phash_hit(target_id, phash_signed, max_distance, True)
+        )
 
     def _phash_hit(self, target_id: int, ph: int, dist: int, deleted: bool) -> AssetRef | None:
         best: tuple[int, str | None] | None = None
@@ -97,22 +136,15 @@ class OverlayStore:
         return AssetRef(best[1]) if best else None
 
     def match_phash(self, target_id: int, phash_signed: int, max_distance: int) -> AssetRef | None:
-        hit = self._phash_hit(target_id, phash_signed, max_distance, False)
-        return hit or self._store.match_phash(target_id, phash_signed, max_distance)
+        hit = self._store.match_phash(target_id, phash_signed, max_distance)
+        return hit or self._phash_hit(target_id, phash_signed, max_distance, False)
 
     def match_deleted(
         self, target_id: int, sha1: bytes, phash_signed: int | None, max_distance: int | None
     ) -> bool:
-        with self._lock:
-            if (target_id, sha1) in self._sha1 and self._sha1[(target_id, sha1)] is None:
-                return True
-        if (
-            phash_signed is not None
-            and max_distance is not None
-            and self._phash_hit(target_id, phash_signed, max_distance, True)
-        ):
+        if self._store.match_deleted(target_id, sha1, phash_signed, max_distance):
             return True
-        return self._store.match_deleted(target_id, sha1, phash_signed, max_distance)
+        return self._overlay_deleted(target_id, sha1, phash_signed, max_distance)
 
     def record(
         self,
@@ -184,7 +216,7 @@ def _bridge_cancel(mp_cancel: Any, stop: threading.Event) -> threading.Event:
     return flag
 
 
-def worker_main(spec: WorkerSpec, q: Any, cancel: Any) -> None:
+def worker_main(spec: WorkerSpec, q: Any, cancel: Any, conn: Any) -> None:
     logging.basicConfig(
         stream=sys.stderr,
         level=getattr(logging, spec.log_level.upper(), logging.INFO),
@@ -209,6 +241,7 @@ def worker_main(spec: WorkerSpec, q: Any, cancel: Any) -> None:
             store=cast(DedupeStore, overlay),
             recorder=overlay,
             client_factory=lambda t: ImmichClient(t.url, t.api_key.get_secret_value()),
+            claims=RemoteClaims(conn, q),
         )
         res = run_rip(ctx, lambda ev: q.put(("event", spec.job_id, ev)), flag)
         result = _result(res)

@@ -44,6 +44,21 @@ class RuntimeSettings(BaseModel, extra="forbid"):
             "Override for the maximum number of simultaneous jobs; unset uses the CPU count."
         ),
     )
+    max_jobs_per_target: int | None = Field(
+        default=None,
+        ge=1,
+        le=64,
+        description=(
+            "Maximum simultaneous jobs on one Immich target; unset applies only "
+            "the overall job limit."
+        ),
+    )
+    max_uploads_per_target: int = Field(
+        default=8,
+        ge=1,
+        le=64,
+        description="Maximum simultaneous uploads to one Immich target, across all jobs.",
+    )
     cancel_grace_s: int = Field(
         default=10,
         ge=0,

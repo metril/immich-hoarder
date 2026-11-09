@@ -151,3 +151,50 @@ def test_empty_template_and_name_fall_back() -> None:
     assert render_album("", {}, "") == "immich-hoarder"
     assert render_album("{subreddit}", {}, " / ") == "immich-hoarder"
     assert render_album("{bogus}", {"x": 1}, "\x00") == "immich-hoarder"
+
+
+@respx.mock
+def test_two_resolvers_missing_the_same_album_create_it_once(client: ImmichClient) -> None:
+    import time
+
+    from app.runtime.claims import LocalClaims
+
+    created: list[str] = []
+
+    def lst(_r: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200, json=[{"id": "9", "albumName": "N", "assetCount": 0}] if created else []
+        )
+
+    def mk(_r: httpx.Request) -> httpx.Response:
+        time.sleep(0.2)
+        created.append("N")
+        return httpx.Response(201, json={"id": "9", "albumName": "N"})
+
+    respx.get(f"{BASE}/albums").mock(side_effect=lst)
+    respx.post(f"{BASE}/albums").mock(side_effect=mk)
+    shared = LocalClaims()  # stands in for the cross-job coordinator
+    out: list[str] = []
+    rs = [AlbumResolver(client, shared, 1) for _ in range(2)]
+    ths = [threading.Thread(target=lambda r=r: out.append(r.resolve("N"))) for r in rs]
+    for t in ths:
+        t.start()
+    for t in ths:
+        t.join(10)
+    assert out == ["9", "9"] and created == ["N"]
+
+
+@respx.mock
+def test_resolver_cancelled_while_waiting_for_album_claim(client: ImmichClient) -> None:
+    from app.runtime.claims import ClaimCancelled, LocalClaims
+
+    shared = LocalClaims()
+    never = threading.Event()
+    cancel = threading.Event()
+    cm = shared.album(1, "N", never)
+    cm.__enter__()
+    r = AlbumResolver(client, shared, 1, cancel)
+    cancel.set()
+    with pytest.raises(ClaimCancelled):
+        r.resolve("N")
+    cm.__exit__(None, None, None)

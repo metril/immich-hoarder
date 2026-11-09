@@ -30,7 +30,7 @@ Stored in the database and edited by an admin in the web UI or API (settings key
 | `proxy` | str (optional) | unset | - | Proxy URL used for all downloads; unset means no proxy. |
 | `rate_limits` | dict[str, RateLimit] | `{}` | - | Per-site rate limits keyed by extractor name. |
 | `upload_concurrency` | int | `4` | >= 1, <= 16 | Number of simultaneous uploads to Immich. |
-| `job_scratch_max_bytes` | int (optional) | unset | >= 1 | Scratch size limit for a single job, in bytes; unset uses 4 GiB. |
+| `job_scratch_max_bytes` | int (optional) | unset | >= 1 | Scratch size limit for a single job, in bytes; unset shares 4 GiB between the job limit (at least 256 MiB per job). |
 | `allow_private_hosts` | bool | `false` | - | Allow downloads from private and loopback network addresses. |
 
 ## Rate limit entry
@@ -53,6 +53,8 @@ Stored in the database and edited by an admin (settings key `runtime`).
 | `backup_cron` | str | `0 3 * * *` | - | Five-field cron expression for scheduled backups. |
 | `backup_keep` | int | `7` | >= 0, <= 365 | Number of most recent backups to keep. |
 | `max_concurrent_jobs` | int (optional) | unset | >= 1, <= 64 | Override for the maximum number of simultaneous jobs; unset uses the CPU count. |
+| `max_jobs_per_target` | int (optional) | unset | >= 1, <= 64 | Maximum simultaneous jobs on one Immich target; unset applies only the overall job limit. |
+| `max_uploads_per_target` | int | `8` | >= 1, <= 64 | Maximum simultaneous uploads to one Immich target, across all jobs. |
 | `cancel_grace_s` | int | `10` | >= 0, <= 300 | Seconds a cancelled job gets to stop before it is killed. |
 
 ## Notification settings

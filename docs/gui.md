@@ -52,7 +52,7 @@ Admin only. Lists users that have signed in, with their role and groups, and let
 
 ## Settings
 
-Admin only. Proxy and rate limits, upload concurrency, per-job scratch limit and `allow_private_hosts`; retention, backup schedule, concurrency and cancel grace; global notification URLs; backups, pruning and config import/export. All keys are in the [configuration reference](reference/configuration.md).
+Admin only. Proxy and rate limits, upload concurrency, per-job scratch limit and `allow_private_hosts`; retention, backup schedule, job limits (overall and per Immich target, which can run several jobs at once) and upload limit per target, and cancel grace; global notification URLs; backups, pruning and config import/export. All keys are in the [configuration reference](reference/configuration.md).
 
 === "Light"
     ![Settings, light theme](assets/screenshots/settings-light.png)

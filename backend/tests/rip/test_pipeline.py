@@ -34,6 +34,7 @@ from app.rip.media import analyze
 from app.rip.pipeline import RipContext, RipResult, _Rip, build_description, run_rip, sweep_scratch
 from app.rip.settings import RateLimit, RipSettings
 from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot
+from app.runtime.claims import Claims, LocalClaims
 
 BASE = "http://immich.test/api"
 ASSET = str(uuid.uuid4())
@@ -137,6 +138,8 @@ class Env:
         client_factory: Callable[[TargetSnapshot], ImmichClient] | None = None,
         credential: CredentialSnapshot | None = None,
         reupload_deleted: bool = False,
+        claims: Claims | None = None,
+        job_id: int = 7,
     ) -> RipResult:
         url = f"{self.base}{path}"
         if extractor == "recursive":
@@ -163,7 +166,7 @@ class Env:
             rate_limits={"default": RateLimit(sleep_request=0, sleep=0, retries=0)},
         )
         ctx = RipContext(
-            job_id=7,
+            job_id=job_id,
             source=src,
             target=TargetSnapshot(id=1, url="http://immich.test", api_key=SecretStr("k")),
             credential=credential,
@@ -175,6 +178,7 @@ class Env:
             recorder=self.store,
             client_factory=client_factory
             or (lambda t: ImmichClient(t.url, t.api_key.get_secret_value(), sleep=lambda s: None)),
+            claims=claims,
         )
         return run_rip(ctx, self.emit, self.cancel)
 
@@ -840,3 +844,46 @@ def test_reupload_then_flag_off_links_not_deleted(env: Env, tmp_path: Path) -> N
     r = env.run("/img/a2.jpg", reupload_deleted=False)
     assert r.counters["linked"] == 1 and r.counters["deleted_in_immich"] == 0
     assert len(env.uploads) == 1
+
+
+def test_waiter_links_what_the_holder_recorded(env: Env) -> None:
+    claims = LocalClaims()
+    sha1 = hashlib.sha1(fetch(env, "/img/a.jpg")).digest()
+    held = claims.claim_file(1, sha1, None, None, threading.Event())  # another job mid-upload
+    out: list[RipResult] = []
+    th = threading.Thread(target=lambda: out.append(env.run("/img/a.jpg", claims=claims)))
+    th.start()
+    time.sleep(0.8)
+    assert th.is_alive() and env.uploads == []
+    env.store.record(  # the holder commits its record, then releases
+        target_id=1, source_id=1, key=b"o" * 16, sha1=sha1, phash=None, immich_asset_id=ASSET
+    )
+    claims.release_file(held)
+    th.join(15)
+    assert out and out[0].counters["linked"] == 1 and env.uploads == []
+    assert env.linked == [ASSET]
+    assert claims._table.held() == 0  # type: ignore[attr-defined]
+
+
+def test_cancel_while_waiting_for_a_claim_finishes_promptly(env: Env) -> None:
+    claims = LocalClaims()
+    sha1 = hashlib.sha1(fetch(env, "/img/a.jpg")).digest()
+    claims.claim_file(1, sha1, None, None, threading.Event())  # another job holds the content
+    out: list[RipResult] = []
+    th = threading.Thread(target=lambda: out.append(env.run("/img/a.jpg", claims=claims)))
+    th.start()
+    time.sleep(0.8)
+    assert th.is_alive() and env.uploads == []
+    env.cancel.set()
+    th.join(10)
+    assert not th.is_alive() and out[0].status == "cancelled"
+    assert [e["reason"] for e in env.events if e["type"] == "item.failed"] == ["cancelled"]
+    assert claims._table.waiting() == 0  # type: ignore[attr-defined]
+
+
+def test_upload_permit_released_when_upload_fails(env: Env) -> None:
+    env.router.post(f"{BASE}/assets").mock(return_value=httpx.Response(400, json={"message": "x"}))
+    claims = LocalClaims(permit_limit=1)
+    r = env.run("/page/two", extractor="recursive", claims=claims)
+    assert r.counters["failed"] == 2  # a second upload would hang on a leaked single permit
+    assert claims._table.held() == 0  # type: ignore[attr-defined]

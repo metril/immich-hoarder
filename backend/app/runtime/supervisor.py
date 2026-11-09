@@ -5,6 +5,7 @@ import logging
 import os
 import shutil
 import time
+from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -20,7 +21,8 @@ from app.core.crypto import SecretBox
 from app.db.models import AssetSeen, Credential, CredentialKind, Job, JobStatus, Source
 from app.rip.build import build_snapshots, check_notify_refs, credential_snapshot
 from app.rip.pipeline import sweep_scratch
-from app.rip.settings import DEFAULT_SCRATCH_MAX_BYTES, load_rip_settings
+from app.rip.settings import default_scratch_cap, load_rip_settings
+from app.runtime.claims import Coordinator
 from app.runtime.notify import notify_job, shutdown_executor
 from app.runtime.settings import load_notify_settings, load_runtime_settings
 from app.runtime.worker import WorkerSpec, worker_main
@@ -95,6 +97,10 @@ class JobSupervisor:
         self._loop_task: asyncio.Task[None] | None = None
         self._notify_tasks: set[asyncio.Task[None]] = set()
         self._skip: set[int] = set()  # queued jobs cancelled but not yet committed
+        # cross-job claims, upload permits and rate slots; a file claim is freed by the
+        # writer's post-commit observer when the worker's "release" message commits
+        self.claims = Coordinator(asyncio.get_running_loop())
+        writer.add_observer(self.claims.on_message)
         writer.add_done_listener(self._on_done)
 
     # -- public ----------------------------------------------------------
@@ -232,6 +238,8 @@ class JobSupervisor:
 
     # -- internals -------------------------------------------------------
     async def _on_done(self, job_id: int, result: dict[str, Any]) -> None:
+        # "done" is the worker's last message: every earlier release was already observed
+        self.claims.sweep(job_id)
         h = self.running.get(job_id)
         cookies = self._writer.take_renewed(job_id)
         if cookies and h is not None:
@@ -334,6 +342,7 @@ class JobSupervisor:
         async with self._sf() as s:
             runtime = await load_runtime_settings(s)
             cap = runtime.max_concurrent_jobs or os.cpu_count() or 1
+            self.claims.set_permit_limit(runtime.max_uploads_per_target)
             rows = (
                 await s.execute(
                     select(Job.id, Job.source_id, Source.target_id)
@@ -345,15 +354,17 @@ class JobSupervisor:
         self._skip &= {r[0] for r in rows}
         if len(self.running) >= cap:
             return
-        busy = {h.target_id for h in self.running.values()}
+        per_target = Counter(h.target_id for h in self.running.values())
         for job_id, source_id, target_id in rows:
             if len(self.running) >= cap:
                 break
-            if job_id in self.running or job_id in self._skip or target_id in busy:
+            if job_id in self.running or job_id in self._skip:
+                continue
+            if runtime.max_jobs_per_target and per_target[target_id] >= runtime.max_jobs_per_target:
                 continue
             h = RunHandle(target_id, source_id, self._ctx.Event())
             self.running[job_id] = h
-            busy.add(target_id)
+            per_target[target_id] += 1
             h.task = asyncio.create_task(self._run_job(job_id, h))
 
     async def _prepare(self, job_id: int, h: RunHandle) -> WorkerSpec | str:
@@ -375,6 +386,7 @@ class JobSupervisor:
                 ):
                     h.credential_id, h.secret_enc = row.id, row.secret_enc
             rip = await load_rip_settings(s)
+            jobs_cap = (await load_runtime_settings(s)).max_concurrent_jobs or os.cpu_count() or 1
             incremental = await self.is_incremental(source.id)
             return WorkerSpec(
                 job_id=job_id,
@@ -383,7 +395,7 @@ class JobSupervisor:
                 credential=cred,
                 rip_settings=rip,
                 scratch_dir=self._settings.scratch_dir,
-                scratch_cap_bytes=rip.job_scratch_max_bytes or DEFAULT_SCRATCH_MAX_BYTES,
+                scratch_cap_bytes=rip.job_scratch_max_bytes or default_scratch_cap(jobs_cap),
                 incremental=incremental,
                 db_url=self._settings.database_url,
                 log_level=job.log_level or source.log_level or self._settings.log_level,
@@ -466,9 +478,29 @@ class JobSupervisor:
                 job_id, "failed", f"supervisor error: {type(e).__name__}", source_id=h.source_id
             )
         finally:
+            self.claims.detach(job_id)  # backstop: frees anything still held
             await asyncio.to_thread(shutil.rmtree, self._settings.scratch_dir / str(job_id), True)
             self.running.pop(job_id, None)
             self._wake.set()
+
+    @staticmethod
+    async def _wait_exit(proc: Any) -> None:
+        """Wake on the process sentinel instead of polling for the exit."""
+        loop = asyncio.get_running_loop()
+        fut: asyncio.Future[None] = loop.create_future()
+        fd = proc.sentinel
+
+        def ready() -> None:
+            if not fut.done():
+                fut.set_result(None)
+
+        loop.add_reader(fd, ready)
+        try:
+            await fut
+        finally:
+            loop.remove_reader(fd)
+        while proc.exitcode is None:  # sentinel fired but the status is not collected yet
+            await asyncio.sleep(0.01)
 
     async def _await_done(self, job_id: int, h: RunHandle) -> None:
         if h.exitcode == 0:  # worker_main always sends done before a clean exit
@@ -492,21 +524,29 @@ class JobSupervisor:
             self._finish(job_id, "cancelled", None, source_id=h.source_id)
             return
         self._writer.submit(("status", job_id, "running", {"started_at": _now()}))
+        parent_conn, child_conn = self._ctx.Pipe(duplex=True)
         proc = self._ctx.Process(
-            target=self._target, args=(spec, self._q, h.cancel_event), daemon=True
+            target=self._target, args=(spec, self._q, h.cancel_event, child_conn), daemon=True
         )
-        await asyncio.to_thread(proc.start)
+        try:
+            await asyncio.to_thread(proc.start)
+        except BaseException:
+            parent_conn.close()
+            raise
+        finally:
+            child_conn.close()  # only the worker holds it now, so its death reads as EOF
+        self.claims.attach(job_id, parent_conn)
         h.process = proc
         if h.cancel_requested and h.escalation is None:
             h.escalation = asyncio.create_task(self._escalate(h))
-        while proc.exitcode is None:
-            await asyncio.sleep(self.poll_s)
+        await self._wait_exit(proc)
         h.exitcode = proc.exitcode
         proc.join(0)
         proc.close()
         h.process = None
         if h.done_result is None:
             await self._await_done(job_id, h)
+        self.claims.sweep(job_id)  # no more releases can arrive (done committed or given up)
         if h.escalation is not None:
             h.escalation.cancel()
         res = h.done_result

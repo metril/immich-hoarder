@@ -7,6 +7,7 @@ from typing import Any
 
 from app.immich.client import ImmichClient
 from app.immich.errors import ImmichError, ImmichUnavailable
+from app.runtime.claims import Claims, LocalClaims
 
 ALBUM_FIELDS = frozenset({"subreddit", "author", "user", "site", "category", "source", "date"})
 MAX_ALBUM_LEN = 255
@@ -72,24 +73,40 @@ def render_album(template: str, meta: dict[str, Any], source_name: str) -> str:
 
 
 class AlbumResolver:
-    def __init__(self, client: ImmichClient) -> None:
+    def __init__(
+        self,
+        client: ImmichClient,
+        claims: Claims | None = None,
+        target_id: int = 0,
+        cancel: threading.Event | None = None,
+    ) -> None:
         self._client = client
+        self._claims: Claims = claims or LocalClaims()
+        self._target = target_id
+        self._cancel = cancel or threading.Event()
         self._lock = threading.Lock()
         self._ids: dict[str, str] | None = None
 
-    def resolve(self, name: str) -> str:
+    def _cached(self, name: str) -> str | None:
         with self._lock:
-            if self._ids is None:
+            return None if self._ids is None else self._ids.get(name)
+
+    def resolve(self, name: str) -> str:
+        if (hit := self._cached(name)) is not None:
+            return hit
+        # Miss: serialise per (target, album) across jobs, re-list under the claim, and
+        # create only when still absent. The cache lock is never held while waiting.
+        with self._claims.album(self._target, name, self._cancel):
+            try:
                 ids: dict[str, str] = {}
                 for a in self._client.list_albums():
                     ids.setdefault(a.name, a.id)
-                self._ids = ids
-            if name in self._ids:
-                return self._ids[name]
-            try:
-                album = self._client.create_album(name)
+                if name not in ids:
+                    ids[name] = self._client.create_album(name).id
             except (ImmichUnavailable, ImmichError):
-                self._ids = None  # may have been created; re-list next time
+                with self._lock:
+                    self._ids = None  # may have been created; re-list next time
                 raise
-            self._ids[name] = album.id
-            return album.id
+            with self._lock:
+                self._ids = {**(self._ids or {}), **ids}
+            return ids[name]

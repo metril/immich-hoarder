@@ -11,7 +11,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import update
+from sqlalchemy import insert, update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.db.models import AssetSeen, Job, JobEvent, JobItem, JobStatus
@@ -215,7 +215,9 @@ class JobWriter:
                         rows[id(msg)] = res[0]
                 except Exception:
                     log.exception("writer: message dropped (%s)", msg[0])
-        for msg in ok:
+        done_ids = {id(m) for m in ok}
+        # a release frees its claim even when the batch could not commit (fail open)
+        for msg in [m for m in valid if id(m) in done_ids or m[0] == "release"]:
             for obs in tuple(self._observers):
                 try:
                     obs(msg)
@@ -244,8 +246,16 @@ class JobWriter:
         counters: dict[int, dict[str, Any]] = {}
         phases: dict[int, str] = {}
         statuses: list[Msg] = []
-        written: dict[int, JobItem | JobEvent] = {}
+        item_rows: list[tuple[int, dict[str, Any]]] = []  # (message index, row)
+        event_rows: list[tuple[int, dict[str, Any]]] = []
         dialect = session.get_bind().dialect.name
+        records: list[dict[str, Any]] = []  # consecutive records go in as one INSERT
+
+        async def flush_records() -> None:
+            if records:
+                await session.execute(insert_ignore(dialect, AssetSeen).values(records))
+                records.clear()
+
         for idx, msg in enumerate(batch):
             kind = msg[0]
             if kind == "event":
@@ -254,38 +264,55 @@ class JobWriter:
                 if typ.startswith("item."):
                     outcome = typ.removeprefix("item.")
                     reason = ev.get("reason")
-                    item = JobItem(
-                        job_id=job_id,
-                        url=str(ev.get("url", ""))[:URL_MAX],
-                        outcome=outcome,
-                        reason=None if reason is None else str(reason)[:REASON_MAX],
-                        immich_asset_id=_canon_id(ev.get("immich_asset_id")),
+                    item_rows.append(
+                        (
+                            idx,
+                            {
+                                "job_id": job_id,
+                                "url": str(ev.get("url", ""))[:URL_MAX],
+                                "outcome": outcome,
+                                "reason": None if reason is None else str(reason)[:REASON_MAX],
+                                "immich_asset_id": _canon_id(ev.get("immich_asset_id")),
+                            },
+                        )
                     )
-                    session.add(item)
-                    written[idx] = item
                 elif typ in ("log", "phase"):
                     level = _norm_level(ev.get("level"))
-                    ev_row = JobEvent(
-                        job_id=job_id,
-                        ts=datetime.now(UTC).replace(tzinfo=None),
-                        level=level,
-                        type=typ,
-                        data=ev,
+                    event_rows.append(
+                        (
+                            idx,
+                            {
+                                "job_id": job_id,
+                                "ts": datetime.now(UTC).replace(tzinfo=None),
+                                "level": level,
+                                "type": typ,
+                                "data": ev,
+                            },
+                        )
                     )
-                    session.add(ev_row)
-                    written[idx] = ev_row
                     if typ == "phase" and ev.get("name") is not None:
                         phases[job_id] = str(ev["name"])[:16]
                 elif typ == "progress":
                     counters[job_id] = ev["counters"]
             elif kind == "record":
-                row = assets_seen_row(**msg[1])
-                await session.execute(insert_ignore(dialect, AssetSeen).values(row))
+                records.append(assets_seen_row(**msg[1]))
             elif kind == "rebind":
+                await flush_records()  # a rebind must see every earlier record
                 await session.execute(rebind_stmt(**msg[1]))
             elif kind == "status":
                 statuses.append(msg)
-        await session.flush()
+            # "release" has no DB effect; it only reaches observers once the batch is done
+        await flush_records()
+        written: dict[int, tuple[int, datetime | None]] = {}
+        for model, rows in ((JobItem, item_rows), (JobEvent, event_rows)):
+            if not rows:
+                continue
+            # one multi-row INSERT; ids are assigned in VALUES order, so ascending ids map
+            # back to the messages (RETURNING order itself is not guaranteed)
+            ret = insert(model).values([r for _, r in rows]).returning(model.id)
+            ids = sorted((await session.execute(ret)).scalars().all())
+            for (idx, row), rid in zip(rows, ids, strict=True):
+                written[idx] = (rid, row.get("ts"))
         for job_id, c in counters.items():
             await session.execute(update(Job).where(Job.id == job_id).values(counters=c))
         for job_id, name in phases.items():
@@ -297,7 +324,7 @@ class JobWriter:
                 .where(Job.id == job_id, Job.status.notin_(_TERMINAL))
                 .values(status=JobStatus(status), **vals)
             )
-        return {i: (r.id, r.ts if isinstance(r, JobEvent) else None) for i, r in written.items()}
+        return written
 
 
 def _canon_id(v: Any) -> str | None:
@@ -335,6 +362,9 @@ def _validate(msg: Any) -> str | None:
             if not isinstance(msg[1], dict) or set(msg[1]) != _REBIND_KEYS:
                 return "bad rebind"
             rebind_stmt(**msg[1])
+        elif kind == "release":
+            if len(msg) != 2 or not isinstance(msg[1], int) or isinstance(msg[1], bool):
+                return "bad release"
         elif kind == "status":
             _, job_id, status, fields = msg
             if not isinstance(job_id, int) or not isinstance(fields, dict):

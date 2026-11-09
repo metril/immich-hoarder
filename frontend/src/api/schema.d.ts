@@ -2760,7 +2760,7 @@ export interface components {
             allow_private_hosts: boolean;
             /**
              * Job Scratch Max Bytes
-             * @description Scratch size limit for a single job, in bytes; unset uses 4 GiB.
+             * @description Scratch size limit for a single job, in bytes; unset shares 4 GiB between the job limit (at least 256 MiB per job).
              */
             job_scratch_max_bytes?: number | null;
             /**
@@ -2823,6 +2823,17 @@ export interface components {
              * @description Override for the maximum number of simultaneous jobs; unset uses the CPU count.
              */
             max_concurrent_jobs?: number | null;
+            /**
+             * Max Jobs Per Target
+             * @description Maximum simultaneous jobs on one Immich target; unset applies only the overall job limit.
+             */
+            max_jobs_per_target?: number | null;
+            /**
+             * Max Uploads Per Target
+             * @description Maximum simultaneous uploads to one Immich target, across all jobs.
+             * @default 8
+             */
+            max_uploads_per_target: number;
             /**
              * Retention Days
              * @description Days that finished job records are kept.

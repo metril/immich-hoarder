@@ -26,6 +26,7 @@ from app.rip.media import MediaInfo, NotAnImage, analyze
 from app.rip.scrub import safe_url, scrub_data, secret_fragments
 from app.rip.settings import RipSettings
 from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot, for_extractor
+from app.runtime.claims import ClaimCancelled, Claims, LocalClaims
 
 _DESC_MAX = 2000
 _MIN_FREE_RATIO = 0.05
@@ -56,6 +57,7 @@ class RipContext:
     recorder: Recorder
     client_factory: Callable[[TargetSnapshot], ImmichClient]
     job_dir_name: str | None = None
+    claims: Claims | None = None  # cross-job coordination; in-process when unset
 
 
 @dataclass
@@ -136,8 +138,7 @@ class _Rip:
         self.lock = threading.Lock()
         self.cond = threading.Condition(self.lock)
         self.emit_lock = threading.Lock()
-        self.sha_lock = threading.Lock()
-        self.sha_events: dict[bytes, threading.Event] = {}
+        self.claims: Claims = ctx.claims or LocalClaims()
         self.fatal: str | None = None
         self.job_dir = ctx.scratch_dir / (ctx.job_dir_name or str(ctx.job_id))
         self.started = time.monotonic()
@@ -263,6 +264,8 @@ class _Rip:
                 return
             self.emit({"type": "item.downloaded", "url": url, "size": size})
             self._process(path, meta, url, key)
+        except ClaimCancelled:
+            self._fail(url, self._cancel_reason())
         except ImmichAuthError:
             self._fatal(url)
         except ImmichUnavailable:
@@ -309,24 +312,15 @@ class _Rip:
         if reason is not None:
             self._filtered(url, key, reason)
             return
-        owned = self._acquire(info.sha1)
+        # one in-flight claim per content (and per near-duplicate when pHash dedupe is on), so
+        # a waiter's dedupe check below sees what the holder recorded
+        cid = self.claims.claim_file(
+            self.ctx.target.id, info.sha1, info.phash, self.src.filters.phash_distance, self.cancel
+        )
         try:
             self._dedupe_and_upload(path, meta, url, key, info)
         finally:
-            if owned is not None:
-                with self.sha_lock:
-                    self.sha_events.pop(info.sha1, None)
-                owned.set()
-
-    def _acquire(self, sha1: bytes) -> threading.Event | None:
-        while True:
-            with self.sha_lock:
-                ev = self.sha_events.get(sha1)
-                if ev is None:
-                    mine = threading.Event()
-                    self.sha_events[sha1] = mine
-                    return mine
-            ev.wait()
+            self.claims.release_file(cid)  # after the record; the writer frees it post-commit
 
     def _filtered(self, url: str, key: bytes, reason: str) -> None:
         self._record(key, None, None, None)
@@ -342,17 +336,11 @@ class _Rip:
         how = ""
         reup = self.src.reupload_deleted
         sha1hex = info.sha1.hex()
-        ref = ctx.store.match_sha1(tid, info.sha1)
-        if ref is not None:
-            how = "sha1"
-        elif self.src.filters.phash_distance is not None:
-            ref = ctx.store.match_phash(tid, info.phash, self.src.filters.phash_distance)
-            how = "phash"
+        found = ctx.store.lookup(tid, info.sha1, info.phash, self.src.filters.phash_distance)
+        ref, how = found.live, found.how
         if ref is not None and ref.immich_asset_id:
             existing = ref.immich_asset_id
-        elif not reup and ctx.store.match_deleted(
-            tid, info.sha1, info.phash, self.src.filters.phash_distance
-        ):
+        elif not reup and found.deleted:
             self._deleted(url, key, info, None)
             return
         else:
@@ -398,14 +386,15 @@ class _Rip:
             if not isinstance(created, datetime):
                 created = datetime.now(UTC)
             did = f"{meta.get('category')}-{meta.get('id', key.hex())}-{meta.get('num', 0)}"
-            up = self.client.upload(
-                path,
-                sha1hex=sha1hex,
-                device_asset_id=did,
-                file_created_at=created,
-                file_modified_at=created,
-                filename=path.name,
-            )
+            with self.claims.upload_permit(tid, self.cancel):
+                up = self.client.upload(
+                    path,
+                    sha1hex=sha1hex,
+                    device_asset_id=did,
+                    file_created_at=created,
+                    file_modified_at=created,
+                    filename=path.name,
+                )
             asset_id = up.asset_id
             if up.duplicate:
                 how = "upload"
@@ -533,7 +522,7 @@ class _Rip:
         try:
             self.job_dir.mkdir(parents=True, exist_ok=True)
             self.client = ctx.client_factory(ctx.target)
-            self.albums = AlbumResolver(self.client)
+            self.albums = AlbumResolver(self.client, self.claims, ctx.target.id, self.cancel)
             self.pool = ThreadPoolExecutor(ctx.settings.upload_concurrency)
             cred = ctx.credential
             if cred is not None and cred.site != self.src.extractor:
@@ -557,6 +546,7 @@ class _Rip:
                     on_discovered=self.on_discovered,
                     on_file=self.on_file,
                     cancel=self.cancel,
+                    rate=self.claims,
                 )
                 gdl_status = run_job(job, self.src, ctx.settings)
         except CredentialError as e:

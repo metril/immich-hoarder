@@ -2930,7 +2930,7 @@
                 "type": "null"
               }
             ],
-            "description": "Scratch size limit for a single job, in bytes; unset uses 4 GiB.",
+            "description": "Scratch size limit for a single job, in bytes; unset shares 4 GiB between the job limit (at least 256 MiB per job).",
             "title": "Job Scratch Max Bytes"
           },
           "proxy": {
@@ -3035,6 +3035,28 @@
             ],
             "description": "Override for the maximum number of simultaneous jobs; unset uses the CPU count.",
             "title": "Max Concurrent Jobs"
+          },
+          "max_jobs_per_target": {
+            "anyOf": [
+              {
+                "maximum": 64.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Maximum simultaneous jobs on one Immich target; unset applies only the overall job limit.",
+            "title": "Max Jobs Per Target"
+          },
+          "max_uploads_per_target": {
+            "default": 8,
+            "description": "Maximum simultaneous uploads to one Immich target, across all jobs.",
+            "maximum": 64.0,
+            "minimum": 1.0,
+            "title": "Max Uploads Per Target",
+            "type": "integer"
           },
           "retention_days": {
             "default": 30,
