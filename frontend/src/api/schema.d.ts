@@ -2824,6 +2824,17 @@ export interface components {
              */
             max_concurrent_jobs?: number | null;
             /**
+             * Max Jobs Per Target
+             * @description Maximum simultaneous jobs on one Immich target; unset applies only the overall job limit.
+             */
+            max_jobs_per_target?: number | null;
+            /**
+             * Max Uploads Per Target
+             * @description Maximum simultaneous uploads to one Immich target, across all jobs.
+             * @default 8
+             */
+            max_uploads_per_target: number;
+            /**
              * Retention Days
              * @description Days that finished job records are kept.
              * @default 30

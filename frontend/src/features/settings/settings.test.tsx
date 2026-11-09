@@ -33,7 +33,7 @@ describe("settings", () => {
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(body).toBeDefined());
     expect(Object.keys(body!)).toEqual(["runtime"]);
-    expect(body!.runtime).toMatchObject({ retention_days: 45, backup_cron: "0 3 * * *", backup_keep: 7, cancel_grace_s: 10, max_concurrent_jobs: null });
+    expect(body!.runtime).toMatchObject({ retention_days: 45, backup_cron: "0 3 * * *", backup_keep: 7, cancel_grace_s: 10, max_concurrent_jobs: null, max_jobs_per_target: null, max_uploads_per_target: 8 });
   });
 
   it("422 from server maps to retention field", async () => {
