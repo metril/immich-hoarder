@@ -18,6 +18,8 @@ from app.db.engine import make_engine
 from app.db.models import (
     AssetSeen,
     Base,
+    Credential,
+    CredentialKind,
     ImmichTarget,
     Job,
     JobStatus,
@@ -26,7 +28,7 @@ from app.db.models import (
     User,
 )
 from app.runtime.bus import EventBus
-from app.runtime.supervisor import JobConflict, JobNotActive, JobSupervisor
+from app.runtime.supervisor import JobConflict, JobNotActive, JobSupervisor, RunHandle
 from app.runtime.writer import IpcBridge, JobWriter, make_ipc_queue
 
 KEY = "test-master-key-0123456789abcdef-xyz"
@@ -140,6 +142,88 @@ async def test_job_succeeds_and_scratch_removed(env: Env) -> None:
     assert done.started_at is not None and done.finished_at is not None
     assert not (env.scratch / str(job.id)).exists()
     assert sup.running == {}
+
+
+JAR = ".reddit.com\tTRUE\t/\tTRUE\t4102444800\treddit_session\tNEWVALUE\n"
+
+
+async def _cookie_source(env: Env, secret: str) -> tuple[int, int, bytes]:
+    box = SecretBox(KEY)
+    _, src_id = await env.seed()
+    async with env.sf() as s:
+        cred = Credential(
+            owner_id=env.owner_id,
+            name="c",
+            site="reddit",
+            kind=CredentialKind.cookies,
+            secret_enc=box.encrypt(secret.encode()),
+        )
+        s.add(cred)
+        await s.flush()
+        (await s.get(Source, src_id)).credential_id = cred.id  # type: ignore[union-attr]
+        await s.commit()
+        return cred.id, src_id, cred.secret_enc
+
+
+async def _secret(env: Env, cid: int) -> str:
+    async with env.sf() as s:
+        row = await s.get(Credential, cid)
+        return SecretBox(KEY).decrypt(row.secret_enc).decode()  # type: ignore[union-attr]
+
+
+OLD = ".reddit.com\tTRUE\t/\tTRUE\t4102444700\treddit_session\tOLDVALUE\n"
+
+
+async def test_renewed_cookies_saved_after_success(env: Env) -> None:
+    cid, src, _ = await _cookie_source(env, OLD)
+    sup = env.make(fw.renewing_worker)
+    await sup.start()
+    job = await sup.enqueue(src, None, "info")
+    await wait_for(env, job.id, JobStatus.succeeded)
+    await wait_until(lambda: not sup.running)
+    assert "NEWVALUE" in await _secret(env, cid)
+    async with env.sf() as s:
+        evs = (await s.execute(select(Job).where(Job.id == job.id))).scalars().all()
+        assert "NEWVALUE" not in repr([(e.error, e.counters) for e in evs])
+
+
+async def test_renewed_cookies_skipped_when_secret_changed(env: Env) -> None:
+    cid, src, old_enc = await _cookie_source(env, OLD)
+    sup = env.make(fw.fast_worker)
+    h = RunHandle(1, src, None, credential_id=cid, secret_enc=old_enc)
+    async with env.sf() as s:
+        (await s.get(Credential, cid)).secret_enc = SecretBox(KEY).encrypt(b"pasted")  # type: ignore[union-attr]
+        await s.commit()
+    await sup._save_cookies(1, h, JAR)
+    assert await _secret(env, cid) == "pasted"
+    h.secret_enc = await _enc(env, cid)
+    await sup._save_cookies(1, h, JAR)
+    assert await _secret(env, cid) == JAR
+
+
+async def test_prepare_skips_saveback_when_secret_differs(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import app.runtime.supervisor as sup_mod
+
+    cid, src, _ = await _cookie_source(env, OLD)
+    real = sup_mod.build_snapshots
+
+    async def fake(s: Any, source: Any, box: Any) -> Any:
+        a, b, c = await real(s, source, box)
+        return a, b, c.model_copy(update={"secret": SecretStr("other")})
+
+    monkeypatch.setattr(sup_mod, "build_snapshots", fake)
+    sup = env.make(fw.fast_worker)
+    h = RunHandle(1, src, None)
+    job = await sup.enqueue(src, None, "info")
+    await sup._prepare(job.id, h)
+    assert h.credential_id is None and h.secret_enc is None
+
+
+async def _enc(env: Env, cid: int) -> bytes:
+    async with env.sf() as s:
+        return (await s.get(Credential, cid)).secret_enc  # type: ignore[union-attr, no-any-return]
 
 
 async def test_failed_status_and_scratch_removed(env: Env) -> None:

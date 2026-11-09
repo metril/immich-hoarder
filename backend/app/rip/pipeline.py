@@ -2,21 +2,22 @@
 
 import contextlib
 import logging
+import re
 import shutil
 import threading
 import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Literal
 
-from app.db.models import BackfillMode
+from app.db.models import BackfillMode, CredentialKind
 from app.immich.client import ImmichClient
 from app.immich.errors import AssetGone, ImmichAuthError, ImmichError, ImmichUnavailable
 from app.rip.albums import AlbumResolver, render_album
-from app.rip.cookies import CredentialError
+from app.rip.cookies import CredentialError, renewed_cookies, session_expiry, to_netscape
 from app.rip.dedupe import DedupeStore, Recorder
 from app.rip.events import Emit
 from app.rip.filters import check
@@ -62,6 +63,7 @@ class RipResult:
     counters: dict[str, int]
     status: Literal["succeeded", "failed", "cancelled"]
     error: str | None
+    renewed_cookies: str | None = field(default=None, repr=False)
 
 
 def sweep_scratch(scratch_dir: Path, active_job_ids: set[int]) -> int:
@@ -109,6 +111,12 @@ _BLOCKED_HINT = (
     "attach a reddit cookies credential to this source (chrome ciphers are already applied). "
     'Otherwise try gallery-dl options {"reddit": {"browser": "firefox"}} or an OAuth credential'
 )
+_AUTH_HINT = (
+    "Reddit rejected this credential: the session is expired or revoked. "
+    "Export fresh reddit.com cookies while logged in and update the credential"
+)
+_DENIED_HINT = "Reddit denied access: the subreddit may be private, or the session was rejected"
+_UNAUTHORIZED = re.compile(r"\b401 Unauthorized\b")
 _BLOCKED_NO_CRED = (
     "Reddit blocked the request and this source has no credential attached: "
     "create a reddit cookies credential and select it on the source"
@@ -139,6 +147,7 @@ class _Rip:
                 self.since = date.fromisoformat(self.src.backfill_value)
         self.fragments = secret_fragments(ctx.credential)
         self.blocked = False
+        self.unauthorized = False
         self.client: ImmichClient
         self.albums: AlbumResolver
 
@@ -147,6 +156,8 @@ class _Rip:
         ev = scrub_data(ev, self.fragments)
         if ev.get("type") == "log" and _BLOCKED in str(ev.get("msg", "")).lower():
             self.blocked = True
+        if ev.get("type") == "log" and _UNAUTHORIZED.search(str(ev.get("msg", ""))):
+            self.unauthorized = True
         with self.emit_lock:
             self._emit_fn(ev)
 
@@ -517,6 +528,8 @@ class _Rip:
         ticker.start()
         gdl_status = 0
         error: str | None = None
+        cred: CredentialSnapshot | None = None
+        jar: str | None = None
         try:
             self.job_dir.mkdir(parents=True, exist_ok=True)
             self.client = ctx.client_factory(ctx.target)
@@ -559,6 +572,9 @@ class _Rip:
             stop_tick.set()
             ticker.join()
             self.progress()
+            if cred is not None and cred.kind == CredentialKind.cookies and cred.site == "reddit":
+                with contextlib.suppress(OSError):
+                    jar = (self.job_dir / ".cookies.txt").read_text()
             shutil.rmtree(self.job_dir, ignore_errors=True)
             if hasattr(self, "client"):
                 with contextlib.suppress(Exception):
@@ -576,11 +592,52 @@ class _Rip:
             if error is None and gdl_status != 0 and ok == 0:
                 if self.blocked:
                     error = _BLOCKED_NO_CRED if ctx.credential is None else _BLOCKED_HINT
+                elif (
+                    ctx.credential is not None
+                    and ctx.credential.kind == CredentialKind.cookies
+                    and self.src.extractor == "reddit"
+                    and (gdl_status & 16 or self.unauthorized)
+                ):
+                    error = _AUTH_HINT if self.unauthorized else _DENIED_HINT
                 else:
                     error = f"gallery-dl exited with status {gdl_status}"
             status = "failed" if error else "succeeded"
+        renewed = self._renewed(cred, jar) if status == "succeeded" else None
         self.emit({"type": "phase", "name": "done"})
-        return RipResult(counters=dict(self.counters), status=status, error=error)
+        return RipResult(
+            counters=dict(self.counters), status=status, error=error, renewed_cookies=renewed
+        )
+
+    def _renewed(self, cred: CredentialSnapshot | None, jar: str | None) -> str | None:
+        if cred is None or not jar or self.ctx.credential is None:
+            return None
+        if self.ctx.credential.site != "reddit":
+            return None
+        secret = cred.secret.get_secret_value()
+        res = renewed_cookies(secret, jar, time.time())
+        if res is None:
+            return None
+        text, exp = res
+        if exp > (session_expiry(to_netscape(secret, "reddit")) or 0):
+            day = datetime.fromtimestamp(exp, UTC).date().isoformat()
+            self.emit(
+                {
+                    "type": "log",
+                    "level": "info",
+                    "msg": f"Reddit session renewed; expires {day}",
+                    "logger": "pipeline",
+                }
+            )
+        else:
+            self.emit(
+                {
+                    "type": "log",
+                    "level": "info",
+                    "msg": "Reddit cookies updated; session expiry unchanged",
+                    "logger": "pipeline",
+                }
+            )
+        return text
 
 
 def run_rip(ctx: RipContext, emit: Emit, cancel: threading.Event) -> RipResult:

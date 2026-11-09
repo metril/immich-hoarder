@@ -88,3 +88,17 @@ def silent_after_cancel_worker(spec: Any, q: Any, cancel: Any) -> None:
 def hang_worker(spec: Any, q: Any, cancel: Any) -> None:
     _touch(spec)
     time.sleep(60)  # default SIGTERM kills it; never sends done
+
+
+def renewing_worker(spec: Any, q: Any, cancel: Any) -> None:
+    _touch(spec)
+    jar = ".reddit.com\tTRUE\t/\tTRUE\t4102444800\treddit_session\tNEWVALUE\n"
+    q.put(
+        (
+            "done",
+            spec.job_id,
+            {"status": "succeeded", "error": None, "counters": {}, "renewed_cookies": jar},
+        )
+    )
+    q.close()
+    q.join_thread()

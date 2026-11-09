@@ -159,6 +159,7 @@ def test_blocklist_accepts(opts: dict[str, Any]) -> None:
         {"proxy": "http://x"},
         {"image-filter": "x"},
         {"archive-format": "x"},
+        {"parent-session": True},
         {"reddit": {"cookies": "/etc/passwd"}},
         {"notasite": {"a": 1}},
         {"reddit": {"headers": {"a": {"b": 1}}}},

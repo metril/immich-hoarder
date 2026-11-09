@@ -165,7 +165,10 @@ class OverlayStore:
 
 
 def _result(r: RipResult) -> dict[str, Any]:
-    return {"status": r.status, "error": r.error, "counters": r.counters}
+    out: dict[str, Any] = {"status": r.status, "error": r.error, "counters": r.counters}
+    if r.renewed_cookies:
+        out["renewed_cookies"] = r.renewed_cookies
+    return out
 
 
 def _bridge_cancel(mp_cancel: Any, stop: threading.Event) -> threading.Event:

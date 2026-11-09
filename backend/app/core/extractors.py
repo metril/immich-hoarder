@@ -14,7 +14,7 @@ GDL_OPTION_BLOCKLIST = frozenset(
         # code execution
         "actions", "postprocessors", "postprocessor-options", "file-filter", "post-filter",
         "child-filter", "skip-filter", "image-filter", "chapter-filter", "keywords-eval", "exec",
-        "follow",
+        "follow", "parent-session",
         # file access
         "cookies", "cookies-update", "cookies-select", "verify", "truststore", "netrc",
         "tags-blacklist", "tags-whitelist", "base-directory", "directory", "filename",

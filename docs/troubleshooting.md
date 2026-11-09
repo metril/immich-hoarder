@@ -72,3 +72,7 @@ The target **Test** reports one of: `unauthorized` (the API key is wrong), `unre
 ## Reddit: "You've been blocked by network security"
 
 **Cause:** Reddit rejects non-browser TLS fingerprints and many datacenter IPs. **Fix:** Reddit sources default to Chrome-like TLS; try `{"reddit": {"browser": "firefox"}}` in the source's gallery-dl options, and add a logged-in `cookies` credential (see [Reddit setup](sources.md#reddit-setup)).
+
+## Reddit session expired or rejected
+
+**Symptom:** `Reddit session expired on <date>`, `Reddit rejected this credential` (a logged 401), or `Reddit denied access: the subreddit may be private, or the session was rejected`. The last one can also just mean the subreddit is private or quarantined. **Cause:** the `reddit_session` cookie in the credential has expired or been revoked. **Fix:** log in to reddit.com, export all its cookies again and replace the credential's secret. Renewed cookies are saved automatically after successful jobs, but a dead session cannot be revived.

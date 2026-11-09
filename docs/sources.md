@@ -103,6 +103,7 @@ gallery-dl is pinned to the Codeberg master branch (not a PyPI release), so new 
 Reddit blocks non-browser TLS fingerprints with "You've been blocked by network security". By default Reddit sources send `ciphers: "chrome"` and `tls12: false`. Override per source, e.g. `{"reddit": {"browser": "firefox"}}`. Cookies or OAuth credentials still work on top of these defaults:
 
 - **Logged-in cookies (kind `cookies`, site `reddit`).** Export ALL reddit.com cookies while logged in, in Netscape `cookies.txt` or JSON form, e.g. with the Cookie-Editor or "Get cookies.txt LOCALLY" extension (a `name=value; ...` cookie header also works). A `reddit_session` cookie is required. gallery-dl uses the REST API with these cookies. A datacenter IP may still be blocked.
+  Cookies Reddit renews during a job are saved back to the credential automatically when the job succeeds (a secret you edit while a job runs is never overwritten). This cannot revive a dead session: once `reddit_session` expires or is revoked, export fresh cookies.
 - **Your own OAuth app (kind `oauth`, site `reddit`).** JSON with `client-id`, `client-secret` and `refresh-token`, plus an optional `user-agent` (default `immich-hoarder/<version>`). It does not expire, but Reddit requires approval for new apps.
 
 ## Ad-hoc rips

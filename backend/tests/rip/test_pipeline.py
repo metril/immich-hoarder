@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import threading
 import time
 import urllib.request
@@ -574,6 +575,103 @@ def test_reddit_cookies_missing_session_fails_with_message(env: Env) -> None:
     )
     r = env.run("/img/a.jpg", credential=cred, extractor="reddit")
     assert r.status == "failed" and r.error and "missing reddit_session" in r.error
+
+
+REDDIT_OLD = ".reddit.com\tTRUE\t/\tTRUE\t4102444800\treddit_session\tOLDSECRET\n"
+REDDIT_NEW = ".reddit.com\tTRUE\t/\tTRUE\t4102444900\treddit_session\tNEWSECRET\n"
+
+
+def _reddit_run(
+    env: Env,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    rewrite: str | None,
+    status: int = 0,
+    log: str | None = None,
+    cred: CredentialSnapshot | None = None,
+) -> RipResult:
+    cred = cred or CredentialSnapshot(
+        site="reddit", kind=CredentialKind.cookies, secret=SecretStr(REDDIT_OLD)
+    )
+
+    def fake_run_job(job: Any, *a: Any, **kw: Any) -> int:
+        if rewrite is not None:
+            (env.scratch / "7" / ".cookies.txt").write_text(rewrite)
+        if log:
+            logging.getLogger("reddit").error(log)
+        return status
+
+    monkeypatch.setattr("app.rip.pipeline.run_job", fake_run_job)
+    return env.run("/img/a.jpg", credential=cred, extractor="reddit")
+
+
+def test_renewed_cookies_returned_on_success(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    r = _reddit_run(env, monkeypatch, rewrite=REDDIT_NEW)
+    assert r.status == "succeeded" and r.renewed_cookies and "NEWSECRET" in r.renewed_cookies
+    assert "NEWSECRET" not in repr(r)
+    logs = [str(e.get("msg")) for e in env.events if e.get("type") == "log"]
+    assert any("Reddit session renewed; expires 2100-" in m for m in logs)
+    assert not any("NEWSECRET" in str(e) for e in env.events)
+
+
+def test_no_renewed_cookies_when_unchanged(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    assert _reddit_run(env, monkeypatch, rewrite=None).renewed_cookies is None
+
+
+def test_no_renewed_cookies_when_failed(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    r = _reddit_run(env, monkeypatch, rewrite=REDDIT_NEW, status=1)
+    assert r.status == "failed" and r.renewed_cookies is None
+
+
+def test_no_renewed_cookies_when_cancelled(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    env.cancel.set()
+    r = _reddit_run(env, monkeypatch, rewrite=REDDIT_NEW)
+    assert r.status == "cancelled" and r.renewed_cookies is None
+
+
+def test_auth_status_without_401_gives_denied_hint(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    r = _reddit_run(env, monkeypatch, rewrite=None, status=16)
+    assert r.error and r.error.startswith("Reddit denied access")
+
+
+def test_oauth_credential_keeps_generic_status_error(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    oauth = CredentialSnapshot(
+        site="reddit", kind=CredentialKind.oauth, secret=SecretStr('{"client-id": "x"}')
+    )
+    r = _reddit_run(env, monkeypatch, rewrite=None, status=16, cred=oauth)
+    assert r.error == "gallery-dl exited with status 16"
+
+
+def test_path_with_401_does_not_trigger_hint(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    r = _reddit_run(env, monkeypatch, rewrite=None, status=4, log="GET /401/x.jpg failed")
+    assert r.error == "gallery-dl exited with status 4"
+
+
+def test_no_renewed_cookies_when_credential_site_not_reddit(
+    env: Env, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    cred = CredentialSnapshot(
+        site="reddit.com", kind=CredentialKind.cookies, secret=SecretStr(REDDIT_OLD)
+    )
+    r = _reddit_run(env, monkeypatch, rewrite=REDDIT_NEW, cred=cred)
+    assert r.status == "succeeded" and r.renewed_cookies is None
+    assert not any("renewed" in str(e.get("msg")) for e in env.events)
+
+
+def test_logged_401_gives_hint(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    r = _reddit_run(env, monkeypatch, rewrite=None, status=4, log="HttpError: 401 Unauthorized")
+    assert r.error and "Reddit rejected this credential" in r.error
+
+
+def test_blocked_message_wins_over_auth_hint(env: Env, monkeypatch: pytest.MonkeyPatch) -> None:
+    r = _reddit_run(
+        env, monkeypatch, rewrite=None, status=16, log="blocked by network security 401"
+    )
+    assert r.error and r.error.startswith("Reddit blocked the request")
 
 
 def _trashed(i: str) -> dict[str, Any]:

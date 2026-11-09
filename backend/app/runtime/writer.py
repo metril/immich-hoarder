@@ -73,6 +73,7 @@ class JobWriter:
         self._hook: Callable[[], None] | None = None  # test fault-injection point
         self._respawn_timer: asyncio.TimerHandle | None = None
         self._done_listeners: list[DoneListener] = []
+        self._renewed: dict[int, str] = {}
         self._observers: list[Callable[[Msg], None]] = []
 
     @property
@@ -129,7 +130,17 @@ class JobWriter:
         self._last_restart = asyncio.get_running_loop().time()
         self._spawn()
 
+    def take_renewed(self, job_id: int) -> str | None:
+        """Renewed cookies stripped from a job's "done" result (never persisted or published)."""
+        return self._renewed.pop(job_id, None)
+
     def submit(self, msg: Msg) -> None:
+        if msg[0] == "done" and len(msg) == 3 and isinstance(msg[2], dict):
+            result = dict(msg[2])
+            cookies = result.pop("renewed_cookies", None)
+            if isinstance(cookies, str) and result.get("status") == "succeeded":
+                self._renewed[msg[1]] = cookies
+            msg = (msg[0], msg[1], result)
         if self._stopped:
             log.warning("writer: message submitted after stop; dropped")
             return
