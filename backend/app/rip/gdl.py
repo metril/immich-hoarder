@@ -17,7 +17,7 @@ from typing import Any
 from urllib.parse import urlsplit
 
 import urllib3.util.connection as _uconn
-from gallery_dl import cache, config, downloader, exception, extractor, formatter, job
+from gallery_dl import cache, config, downloader, exception, extractor, formatter, job, util
 
 from app import __version__
 from app.core.extractors import _categories, _ip_private, bad_user_agent, validate_gdl_options
@@ -133,6 +133,7 @@ def configure(
     config.set(("extractor", "reddit"), "videos", False)
     config.set(("extractor", "reddit"), "ciphers", "chrome")
     config.set(("extractor", "reddit"), "tls12", False)
+    config.set(("extractor", "reddit"), "limit", 100)  # page size; Reddit's default is 25
     user_opts = validate_gdl_options(src.gdl_options)
     sites = _categories()
     for k, v in user_opts.items():
@@ -213,11 +214,55 @@ class _Archive:
         pass
 
 
+def share_rate(extr: Any, rate: Any, cancel: threading.Event) -> None:
+    """Route this extractor's request spacing and rate-limit waits through shared slots.
+
+    gallery-dl's own ``sleep-request`` is per process, so parallel jobs would multiply the
+    request rate. Only the public ``request``/``wait`` methods are wrapped on the instance.
+    """
+    if getattr(extr, "_hoarder_shared", False):
+        return
+    extr._hoarder_shared = True
+    key = str(extr.category)
+    spacing = util.build_duration_func(
+        extr.config("sleep-request", extr.request_interval), extr.request_interval_min
+    )
+    orig_request, orig_wait = extr.request, extr.wait
+
+    def request(*args: Any, interval: bool = True, **kwargs: Any) -> Any:
+        if interval and spacing is not None:
+            delay = rate.rate_slot(key, float(spacing()))
+            if delay > 0 and cancel.wait(delay):
+                raise exception.StopExtraction()
+        return orig_request(*args, interval=False, **kwargs)
+
+    def wait(
+        seconds: Any = None, until: Any = None, adjust: float = 1.0, reason: str = "rate limit"
+    ) -> Any:
+        try:
+            if seconds:
+                delay = float(seconds)
+            elif until is not None:
+                ts = until.timestamp() if hasattr(until, "timestamp") else float(until)
+                delay = ts - time.time()
+            else:
+                delay = 0.0
+            if delay + adjust > 0:
+                rate.rate_push(key, delay + adjust)
+        except (TypeError, ValueError, OverflowError):
+            pass
+        return orig_wait(seconds, until, adjust, reason)
+
+    extr.request = request
+    extr.wait = wait
+
+
 class HoarderJob(job.DownloadJob):  # type: ignore[misc]
     _archive_check: Callable[[bytes], bool]
     _on_discovered: Callable[[dict[str, Any]], None]
     _on_file: Callable[[Path, dict[str, Any]], None]
     _cancel: threading.Event
+    _rate: Any
 
     def __init__(
         self,
@@ -228,9 +273,11 @@ class HoarderJob(job.DownloadJob):  # type: ignore[misc]
         on_discovered: Callable[[dict[str, Any]], None] | None = None,
         on_file: Callable[[Path, dict[str, Any]], None] | None = None,
         cancel: threading.Event | None = None,
+        rate: Any = None,
     ) -> None:
         super().__init__(url, parent)
         if parent is not None:
+            rate = rate or parent._rate
             archive_check = archive_check or parent._archive_check
             on_discovered = on_discovered or parent._on_discovered
             on_file = on_file or parent._on_file
@@ -241,11 +288,14 @@ class HoarderJob(job.DownloadJob):  # type: ignore[misc]
         self._on_discovered = on_discovered
         self._on_file = on_file
         self._cancel = cancel
+        self._rate = rate
         self._escaped = False
 
     def initialize(self, kwdict: dict[str, Any] | None = None) -> None:
         super().initialize(kwdict)
         extr = self.extractor
+        if self._rate is not None:
+            share_rate(extr, self._rate, self._cancel)
         cfg = extr.config
         prefix = cfg("archive-prefix")
         if prefix is None:

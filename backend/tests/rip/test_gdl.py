@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from gallery_dl import config
+from gallery_dl import config, exception
 from gallery_dl.extractor import directlink
 from gallery_dl.extractor.message import Message
 from pydantic import SecretStr
@@ -639,3 +639,90 @@ def test_reddit_cookies_update_forced_on(tmp_path: Path) -> None:
     config.set(("extractor", "reddit"), "cookies-update", False)
     configure(src(), _cookie_cred(NS), FAST, tmp_path, incremental=False)
     assert config.get(("extractor", "reddit"), "cookies-update") is True
+
+
+class _StubExtractor:
+    category = "reddit"
+    request_interval = 0.0
+    request_interval_min = 0.0
+
+    def __init__(self, interval: float) -> None:
+        self._interval = interval
+        self.calls: list[dict[str, Any]] = []
+        self.waits: list[tuple[Any, ...]] = []
+
+    def config(self, key: str, default: Any = None) -> Any:
+        return self._interval if key == "sleep-request" else default
+
+    def request(self, url: str, **kw: Any) -> str:
+        self.calls.append(kw)
+        return url
+
+    def wait(self, *a: Any) -> None:
+        self.waits.append(a)
+
+
+class _Rate:
+    def __init__(self, delay: float = 0.0) -> None:
+        self.delay = delay
+        self.slots: list[tuple[str, float]] = []
+        self.pushed: list[tuple[str, float]] = []
+
+    def rate_slot(self, key: str, interval: float) -> float:
+        self.slots.append((key, interval))
+        return self.delay
+
+    def rate_push(self, key: str, delay: float) -> None:
+        self.pushed.append((key, delay))
+
+
+def test_share_rate_takes_a_shared_slot_and_skips_own_sleep() -> None:
+    from app.rip.gdl import share_rate
+
+    ex, rate = _StubExtractor(1.5), _Rate()
+    share_rate(ex, rate, threading.Event())
+    assert ex.request("u") == "u"
+    assert rate.slots == [("reddit", 1.5)] and ex.calls == [{"interval": False}]
+    ex.request("u", interval=False)  # interval=False callers (e.g. retries) take no slot
+    assert len(rate.slots) == 1
+    share_rate(ex, rate, threading.Event())  # idempotent
+    ex.request("u")
+    assert len(rate.slots) == 2
+
+
+def test_share_rate_zero_interval_takes_no_slot_and_wait_propagates() -> None:
+    from app.rip.gdl import share_rate
+
+    ex, rate = _StubExtractor(0), _Rate()
+    share_rate(ex, rate, threading.Event())
+    ex.request("u")
+    assert rate.slots == []
+    ex.wait(30, None, 1.0, "rate limit")
+    assert rate.pushed == [("reddit", 31.0)] and ex.waits == [(30, None, 1.0, "rate limit")]
+
+
+def test_share_rate_wait_for_slot_honours_cancel() -> None:
+    from app.rip.gdl import share_rate
+
+    ex, rate = _StubExtractor(1), _Rate(delay=30)
+    cancel = threading.Event()
+    share_rate(ex, rate, cancel)
+    cancel.set()
+    with pytest.raises(exception.StopExtraction):
+        ex.request("u")
+    assert ex.calls == []
+
+
+def test_reddit_page_size_default_and_user_override(tmp_path: Path) -> None:
+    from gallery_dl import config
+
+    configure(src(extractor="reddit"), None, FAST, tmp_path, incremental=False)
+    assert config.get(("extractor", "reddit"), "limit") == 100
+    configure(
+        src(extractor="reddit", gdl_options={"reddit": {"limit": 25}}),
+        None,
+        FAST,
+        tmp_path,
+        incremental=False,
+    )
+    assert config.get(("extractor", "reddit"), "limit") == 25
