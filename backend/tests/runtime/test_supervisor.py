@@ -1,5 +1,7 @@
 import asyncio
 import multiprocessing as mp
+import os
+import signal
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -29,6 +31,7 @@ from app.db.models import (
 )
 from app.runtime.bus import EventBus
 from app.runtime.supervisor import JobConflict, JobNotActive, JobSupervisor, RunHandle
+from app.runtime.worker import worker_main
 from app.runtime.writer import IpcBridge, JobWriter, make_ipc_queue
 
 KEY = "test-master-key-0123456789abcdef-xyz"
@@ -247,30 +250,50 @@ async def test_one_job_per_source_conflict(env: Env) -> None:
     await sup.enqueue(src, None, "info")  # allowed once the first finished
 
 
-async def test_one_running_per_target_and_concurrency_cap(env: Env) -> None:
+async def test_same_target_runs_concurrently_and_concurrency_cap(env: Env) -> None:
     t1, a = await env.seed()
     _, b = await env.seed(target=t1)
     _, c = await env.seed()
     _, d = await env.seed()
     async with env.sf() as s:
-        s.add(Setting(key="runtime", value={"max_concurrent_jobs": 2}))
+        s.add(Setting(key="runtime", value={"max_concurrent_jobs": 3}))
         await s.commit()
     sup = env.make(fw.slow_worker)
     await sup.start()
     ja = await sup.enqueue(a, None, "info")
-    jb = await sup.enqueue(b, None, "info")  # same target as a: must wait
+    jb = await sup.enqueue(b, None, "info")  # same target as a: runs together
     jc = await sup.enqueue(c, None, "info")
-    jd = await sup.enqueue(d, None, "info")  # cap=2: must wait
-    await wait_for(env, ja.id, JobStatus.running)
-    await wait_for(env, jc.id, JobStatus.running)
+    jd = await sup.enqueue(d, None, "info")  # cap=3: must wait
+    for j in (ja, jb, jc):
+        await wait_for(env, j.id, JobStatus.running)
     await asyncio.sleep(0.5)
-    assert set(sup.running) == {ja.id, jc.id}
+    assert set(sup.running) == {ja.id, jb.id, jc.id}
     async with env.sf() as s:
-        assert (await s.get(Job, jb.id)).status == JobStatus.queued  # type: ignore[union-attr]
         assert (await s.get(Job, jd.id)).status == JobStatus.queued  # type: ignore[union-attr]
-    await sup.cancel(ja.id)  # frees the target and a slot
+    await sup.cancel(ja.id)  # frees a slot
     await wait_for(env, ja.id, JobStatus.cancelled)
-    await wait_for(env, jb.id, JobStatus.running)
+    await wait_for(env, jd.id, JobStatus.running)
+    for j in (jb, jc, jd):
+        await sup.cancel(j.id)
+
+
+async def test_max_jobs_per_target_cap(env: Env) -> None:
+    t1, a = await env.seed()
+    _, b = await env.seed(target=t1)
+    _, c = await env.seed(target=t1)
+    _, d = await env.seed()
+    async with env.sf() as s:
+        s.add(Setting(key="runtime", value={"max_jobs_per_target": 2}))
+        await s.commit()
+    sup = env.make(fw.slow_worker)
+    await sup.start()
+    ja, jb, jc, jd = [await sup.enqueue(x, None, "info") for x in (a, b, c, d)]
+    for j in (ja, jb, jd):
+        await wait_for(env, j.id, JobStatus.running)
+    await asyncio.sleep(0.5)
+    assert set(sup.running) == {ja.id, jb.id, jd.id}  # c waits behind its target's cap
+    await sup.cancel(ja.id)
+    await wait_for(env, jc.id, JobStatus.running)
     for j in (jb, jc, jd):
         await sup.cancel(j.id)
 
@@ -728,3 +751,195 @@ async def test_cooperative_cancel_on_stop_ends_failed_but_user_cancel_stays_canc
     await sup.stop()
     done = await wait_for(env, j2.id, JobStatus.failed)
     assert done.error == "interrupted by restart"
+
+
+SHA = b"\x07" * 20
+
+
+async def _marker(env: Env, job_id: int, name: str, timeout: float = 20) -> Path:
+    p = env.scratch / str(job_id) / name
+    await wait_until(p.exists, timeout)
+    return p
+
+
+async def test_claim_freed_by_committed_release_message(env: Env) -> None:
+    t, a = await env.seed()
+    _, b = await env.seed(target=t)
+    sup = env.make(fw.claim_release_worker)
+    await sup.start()
+    ja = await sup.enqueue(a, None, "info")
+    await _marker(env, ja.id, "released")  # A recorded, released and is still running
+    jb = await sup.enqueue(b, None, "info")
+    await _marker(env, jb.id, "got")  # B's claim on the same content was granted
+    async with env.sf() as s:
+        rows = (await s.execute(select(AssetSeen))).scalars().all()
+    assert len(rows) >= 1
+    for j in (ja, jb):
+        await sup.cancel(j.id)
+
+
+async def test_sigkilled_job_frees_its_claims_after_sweep(env: Env) -> None:
+    t, a = await env.seed()
+    _, b = await env.seed(target=t)
+    sup = env.make(fw.claim_hold_worker)
+    await sup.start()
+    ja = await sup.enqueue(a, None, "info")
+    pid_file = await _marker(env, ja.id, "held")
+    jb = await sup.enqueue(b, None, "info")
+    await wait_for(env, jb.id, JobStatus.running)
+    await asyncio.sleep(0.6)
+    assert not (env.scratch / str(jb.id) / "got").exists()  # blocked behind A's claim
+    os.kill(int(pid_file.read_text()), signal.SIGKILL)
+    await wait_for(env, ja.id, JobStatus.failed)
+    await _marker(env, jb.id, "got")
+    assert sup.claims.table.held(ja.id) == 0
+    await sup.cancel(jb.id)
+
+
+async def test_clean_exit_frees_claims_at_done(env: Env) -> None:
+    t, a = await env.seed()
+    _, b = await env.seed(target=t)
+    sup = env.make(fw.claim_leak_worker)  # claims and exits without releasing
+    await sup.start()
+    ja = await sup.enqueue(a, None, "info")
+    await wait_for(env, ja.id, JobStatus.succeeded)
+    jb = await sup.enqueue(b, None, "info")
+    await wait_for(env, jb.id, JobStatus.succeeded)
+    assert sup.claims.table.held() == 0
+
+
+# -- real worker processes against a mock Immich ------------------------------------------
+
+
+class _Site:
+    """Serves two re-encodings of one picture and the slice of the Immich API the rip uses."""
+
+    def __init__(self, upload_delay: float) -> None:
+        import io
+        import json
+        import threading
+        import time
+        import uuid
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        from PIL import Image
+
+        img = Image.effect_noise((128, 96), 80).convert("RGB")
+        self.imgs: dict[str, bytes] = {}
+        for name, q in (("a", 92), ("b", 60)):
+            buf = io.BytesIO()
+            img.save(buf, "JPEG", quality=q)
+            self.imgs[name] = buf.getvalue()
+        self.uploads: list[str] = []
+        self.linked: list[str] = []
+        lock = threading.Lock()
+        site = self
+
+        class H(BaseHTTPRequestHandler):
+            def _send(self, code: int, body: Any) -> None:
+                raw = body if isinstance(body, bytes) else json.dumps(body).encode()
+                self.send_response(code)
+                self.send_header("Content-Length", str(len(raw)))
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def _body(self) -> bytes:
+                return self.rfile.read(int(self.headers.get("Content-Length") or 0))
+
+            def do_GET(self) -> None:
+                if self.path.startswith("/img/"):
+                    self._send(200, site.imgs[self.path[5:6]])
+                elif self.path.endswith("/albums"):
+                    self._send(200, [])
+                else:
+                    self._send(404, {})
+
+            def do_POST(self) -> None:
+                body = self._body()
+                if self.path.endswith("/bulk-upload-check"):
+                    items = json.loads(body)["assets"]
+                    res = [{"id": i["id"], "action": "accept"} for i in items]
+                    self._send(200, {"results": res})
+                elif self.path.endswith("/albums"):
+                    self._send(201, {"id": str(uuid.uuid4()), "albumName": "x", "assetCount": 0})
+                elif self.path.endswith("/assets"):
+                    time.sleep(upload_delay)
+                    aid = str(uuid.uuid4())
+                    with lock:
+                        site.uploads.append(aid)
+                    self._send(201, {"id": aid, "status": "created"})
+                else:
+                    self._send(404, {})
+
+            def do_PUT(self) -> None:
+                body = self._body()
+                if "/albums/" in self.path:
+                    ids = json.loads(body)["ids"]
+                    with lock:
+                        site.linked.extend(ids)
+                    self._send(200, [{"id": i, "success": True} for i in ids])
+                else:
+                    self._send(200, {})
+
+            def log_message(self, *a: object) -> None:
+                pass
+
+        self.srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        self.thread = threading.Thread(target=self.srv.serve_forever, daemon=True)
+        self.thread.start()
+        self.base = f"http://127.0.0.1:{self.srv.server_address[1]}"
+
+    def close(self) -> None:
+        self.srv.shutdown()
+        self.srv.server_close()
+
+
+async def test_two_real_workers_dedupe_near_duplicates_on_one_target(env: Env) -> None:
+
+    site = await asyncio.to_thread(_Site, 1.0)
+    try:
+        box = SecretBox(KEY)
+        async with env.sf() as s:
+            s.add(
+                Setting(
+                    key="rip",
+                    value={
+                        "allow_private_hosts": True,
+                        "rate_limits": {"default": {"sleep_request": 0, "sleep": 0, "retries": 0}},
+                    },
+                )
+            )
+            t = ImmichTarget(
+                owner_id=env.owner_id,
+                name="real",
+                url=site.base,
+                api_key_enc=box.encrypt(b"k"),
+            )
+            s.add(t)
+            await s.flush()
+            srcs = []
+            for name in ("a", "b"):  # same picture, different bytes (and so SHA-1)
+                src = Source(
+                    owner_id=env.owner_id,
+                    name=name,
+                    url=f"{site.base}/img/{name}.jpg",
+                    extractor="directlink",
+                    target_id=t.id,
+                )
+                s.add(src)
+                srcs.append(src)
+            await s.commit()
+            ids = [x.id for x in srcs]
+        sup = env.make(worker_main)  # real worker processes
+        sup.done_wait_s = 10
+        await sup.start()
+        jobs = [await sup.enqueue(i, None, "info") for i in ids]
+        done = [await wait_for(env, j.id, JobStatus.succeeded, timeout=90) for j in jobs]
+        counters = [d.counters for d in done]
+        assert sum(c["uploaded"] for c in counters) == 1, counters
+        assert sum(c["linked"] for c in counters) == 1, counters
+        assert len(site.uploads) == 1
+        assert sup.claims.table.held() == 0 and sup.claims.table.waiting() == 0
+    finally:
+        await asyncio.to_thread(site.close)

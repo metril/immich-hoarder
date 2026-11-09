@@ -147,7 +147,7 @@ def test_worker_sends_events_records_done(tmp_path: Path, monkeypatch: pytest.Mo
     cancel = ctx.Event()
     Base.metadata.create_all(make_sync_engine(f"sqlite:///{tmp_path / 'w.db'}"))
     cancel.set()
-    worker_main(_spec(tmp_path), q, cancel)
+    worker_main(_spec(tmp_path), q, cancel, mp.Pipe()[1])
     msgs = _drain(q)
     assert [m[0] for m in msgs] == ["event", "record", "done"]
     assert msgs[0][1] == 5
@@ -162,7 +162,7 @@ def test_worker_exception_still_sends_done(tmp_path: Path, monkeypatch: pytest.M
     ctx = mp.get_context("spawn")
     q = FakeQ()
     Base.metadata.create_all(make_sync_engine(f"sqlite:///{tmp_path / 'w.db'}"))
-    worker_main(_spec(tmp_path), q, ctx.Event())
+    worker_main(_spec(tmp_path), q, ctx.Event(), mp.Pipe()[1])
     done = _drain(q)[-1]
     assert done[2]["status"] == "failed" and done[2]["error"] == "worker error: KeyError"
 

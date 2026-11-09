@@ -16,6 +16,7 @@ from app.rip.media import to_signed64
 from app.rip.pipeline import RipContext, RipResult, run_rip
 from app.rip.settings import RipSettings
 from app.rip.snapshot import CredentialSnapshot, SourceSnapshot, TargetSnapshot
+from app.runtime.claims import RemoteClaims
 
 _MASK64 = (1 << 64) - 1
 _CANCEL_POLL_S = 0.5
@@ -187,7 +188,7 @@ def _bridge_cancel(mp_cancel: Any, stop: threading.Event) -> threading.Event:
     return flag
 
 
-def worker_main(spec: WorkerSpec, q: Any, cancel: Any) -> None:
+def worker_main(spec: WorkerSpec, q: Any, cancel: Any, conn: Any) -> None:
     logging.basicConfig(
         stream=sys.stderr,
         level=getattr(logging, spec.log_level.upper(), logging.INFO),
@@ -212,6 +213,7 @@ def worker_main(spec: WorkerSpec, q: Any, cancel: Any) -> None:
             store=cast(DedupeStore, overlay),
             recorder=overlay,
             client_factory=lambda t: ImmichClient(t.url, t.api_key.get_secret_value()),
+            claims=RemoteClaims(conn, q),
         )
         res = run_rip(ctx, lambda ev: q.put(("event", spec.job_id, ev)), flag)
         result = _result(res)
