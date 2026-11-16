@@ -1,4 +1,4 @@
-FROM node:26.11.1-alpine@sha256:143494b1da2945f061539253adc65e4f1569ddf07da2d384c022c791a9d90a4a AS web
+FROM node:26.13.1-alpine@sha256:6bd9ab43c0ec0190ca7b2d193906cb8b7edf6e7f4afa43ddeccd6452710bffb5 AS web
 WORKDIR /web
 # Node 26 no longer bundles corepack: install pnpm from the registry tarball and fail closed
 # unless its sha512 matches package.json "packageManager" (keep PNPM_SHA512 in sync).
